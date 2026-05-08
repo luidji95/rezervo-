@@ -212,3 +212,19 @@ a {
   color: var(--color-primary);
   font-weight: 700;
 }
+
+.logout-button {
+  padding: 10px 14px;
+  border: none;
+  border-radius: 12px;
+  background: #ef4444;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}

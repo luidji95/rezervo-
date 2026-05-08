@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
 import Link from "next/link";
+
+import { useRouter } from "next/navigation";
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+
+import { useAuth } from "@/context/AuthContext";
 
 import { registerUser } from "@/services/authService";
 
@@ -14,8 +19,18 @@ import {
 } from "@/features/auth/schemas/authSchema";
 
 export default function RegisterPage() {
+  const router = useRouter();
+
+  const { user, loading } = useAuth();
+
   const [formError, setFormError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace("/dashboard");
+    }
+  }, [loading, user, router]);
 
   const {
     register,
@@ -50,12 +65,22 @@ export default function RegisterPage() {
     }
   }
 
+  if (loading) {
+    return <p>Loading...</p>;
+  }
+
+  if (user) {
+    return null;
+  }
+
   return (
     <main className="auth-page">
       <section className="auth-card">
         <div className="auth-header">
           <p className="auth-eyebrow">Create account</p>
+
           <h1>Start using Rezervo</h1>
+
           <p>Create your salon management account.</p>
         </div>
 
@@ -96,7 +121,11 @@ export default function RegisterPage() {
             <p className="form-success">{successMessage}</p>
           )}
 
-          <button className="auth-button" type="submit" disabled={isSubmitting}>
+          <button
+            className="auth-button"
+            type="submit"
+            disabled={isSubmitting}
+          >
             {isSubmitting ? "Creating account..." : "Create account"}
           </button>
         </form>

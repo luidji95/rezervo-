@@ -25,10 +25,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body>
-        <AppShell>{children}</AppShell>
-      </body>
+    <html lang="en">
+      <body>{children}</body>
     </html>
   );
 }

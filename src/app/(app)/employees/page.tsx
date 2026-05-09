@@ -7,7 +7,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useSalon } from "@/context/SalonContext";
 import {
   createEmployee,
+  deleteEmployee,
   getSalonEmployees,
+  updateEmployee,
 } from "@/services/employeeService";
 import type { Employee } from "@/types/employee";
 
@@ -31,7 +33,12 @@ export default function EmployeesPage() {
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeesLoading, setEmployeesLoading] = useState(false);
+
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
 
   const {
     register,
@@ -81,6 +88,28 @@ export default function EmployeesPage() {
     setSubmitError(null);
 
     try {
+      if (editingEmployee) {
+        const updatedEmployee = await updateEmployee({
+          employeeId: editingEmployee.id,
+          fullName: data.fullName,
+          displayName: data.displayName || null,
+          position: data.position || null,
+          phone: data.phone || null,
+          email: data.email || null,
+          bio: data.bio || null,
+        });
+
+        setEmployees((prev) =>
+          prev.map((employee) =>
+            employee.id === updatedEmployee.id ? updatedEmployee : employee
+          )
+        );
+
+        setEditingEmployee(null);
+        reset(emptyFormValues);
+        return;
+      }
+
       const newEmployee = await createEmployee({
         salonId: currentSalon.id,
         fullName: data.fullName,
@@ -94,9 +123,52 @@ export default function EmployeesPage() {
       setEmployees((prev) => [newEmployee, ...prev]);
       reset(emptyFormValues);
     } catch (error) {
-      console.error("Failed to create employee:", error);
-      setSubmitError("Something went wrong while creating employee.");
+      console.error("Failed to save employee:", error);
+      setSubmitError("Something went wrong while saving employee.");
     }
+  }
+
+  async function handleDelete(employeeId: string) {
+    setDeleteError(null);
+    setDeletingId(employeeId);
+
+    try {
+      await deleteEmployee(employeeId);
+
+      setEmployees((prev) =>
+        prev.filter((employee) => employee.id !== employeeId)
+      );
+
+      if (editingEmployee?.id === employeeId) {
+        setEditingEmployee(null);
+        reset(emptyFormValues);
+      }
+    } catch (error) {
+      console.error("Failed to delete employee:", error);
+      setDeleteError("Something went wrong while deleting employee.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  function handleStartEdit(employee: Employee) {
+    setSubmitError(null);
+    setDeleteError(null);
+    setEditingEmployee(employee);
+
+    reset({
+      fullName: employee.full_name,
+      displayName: employee.display_name ?? "",
+      position: employee.position ?? "",
+      phone: employee.phone ?? "",
+      email: employee.email ?? "",
+      bio: employee.bio ?? "",
+    });
+  }
+
+  function handleCancelEdit() {
+    setEditingEmployee(null);
+    reset(emptyFormValues);
   }
 
   if (salonLoading) {
@@ -113,7 +185,7 @@ export default function EmployeesPage() {
       <p>Manage employees for {currentSalon.name}</p>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate>
-        <h2>Create employee</h2>
+        <h2>{editingEmployee ? "Edit employee" : "Create employee"}</h2>
 
         <div>
           <label htmlFor="fullName">Full name</label>
@@ -150,12 +222,26 @@ export default function EmployeesPage() {
         {submitError && <p>{submitError}</p>}
 
         <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Creating..." : "Create employee"}
+          {isSubmitting
+            ? editingEmployee
+              ? "Saving..."
+              : "Creating..."
+            : editingEmployee
+              ? "Save changes"
+              : "Create employee"}
         </button>
+
+        {editingEmployee && (
+          <button type="button" onClick={handleCancelEdit}>
+            Cancel edit
+          </button>
+        )}
       </form>
 
       <section>
         <h2>Existing employees</h2>
+
+        {deleteError && <p>{deleteError}</p>}
 
         {employeesLoading && <p>Loading employees...</p>}
 
@@ -179,6 +265,18 @@ export default function EmployeesPage() {
                 Active: {employee.is_active ? "Yes" : "No"} | Bookable:{" "}
                 {employee.is_bookable ? "Yes" : "No"}
               </p>
+
+              <button type="button" onClick={() => handleStartEdit(employee)}>
+                Edit
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleDelete(employee.id)}
+                disabled={deletingId === employee.id}
+              >
+                {deletingId === employee.id ? "Deleting..." : "Delete"}
+              </button>
             </article>
           ))}
       </section>

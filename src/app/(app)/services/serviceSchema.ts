@@ -14,4 +14,5 @@ export const servicesSchema = z.object({
     .min(0, "Price cannot be negative"),
 });
 
-export type ServicesFormData = z.infer<typeof servicesSchema>;
+export type ServicesFormInput = z.input<typeof servicesSchema>;
+export type ServicesFormData = z.output<typeof servicesSchema>;

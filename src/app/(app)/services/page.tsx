@@ -5,17 +5,23 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useSalon } from "@/context/SalonContext";
+
 import {
   createService,
   deleteService,
   getSalonServices,
   updateService,
 } from "@/services/serviceService";
+
 import type { Service } from "@/types/service";
 
-import { servicesSchema, type ServicesFormData } from "./serviceSchema";
+import {
+  servicesSchema,
+  type ServicesFormData,
+  type ServicesFormInput,
+} from "./serviceSchema";
 
-const emptyFormValues: ServicesFormData = {
+const emptyFormValues: ServicesFormInput = {
   name: "",
   description: "",
   durationMinutes: 30,
@@ -27,9 +33,12 @@ export default function ServicesPage() {
 
   const [services, setServices] = useState<Service[]>([]);
   const [servicesLoading, setServicesLoading] = useState(false);
+
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
   const [editingService, setEditingService] = useState<Service | null>(null);
 
   const {
@@ -37,29 +46,42 @@ export default function ServicesPage() {
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<ServicesFormData>({
+  } = useForm<ServicesFormInput, unknown, ServicesFormData>({
     resolver: zodResolver(servicesSchema),
     defaultValues: emptyFormValues,
   });
 
-  async function fetchServices() {
-    if (!currentSalon) return;
+  useEffect(() => {
+  const salonId = currentSalon?.id;
 
+  if (!salonId) return;
+
+  let ignore = false;
+
+  async function loadServices() {
     setServicesLoading(true);
 
     try {
-      const data = await getSalonServices(currentSalon.id);
-      setServices(data);
+      const data = await getSalonServices(salonId);
+
+      if (!ignore) {
+        setServices(data);
+      }
     } catch (error) {
       console.error("Failed to fetch services:", error);
     } finally {
-      setServicesLoading(false);
+      if (!ignore) {
+        setServicesLoading(false);
+      }
     }
   }
 
-  useEffect(() => {
-    fetchServices();
-  }, [currentSalon?.id]);
+  loadServices();
+
+  return () => {
+    ignore = true;
+  };
+}, [currentSalon?.id]);
 
   async function onSubmit(data: ServicesFormData) {
     if (!currentSalon) return;
@@ -83,7 +105,9 @@ export default function ServicesPage() {
         );
 
         setEditingService(null);
+
         reset(emptyFormValues);
+
         return;
       }
 
@@ -96,15 +120,18 @@ export default function ServicesPage() {
       });
 
       setServices((prev) => [newService, ...prev]);
+
       reset(emptyFormValues);
     } catch (error) {
       console.error("Failed to save service:", error);
+
       setSubmitError("Something went wrong while saving service.");
     }
   }
 
   async function handleDelete(serviceId: string) {
     setDeleteError(null);
+
     setDeletingId(serviceId);
 
     try {
@@ -116,10 +143,12 @@ export default function ServicesPage() {
 
       if (editingService?.id === serviceId) {
         setEditingService(null);
+
         reset(emptyFormValues);
       }
     } catch (error) {
       console.error("Failed to delete service:", error);
+
       setDeleteError("Something went wrong while deleting service.");
     } finally {
       setDeletingId(null);
@@ -129,6 +158,7 @@ export default function ServicesPage() {
   function handleStartEdit(service: Service) {
     setSubmitError(null);
     setDeleteError(null);
+
     setEditingService(service);
 
     reset({
@@ -141,6 +171,7 @@ export default function ServicesPage() {
 
   function handleCancelEdit() {
     setEditingService(null);
+
     reset(emptyFormValues);
   }
 
@@ -155,41 +186,80 @@ export default function ServicesPage() {
   return (
     <main>
       <h1>Services</h1>
+
       <p>Manage services for {currentSalon.name}</p>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate>
-        <h2>{editingService ? "Edit service" : "Create service"}</h2>
+        <h2>
+          {editingService ? "Edit service" : "Create service"}
+        </h2>
 
         <div>
           <label htmlFor="name">Service name</label>
-          <input id="name" type="text" {...register("name")} />
-          {errors.name && <p>{errors.name.message}</p>}
+
+          <input
+            id="name"
+            type="text"
+            {...register("name")}
+          />
+
+          {errors.name && (
+            <p>{errors.name.message}</p>
+          )}
         </div>
 
         <div>
-          <label htmlFor="description">Description</label>
-          <input id="description" type="text" {...register("description")} />
+          <label htmlFor="description">
+            Description
+          </label>
+
+          <input
+            id="description"
+            type="text"
+            {...register("description")}
+          />
         </div>
 
         <div>
-          <label htmlFor="durationMinutes">Duration minutes</label>
+          <label htmlFor="durationMinutes">
+            Duration minutes
+          </label>
+
           <input
             id="durationMinutes"
             type="number"
             {...register("durationMinutes")}
           />
-          {errors.durationMinutes && <p>{errors.durationMinutes.message}</p>}
+
+          {errors.durationMinutes && (
+            <p>{errors.durationMinutes.message}</p>
+          )}
         </div>
 
         <div>
-          <label htmlFor="priceAmount">Price</label>
-          <input id="priceAmount" type="number" {...register("priceAmount")} />
-          {errors.priceAmount && <p>{errors.priceAmount.message}</p>}
+          <label htmlFor="priceAmount">
+            Price
+          </label>
+
+          <input
+            id="priceAmount"
+            type="number"
+            {...register("priceAmount")}
+          />
+
+          {errors.priceAmount && (
+            <p>{errors.priceAmount.message}</p>
+          )}
         </div>
 
-        {submitError && <p>{submitError}</p>}
+        {submitError && (
+          <p>{submitError}</p>
+        )}
 
-        <button type="submit" disabled={isSubmitting}>
+        <button
+          type="submit"
+          disabled={isSubmitting}
+        >
           {isSubmitting
             ? editingService
               ? "Saving..."
@@ -200,7 +270,10 @@ export default function ServicesPage() {
         </button>
 
         {editingService && (
-          <button type="button" onClick={handleCancelEdit}>
+          <button
+            type="button"
+            onClick={handleCancelEdit}
+          >
             Cancel edit
           </button>
         )}
@@ -209,35 +282,58 @@ export default function ServicesPage() {
       <section>
         <h2>Existing services</h2>
 
-        {deleteError && <p>{deleteError}</p>}
+        {deleteError && (
+          <p>{deleteError}</p>
+        )}
 
-        {servicesLoading && <p>Loading services...</p>}
+        {servicesLoading && (
+          <p>Loading services...</p>
+        )}
 
-        {!servicesLoading && services.length === 0 && <p>No services yet.</p>}
+        {!servicesLoading &&
+          services.length === 0 && (
+            <p>No services yet.</p>
+          )}
 
         {!servicesLoading &&
           services.map((service) => (
             <article key={service.id}>
               <h3>{service.name}</h3>
 
-              {service.description && <p>{service.description}</p>}
-
-              <p>{service.duration_minutes} min</p>
+              {service.description && (
+                <p>{service.description}</p>
+              )}
 
               <p>
-                {service.price} {service.currency}
+                {service.duration_minutes} min
               </p>
 
-              <button type="button" onClick={() => handleStartEdit(service)}>
+              <p>
+                {service.price}{" "}
+                {service.currency}
+              </p>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleStartEdit(service)
+                }
+              >
                 Edit
               </button>
 
               <button
                 type="button"
-                onClick={() => handleDelete(service.id)}
-                disabled={deletingId === service.id}
+                onClick={() =>
+                  handleDelete(service.id)
+                }
+                disabled={
+                  deletingId === service.id
+                }
               >
-                {deletingId === service.id ? "Deleting..." : "Delete"}
+                {deletingId === service.id
+                  ? "Deleting..."
+                  : "Delete"}
               </button>
             </article>
           ))}

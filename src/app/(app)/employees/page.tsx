@@ -5,13 +5,25 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useSalon } from "@/context/SalonContext";
+
 import {
   createEmployee,
   deleteEmployee,
   getSalonEmployees,
   updateEmployee,
 } from "@/services/employeeService";
+
+import { getSalonServices } from "@/services/serviceService";
+
+import {
+  assignServiceToEmployee,
+  getSalonEmployeeServices,
+  removeServiceFromEmployee,
+} from "@/services/employeeServiceRelationService";
+
 import type { Employee } from "@/types/employee";
+import type { Service } from "@/types/service";
+import type { EmployeeService } from "@/types/employeeService";
 
 import {
   employeeSchema,
@@ -32,12 +44,20 @@ export default function EmployeesPage() {
   const { currentSalon, salonLoading } = useSalon();
 
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [services, setServices] = useState<Service[]>([]);
+  const [employeeServices, setEmployeeServices] = useState<EmployeeService[]>(
+    []
+  );
 
+  const [employeesLoading, setEmployeesLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [relationLoadingId, setRelationLoadingId] = useState<string | null>(
+    null
+  );
+
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
 
   const {
@@ -52,22 +72,28 @@ export default function EmployeesPage() {
 
   useEffect(() => {
     const salonId = currentSalon?.id;
-
     if (!salonId) return;
 
     let ignore = false;
 
-    async function loadEmployees() {
+    async function loadEmployeesData() {
       setEmployeesLoading(true);
 
       try {
-        const data = await getSalonEmployees(salonId);
+        const [employeesData, servicesData, employeeServicesData] =
+          await Promise.all([
+            getSalonEmployees(salonId),
+            getSalonServices(salonId),
+            getSalonEmployeeServices(salonId),
+          ]);
 
         if (!ignore) {
-          setEmployees(data);
+          setEmployees(employeesData);
+          setServices(servicesData);
+          setEmployeeServices(employeeServicesData);
         }
       } catch (error) {
-        console.error("Failed to fetch employees:", error);
+        console.error("Failed to fetch employees data:", error);
       } finally {
         if (!ignore) {
           setEmployeesLoading(false);
@@ -75,12 +101,64 @@ export default function EmployeesPage() {
       }
     }
 
-    loadEmployees();
+    loadEmployeesData();
 
     return () => {
       ignore = true;
     };
   }, [currentSalon?.id]);
+
+  function isServiceAssignedToEmployee(employeeId: string, serviceId: string) {
+    return employeeServices.some(
+      (relation) =>
+        relation.employee_id === employeeId && relation.service_id === serviceId
+    );
+  }
+
+  async function handleToggleEmployeeService(
+    employeeId: string,
+    serviceId: string
+  ) {
+    if (!currentSalon) return;
+
+    const relationKey = `${employeeId}-${serviceId}`;
+    const isAssigned = isServiceAssignedToEmployee(employeeId, serviceId);
+
+    setRelationLoadingId(relationKey);
+
+    try {
+      if (isAssigned) {
+        await removeServiceFromEmployee({
+          employeeId,
+          serviceId,
+        });
+
+        setEmployeeServices((prev) =>
+          prev.filter(
+            (relation) =>
+              !(
+                relation.employee_id === employeeId &&
+                relation.service_id === serviceId
+              )
+          )
+        );
+
+        return;
+      }
+
+      const newRelation = await assignServiceToEmployee({
+        salonId: currentSalon.id,
+        employeeId,
+        serviceId,
+      });
+
+      setEmployeeServices((prev) => [newRelation, ...prev]);
+    } catch (error) {
+      console.error("Failed to update employee service relation:", error);
+    } finally {
+      setRelationLoadingId(null);
+    }
+  }
 
   async function onSubmit(data: EmployeeFormData) {
     if (!currentSalon) return;
@@ -137,6 +215,10 @@ export default function EmployeesPage() {
 
       setEmployees((prev) =>
         prev.filter((employee) => employee.id !== employeeId)
+      );
+
+      setEmployeeServices((prev) =>
+        prev.filter((relation) => relation.employee_id !== employeeId)
       );
 
       if (editingEmployee?.id === employeeId) {
@@ -242,7 +324,6 @@ export default function EmployeesPage() {
         <h2>Existing employees</h2>
 
         {deleteError && <p>{deleteError}</p>}
-
         {employeesLoading && <p>Loading employees...</p>}
 
         {!employeesLoading && employees.length === 0 && (
@@ -265,6 +346,35 @@ export default function EmployeesPage() {
                 Active: {employee.is_active ? "Yes" : "No"} | Bookable:{" "}
                 {employee.is_bookable ? "Yes" : "No"}
               </p>
+
+              <div>
+                <h4>Available services</h4>
+
+                {services.length === 0 && <p>No services created yet.</p>}
+
+                {services.length > 0 &&
+                  services.map((service) => {
+                    const relationKey = `${employee.id}-${service.id}`;
+                    const checked = isServiceAssignedToEmployee(
+                      employee.id,
+                      service.id
+                    );
+
+                    return (
+                      <label key={service.id}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={relationLoadingId === relationKey}
+                          onChange={() =>
+                            handleToggleEmployeeService(employee.id, service.id)
+                          }
+                        />
+                        {service.name}
+                      </label>
+                    );
+                  })}
+              </div>
 
               <button type="button" onClick={() => handleStartEdit(employee)}>
                 Edit

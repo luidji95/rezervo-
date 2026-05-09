@@ -31,27 +31,18 @@ export async function createSalonWithOwner({
 }: CreateSalonInput) {
   const slug = generateSlug(name);
 
-  console.log("SALON INSERT PAYLOAD:", {
-  owner_id: ownerId,
-  name,
-  slug,
-  phone,
-  city,
-  address_line: addressLine,
-});
-
-const { data: salon, error: salonError } = await supabase
-  .from("salons")
-  .insert({
-    owner_id: ownerId,
-    name,
-    slug,
-    phone,
-    city,
-    address_line: addressLine,
-  })
-  .select("id")
-  .single();
+  const { data: salon, error: salonError } = await supabase
+    .from("salons")
+    .insert({
+      owner_id: ownerId,
+      name,
+      slug,
+      phone,
+      city,
+      address_line: addressLine,
+    })
+    .select("id")
+    .single();
 
   if (salonError) {
     throw salonError;
@@ -96,6 +87,7 @@ export async function getCurrentSalon(profileId: string) {
       slug,
       phone,
       email,
+      website_url,
       address_line,
       city,
       country,
@@ -116,8 +108,6 @@ export async function getCurrentSalon(profileId: string) {
 
   return data;
 }
-
-
 
 export async function updateCurrentSalon({
   salonId,

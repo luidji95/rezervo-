@@ -10,6 +10,7 @@ import {
   createSalonWithOwner,
   getMySalon,
 } from "@/services/salonService";
+
 import {
   onboardingSchema,
   type OnboardingFormData,
@@ -50,6 +51,7 @@ export default function OnboardingPage() {
         setCheckingSalon(false);
       } catch (error) {
         console.error("Failed to check salon:", error);
+
         setSubmitError("Could not verify your salon setup.");
         setCheckingSalon(false);
       }
@@ -75,6 +77,7 @@ export default function OnboardingPage() {
       router.replace("/dashboard");
     } catch (error) {
       console.error("Failed to create salon:", error);
+
       setSubmitError("Something went wrong while creating your salon.");
     }
   };
@@ -90,31 +93,64 @@ export default function OnboardingPage() {
   return (
     <main>
       <h1>Set up your salon</h1>
+
       <p>Welcome: {user.email}</p>
 
-      <form onSubmit={handleSubmit(onSubmit)}>
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
         <div>
           <label htmlFor="salonName">Salon name</label>
-          <input id="salonName" type="text" {...register("salonName")} />
-          {errors.salonName && <p>{errors.salonName.message}</p>}
+
+          <input
+            id="salonName"
+            type="text"
+            {...register("salonName")}
+          />
+
+          {errors.salonName && (
+            <p>{errors.salonName.message}</p>
+          )}
         </div>
 
         <div>
           <label htmlFor="phone">Phone</label>
-          <input id="phone" type="text" {...register("phone")} />
-          {errors.phone && <p>{errors.phone.message}</p>}
+
+          <input
+            id="phone"
+            type="text"
+            {...register("phone")}
+          />
+
+          {errors.phone && (
+            <p>{errors.phone.message}</p>
+          )}
         </div>
 
         <div>
           <label htmlFor="city">City</label>
-          <input id="city" type="text" {...register("city")} />
-          {errors.city && <p>{errors.city.message}</p>}
+
+          <input
+            id="city"
+            type="text"
+            {...register("city")}
+          />
+
+          {errors.city && (
+            <p>{errors.city.message}</p>
+          )}
         </div>
 
         <div>
           <label htmlFor="address">Address</label>
-          <input id="address" type="text" {...register("address")} />
-          {errors.address && <p>{errors.address.message}</p>}
+
+          <input
+            id="address"
+            type="text"
+            {...register("address")}
+          />
+
+          {errors.address && (
+            <p>{errors.address.message}</p>
+          )}
         </div>
 
         {submitError && <p>{submitError}</p>}

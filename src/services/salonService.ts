@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import type { UpdateSalonInput } from "@/types/salon";
 
 type CreateSalonInput = {
   name: string;
@@ -77,6 +78,69 @@ export async function getMySalon(profileId: string) {
     .select("id, name, slug")
     .eq("owner_id", profileId)
     .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+export async function getCurrentSalon(profileId: string) {
+  const { data, error } = await supabase
+    .from("salons")
+    .select(`
+      id,
+      owner_id,
+      name,
+      slug,
+      phone,
+      email,
+      address_line,
+      city,
+      country,
+      business_type,
+      status,
+      timezone,
+      default_currency,
+      booking_enabled,
+      online_booking_enabled,
+      created_at
+    `)
+    .eq("owner_id", profileId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+
+
+export async function updateCurrentSalon({
+  salonId,
+  name,
+  phone,
+  email,
+  websiteUrl,
+  city,
+  addressLine,
+}: UpdateSalonInput) {
+  const { data, error } = await supabase
+    .from("salons")
+    .update({
+      name,
+      phone,
+      email,
+      website_url: websiteUrl,
+      city,
+      address_line: addressLine,
+    })
+    .eq("id", salonId)
+    .select()
+    .single();
 
   if (error) {
     throw error;

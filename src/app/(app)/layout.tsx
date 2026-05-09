@@ -7,6 +7,8 @@ import { useAuth } from "@/context/AuthContext";
 import AppShell from "@/components/layout/AppShell";
 import { getMySalon } from "@/services/salonService";
 
+import { SalonProvider } from "@/context/SalonContext";
+
 export default function AppLayout({
   children,
 }: {
@@ -52,5 +54,9 @@ export default function AppLayout({
     return null;
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <SalonProvider>
+      <AppShell>{children}</AppShell>
+    </SalonProvider>
+);
 }

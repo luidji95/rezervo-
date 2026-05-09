@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { logoutUser } from "@/services/authService";
 
@@ -9,8 +9,18 @@ type AppShellProps = {
   children: React.ReactNode;
 };
 
+const navLinks = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/calendar", label: "Calendar" },
+  { href: "/clients", label: "Clients" },
+  { href: "/services", label: "Services" },
+  { href: "/employees", label: "Employees" },
+  { href: "/settings", label: "Settings" },
+];
+
 export default function AppShell({ children }: AppShellProps) {
   const router = useRouter();
+  const pathname = usePathname();
 
   async function handleLogout() {
     try {
@@ -19,7 +29,7 @@ export default function AppShell({ children }: AppShellProps) {
       router.replace("/auth/login");
       router.refresh();
     } catch (error) {
-      console.error(error);
+      console.error("Failed to logout:", error);
     }
   }
 
@@ -29,18 +39,25 @@ export default function AppShell({ children }: AppShellProps) {
         <div className="sidebar__logo">Rezervo</div>
 
         <nav className="sidebar__nav">
-          <Link href="/dashboard">Dashboard</Link>
-          <Link href="/calendar">Calendar</Link>
-          <Link href="/clients">Clients</Link>
-          <Link href="/services">Services</Link>
-          <Link href="/employees">Employees</Link>
-          <Link href="/settings">Settings</Link>
+          {navLinks.map((link) => {
+            const isActive = pathname === link.href;
+
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={isActive ? "sidebar__link sidebar__link--active" : "sidebar__link"}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
         </nav>
       </aside>
 
       <div className="app-shell__content">
         <header className="topbar">
-          <h2>Dashboard</h2>
+          <h2>Rezervo</h2>
 
           <button
             type="button"

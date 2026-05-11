@@ -19,7 +19,7 @@ export default function AvailabilityTestPage() {
         salonId: "a58d29c4-006e-4ff2-9f8a-61231d527379",
         serviceId: "1ffac6a2-5ebb-4044-b091-b982037eaf88",
         employeeId: "541c9491-6bee-4101-99a2-0f62ad7fd4a8",
-        date: "2026-05-12",
+        date: "2026-05-10",
       });
 
       setSlots(result.slots);

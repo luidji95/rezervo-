@@ -6,7 +6,7 @@ import {
   getPublicServices,
 } from "@/services/publicBookingService";
 
-import { AvailabilityTestButton } from "./AvailabilityTestButton";
+import { PublicBookingTester } from "./PublicBookingTester";
 
 type BookingTestPageProps = {
   params: Promise<{
@@ -69,12 +69,12 @@ export default async function BookingTestPage({
       </section>
 
       {services[0] && employees[0] && (
-  <AvailabilityTestButton
-    salonId={salon.id}
-    serviceId={services[0].id}
-    employeeId={employees[0].id}
-  />
-)}
+        <PublicBookingTester
+            salonId={salon.id}
+            services={services}
+            employees={employees}
+        />
+    )}
     </main>
   );
 }

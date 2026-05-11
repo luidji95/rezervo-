@@ -1,4 +1,7 @@
 import { supabase } from "@/lib/supabase/client";
+import { generateAvailableSlots } from "@/services/availabilityService";
+
+type SupabaseClientLike = typeof supabase;
 
 type ValidateAppointmentSlotInput = {
   salonId: string;
@@ -6,37 +9,24 @@ type ValidateAppointmentSlotInput = {
   serviceId: string;
   startTime: string;
   endTime: string;
+  enforceGeneratedSlot?: boolean;
 };
 
-function getDayOfWeek(date: Date) {
-  return date.getDay(); // 0 = Sunday, 1 = Monday...
+function getDateOnlyFromIso(isoValue: string) {
+  return isoValue.slice(0, 10);
 }
 
-function toTimeString(date: Date) {
-  return date.toTimeString().slice(0, 5); // HH:mm
-}
-
-function timeToMinutes(time: string) {
-  const [hours, minutes] = time.split(":").map(Number);
-  return hours * 60 + minutes;
-}
-
-function rangesOverlap(
-  startA: string,
-  endA: string,
-  startB: string,
-  endB: string
+export async function validateAppointmentSlot(
+  {
+    salonId,
+    employeeId,
+    serviceId,
+    startTime,
+    endTime,
+    enforceGeneratedSlot = false,
+  }: ValidateAppointmentSlotInput,
+  supabaseClient: SupabaseClientLike = supabase
 ) {
-  return startA < endB && endA > startB;
-}
-
-export async function validateAppointmentSlot({
-  salonId,
-  employeeId,
-  serviceId,
-  startTime,
-  endTime,
-}: ValidateAppointmentSlotInput) {
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
 
@@ -48,100 +38,29 @@ export async function validateAppointmentSlot({
     throw new Error("Appointment start time must be before end time.");
   }
 
-  const dayOfWeek = getDayOfWeek(startDate);
-  const startClock = toTimeString(startDate);
-  const endClock = toTimeString(endDate);
+  if (enforceGeneratedSlot) {
+    const availableSlots = await generateAvailableSlots(
+      {
+        salonId,
+        employeeId,
+        serviceId,
+        date: getDateOnlyFromIso(startTime),
+      },
+      supabaseClient
+    );
 
-  const { data: employeeService, error: employeeServiceError } = await supabase
-    .from("employee_services")
-    .select("id")
-    .eq("salon_id", salonId)
-    .eq("employee_id", employeeId)
-    .eq("service_id", serviceId)
-    .eq("is_active", true)
-    .maybeSingle();
+    const isValidGeneratedSlot = availableSlots.slots.some(
+      (slot) => slot.employeeId === employeeId && slot.startTime === startTime
+    );
 
-  if (employeeServiceError) {
-    throw new Error("Failed to validate employee service.");
-  }
-
-  if (!employeeService) {
-    throw new Error("This employee does not provide the selected service.");
-  }
-
-  const { data: employeeWorkingHours, error: employeeHoursError } =
-    await supabase
-      .from("working_hours")
-      .select("*")
-      .eq("salon_id", salonId)
-      .eq("employee_id", employeeId)
-      .eq("day_of_week", dayOfWeek)
-      .maybeSingle();
-
-  if (employeeHoursError) {
-    throw new Error("Failed to fetch employee working hours.");
-  }
-
-  let workingHours = employeeWorkingHours;
-
-  if (!workingHours) {
-    const { data: salonWorkingHours, error: salonHoursError } = await supabase
-      .from("working_hours")
-      .select("*")
-      .eq("salon_id", salonId)
-      .is("employee_id", null)
-      .eq("day_of_week", dayOfWeek)
-      .maybeSingle();
-
-    if (salonHoursError) {
-      throw new Error("Failed to fetch salon working hours.");
+    if (!isValidGeneratedSlot) {
+      throw new Error("Selected time is not a valid booking slot.");
     }
 
-    workingHours = salonWorkingHours;
+    return true;
   }
 
-  if (!workingHours || !workingHours.is_working_day) {
-    throw new Error("Employee is not working on this day.");
-  }
-
-  const appointmentStartMinutes = timeToMinutes(startClock);
-  const appointmentEndMinutes = timeToMinutes(endClock);
-  const openMinutes = timeToMinutes(workingHours.opens_at.slice(0, 5));
-  const closeMinutes = timeToMinutes(workingHours.closes_at.slice(0, 5));
-
-  if (
-    appointmentStartMinutes < openMinutes ||
-    appointmentEndMinutes > closeMinutes
-  ) {
-    throw new Error("Appointment is outside working hours.");
-  }
-
-  if (workingHours.break_starts_at && workingHours.break_ends_at) {
-    const breakStart = workingHours.break_starts_at.slice(0, 5);
-    const breakEnd = workingHours.break_ends_at.slice(0, 5);
-
-    if (rangesOverlap(startClock, endClock, breakStart, breakEnd)) {
-      throw new Error("Appointment overlaps with break time.");
-    }
-  }
-
-  const { data: closures, error: closuresError } = await supabase
-    .from("closures")
-    .select("id")
-    .eq("salon_id", salonId)
-    .or(`employee_id.is.null,employee_id.eq.${employeeId}`)
-    .lt("starts_at", endTime)
-    .gt("ends_at", startTime);
-
-  if (closuresError) {
-    throw new Error("Failed to validate closures.");
-  }
-
-  if (closures && closures.length > 0) {
-    throw new Error("Appointment overlaps with closure/time off.");
-  }
-
-  const { data: conflicts, error: conflictsError } = await supabase
+  const { data: conflicts, error: conflictsError } = await supabaseClient
     .from("appointments")
     .select("id")
     .eq("salon_id", salonId)

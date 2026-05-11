@@ -1,17 +1,22 @@
 import { supabase } from "@/lib/supabase/client";
+import { validateAppointmentSlot } from "@/services/appointmentValidationService";
 import type {
   CreateAppointmentInput,
   CreateAppointmentResult,
 } from "@/types/appointment";
 
-import { validateAppointmentSlot } from "@/services/appointmentValidationService";
+type SupabaseClientLike = typeof supabase;
 
 function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60 * 1000);
 }
 
 export async function createAppointment(
-  input: CreateAppointmentInput
+  input: CreateAppointmentInput,
+  supabaseClient: SupabaseClientLike = supabase,
+  options?: {
+    enforceGeneratedSlot?: boolean;
+  }
 ): Promise<CreateAppointmentResult> {
   const {
     salonId,
@@ -37,9 +42,11 @@ export async function createAppointment(
     throw new Error("Invalid start time.");
   }
 
-  const { data: service, error: serviceError } = await supabase
+  const { data: service, error: serviceError } = await supabaseClient
     .from("services")
-    .select("id, salon_id, name, duration_minutes, buffer_minutes, price, currency, is_active")
+    .select(
+      "id, salon_id, name, duration_minutes, buffer_minutes, price, currency, is_active"
+    )
     .eq("id", serviceId)
     .eq("salon_id", salonId)
     .single();
@@ -52,14 +59,15 @@ export async function createAppointment(
     throw new Error("Service is not active.");
   }
 
-  const { data: employeeService, error: employeeServiceError } = await supabase
-    .from("employee_services")
-    .select("id, custom_duration_minutes, custom_price, is_active")
-    .eq("salon_id", salonId)
-    .eq("employee_id", employeeId)
-    .eq("service_id", serviceId)
-    .eq("is_active", true)
-    .maybeSingle();
+  const { data: employeeService, error: employeeServiceError } =
+    await supabaseClient
+      .from("employee_services")
+      .select("id, custom_duration_minutes, custom_price, is_active")
+      .eq("salon_id", salonId)
+      .eq("employee_id", employeeId)
+      .eq("service_id", serviceId)
+      .eq("is_active", true)
+      .maybeSingle();
 
   if (employeeServiceError) {
     throw new Error("Failed to check employee/service compatibility.");
@@ -75,11 +83,6 @@ export async function createAppointment(
   const price = employeeService.custom_price ?? service.price;
   const bufferMinutes = service.buffer_minutes ?? 0;
 
-  /**
-   * MVP odluka:
-   * end_time uključuje duration + buffer,
-   * jer trenutno nemamo posebno blocked_until polje.
-   */
   const appointmentEnd = addMinutes(
     appointmentStart,
     durationMinutes + bufferMinutes
@@ -88,30 +91,17 @@ export async function createAppointment(
   const startIso = appointmentStart.toISOString();
   const endIso = appointmentEnd.toISOString();
 
-  await validateAppointmentSlot({
-    salonId,
-    employeeId,
-    serviceId,
-    startTime: startIso,
-    endTime: endIso,
-  });
-
-  const { data: conflictingAppointments, error: conflictError } = await supabase
-    .from("appointments")
-    .select("id")
-    .eq("salon_id", salonId)
-    .eq("employee_id", employeeId)
-    .in("status", ["pending", "confirmed"])
-    .lt("start_time", endIso)
-    .gt("end_time", startIso);
-
-  if (conflictError) {
-    throw new Error("Failed to check appointment conflicts.");
-  }
-
-  if (conflictingAppointments && conflictingAppointments.length > 0) {
-    throw new Error("This slot is no longer available.");
-  }
+  await validateAppointmentSlot(
+    {
+      salonId,
+      employeeId,
+      serviceId,
+      startTime: startIso,
+      endTime: endIso,
+      enforceGeneratedSlot: options?.enforceGeneratedSlot ?? false,
+    },
+    supabaseClient
+  );
 
   let clientId: string;
 
@@ -121,7 +111,7 @@ export async function createAppointment(
   let existingClient = null;
 
   if (normalizedPhone) {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from("clients")
       .select("id")
       .eq("salon_id", salonId)
@@ -136,7 +126,7 @@ export async function createAppointment(
   }
 
   if (!existingClient && normalizedEmail) {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from("clients")
       .select("id")
       .eq("salon_id", salonId)
@@ -153,7 +143,7 @@ export async function createAppointment(
   if (existingClient) {
     clientId = existingClient.id;
   } else {
-    const { data: createdClient, error: clientError } = await supabase
+    const { data: createdClient, error: clientError } = await supabaseClient
       .from("clients")
       .insert({
         salon_id: salonId,
@@ -172,7 +162,7 @@ export async function createAppointment(
     clientId = createdClient.id;
   }
 
-  const { data: appointment, error: appointmentError } = await supabase
+  const { data: appointment, error: appointmentError } = await supabaseClient
     .from("appointments")
     .insert({
       salon_id: salonId,
@@ -197,7 +187,7 @@ export async function createAppointment(
     throw new Error("Failed to create appointment.");
   }
 
-  const { error: snapshotError } = await supabase
+  const { error: snapshotError } = await supabaseClient
     .from("appointment_services")
     .insert({
       appointment_id: appointment.id,

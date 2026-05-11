@@ -4,6 +4,8 @@ import type {
   GenerateAvailableSlotsResult,
 } from "@/types/availability";
 
+type SupabaseClientLike = typeof supabase;
+
 function combineDateAndTime(date: string, time: string): Date {
   return new Date(`${date}T${time}`);
 }
@@ -22,12 +24,13 @@ function overlaps(
 }
 
 export async function generateAvailableSlots(
-  input: GenerateAvailableSlotsInput
+  input: GenerateAvailableSlotsInput,
+  supabaseClient: SupabaseClientLike = supabase
 ): Promise<GenerateAvailableSlotsResult> {
   const { salonId, serviceId, employeeId, date } = input;
 
   const [serviceRes, employeesRes] = await Promise.all([
-    supabase
+    supabaseClient
       .from("services")
       .select("id, duration_minutes, buffer_minutes")
       .eq("id", serviceId)
@@ -35,7 +38,7 @@ export async function generateAvailableSlots(
       .eq("is_active", true)
       .single(),
 
-    supabase
+    supabaseClient
       .from("employees")
       .select(
         `
@@ -78,7 +81,7 @@ export async function generateAvailableSlots(
   const dayEnd = combineDateAndTime(date, "23:59:59");
 
   const [workingHoursRes, closuresRes, appointmentsRes] = await Promise.all([
-    supabase
+    supabaseClient
       .from("working_hours")
       .select("*")
       .eq("salon_id", salonId)
@@ -87,14 +90,14 @@ export async function generateAvailableSlots(
         `employee_id.is.null,employee_id.in.(${compatibleEmployeeIds.join(",")})`
       ),
 
-    supabase
+    supabaseClient
       .from("closures")
       .select("*")
       .eq("salon_id", salonId)
       .lt("starts_at", dayEnd.toISOString())
       .gt("ends_at", dayStart.toISOString()),
 
-    supabase
+    supabaseClient
       .from("appointments")
       .select("*")
       .eq("salon_id", salonId)
@@ -120,9 +123,9 @@ export async function generateAvailableSlots(
   const closures = closuresRes.data ?? [];
   const appointments = appointmentsRes.data ?? [];
 
-  const getEmployeeSchedule = (employeeId: string) => {
+  const getEmployeeSchedule = (targetEmployeeId: string) => {
     const employeeOverride = workingHours.find(
-      (hours) => hours.employee_id === employeeId
+      (hours) => hours.employee_id === targetEmployeeId
     );
 
     if (employeeOverride) {
@@ -132,7 +135,7 @@ export async function generateAvailableSlots(
     return workingHours.find((hours) => hours.employee_id === null) ?? null;
   };
 
-  const slots = [];
+  const slots: GenerateAvailableSlotsResult["slots"] = [];
 
   for (const employee of compatibleEmployees) {
     const schedule = getEmployeeSchedule(employee.id);
@@ -161,12 +164,12 @@ export async function generateAvailableSlots(
       ? combineDateAndTime(date, schedule.break_ends_at)
       : null;
 
+    const appointmentDuration =
+      service.duration_minutes + service.buffer_minutes;
+
     let currentSlotStart = workStart;
 
     while (true) {
-      const appointmentDuration =
-        service.duration_minutes + service.buffer_minutes;
-
       const currentSlotEnd = addMinutes(currentSlotStart, appointmentDuration);
 
       if (currentSlotEnd > workEnd) {
@@ -208,10 +211,7 @@ export async function generateAvailableSlots(
         });
       }
 
-      currentSlotStart = addMinutes(
-            currentSlotStart,
-            service.duration_minutes + service.buffer_minutes
-        );
+      currentSlotStart = addMinutes(currentSlotStart, appointmentDuration);
     }
   }
 

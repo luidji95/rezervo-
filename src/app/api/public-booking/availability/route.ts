@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { generateAvailableSlots } from "@/services/availabilityService";
 
+import { supabaseServer } from "@/lib/supabaseServer";
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -19,12 +21,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const slots = await generateAvailableSlots({
-      salonId,
-      employeeId,
-      serviceId,
-      date,
-    });
+    const slots = await generateAvailableSlots(
+        {
+            salonId,
+            employeeId,
+            serviceId,
+            date,
+        },
+     supabaseServer
+    );
 
     return NextResponse.json({
       success: true,

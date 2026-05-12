@@ -30,8 +30,6 @@ type PublicBookingTesterProps = {
   employees: Employee[];
 };
 
-
-
 export function PublicBookingTester({
   salonId,
   salonSlug,
@@ -56,81 +54,93 @@ export function PublicBookingTester({
     fullName: "",
     phone: "",
     email: "",
-    });
+  });
 
-    const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingLoading, setBookingLoading] = useState(false);
 
-    const updateBookingForm = (
+  // Dodat state za uspeh rezervacije
+  const [bookingSuccess, setBookingSuccess] = useState<{
+    startTime: string;
+    endTime: string;
+    customerName: string;
+  } | null>(null);
+
+  const updateBookingForm = (
     key: "fullName" | "phone" | "email",
     value: string
-    ) => {
+  ) => {
     setBookingForm((prev) => ({
-        ...prev,
-        [key]: value,
+      ...prev,
+      [key]: value,
     }));
-    };
+  };
 
-    const handleCreateBooking = async () => {
-  if (!selectedServiceId || !selectedEmployeeId || !selectedSlot) {
-    alert("Please select service, employee and slot.");
-    return;
-  }
-
-  if (!bookingForm.fullName.trim()) {
-    alert("Full name is required.");
-    return;
-  }
-
-  try {
-    setBookingLoading(true);
-
-    const response = await fetch("/api/public-booking/create", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        salonSlug: salonSlug,
-        serviceId: selectedServiceId,
-        employeeId: selectedEmployeeId,
-        startTime: selectedSlot.startTime,
-        customer: {
-          fullName: bookingForm.fullName,
-          phone: bookingForm.phone,
-          email: bookingForm.email,
-        },
-      }),
-    });
-
-    const data = await response.json();
-
-    console.log(data);
-
-    if (!response.ok) {
-      alert(data.error || "Booking failed.");
+  const handleCreateBooking = async () => {
+    if (!selectedServiceId || !selectedEmployeeId || !selectedSlot) {
+      alert("Please select service, employee and slot.");
       return;
     }
 
-    setSlots((prevSlots) =>
-  prevSlots.filter((slot) => slot.startTime !== selectedSlot.startTime)
-);
+    if (!bookingForm.fullName.trim()) {
+      alert("Full name is required.");
+      return;
+    }
 
-setSelectedSlot(null);
+    try {
+      setBookingLoading(true);
 
-setBookingForm({
-  fullName: "",
-  phone: "",
-  email: "",
-});
+      const response = await fetch("/api/public-booking/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          salonSlug: salonSlug,
+          serviceId: selectedServiceId,
+          employeeId: selectedEmployeeId,
+          startTime: selectedSlot.startTime,
+          customer: {
+            fullName: bookingForm.fullName,
+            phone: bookingForm.phone,
+            email: bookingForm.email,
+          },
+        }),
+      });
 
-setMessage("Booking created successfully.");
-  } catch (error) {
-    console.error(error);
-    alert("Something went wrong.");
-  } finally {
-    setBookingLoading(false);
-  }
-};
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.error || "Booking failed.");
+        return;
+      }
+
+      // Postavljanje podataka za uspeh pre nego što resetujemo formu
+      setBookingSuccess({
+        startTime: selectedSlot.startTime,
+        endTime: selectedSlot.endTime,
+        customerName: bookingForm.fullName,
+      });
+
+      setSlots((prevSlots) =>
+        prevSlots.filter((slot) => slot.startTime !== selectedSlot.startTime)
+      );
+
+      setSelectedSlot(null);
+
+      setBookingForm({
+        fullName: "",
+        phone: "",
+        email: "",
+      });
+
+      setMessage("Booking created successfully.");
+    } catch (error) {
+      console.error(error);
+      alert("Something went wrong.");
+    } finally {
+      setBookingLoading(false);
+    }
+  };
 
   async function handleFetchSlots() {
     try {
@@ -138,6 +148,7 @@ setMessage("Booking created successfully.");
       setMessage("");
       setSlots([]);
       setSelectedSlot(null);
+      setBookingSuccess(null); // Resetujemo uspeh pri novoj pretrazi
 
       if (!selectedServiceId || !selectedEmployeeId || !selectedDate) {
         setMessage("Please select service, employee and date.");
@@ -190,6 +201,7 @@ setMessage("Booking created successfully.");
     <section>
       <h2>Public Booking Tester</h2>
 
+      {/* Selectors */}
       <div>
         <label>Service</label>
         <select
@@ -199,6 +211,7 @@ setMessage("Booking created successfully.");
             setSlots([]);
             setSelectedSlot(null);
             setMessage("");
+            setBookingSuccess(null);
           }}
         >
           {services.map((service) => (
@@ -219,6 +232,7 @@ setMessage("Booking created successfully.");
             setSlots([]);
             setSelectedSlot(null);
             setMessage("");
+            setBookingSuccess(null);
           }}
         >
           {employees.map((employee) => (
@@ -240,6 +254,7 @@ setMessage("Booking created successfully.");
             setSlots([]);
             setSelectedSlot(null);
             setMessage("");
+            setBookingSuccess(null);
           }}
         />
       </div>
@@ -250,10 +265,10 @@ setMessage("Booking created successfully.");
 
       {message && <p>{message}</p>}
 
+      {/* Slots Grid */}
       {slots.length > 0 && (
         <div>
           <h3>Choose a time</h3>
-
           <div>
             {slots.map((slot) => {
               const isSelected = selectedSlot?.startTime === slot.startTime;
@@ -290,43 +305,44 @@ setMessage("Booking created successfully.");
         </div>
       )}
 
+      {/* Form */}
       <div>
-  <h3>Customer Details</h3>
+        <h3>Customer Details</h3>
+        <input
+          type="text"
+          placeholder="Full name"
+          value={bookingForm.fullName}
+          onChange={(e) => updateBookingForm("fullName", e.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Phone"
+          value={bookingForm.phone}
+          onChange={(e) => updateBookingForm("phone", e.target.value)}
+        />
+        <input
+          type="email"
+          placeholder="Email"
+          value={bookingForm.email}
+          onChange={(e) => updateBookingForm("email", e.target.value)}
+        />
 
-  <input
-    type="text"
-    placeholder="Full name"
-    value={bookingForm.fullName}
-    onChange={(e) =>
-      updateBookingForm("fullName", e.target.value)
-    }
-  />
+        <button onClick={handleCreateBooking} disabled={bookingLoading}>
+          {bookingLoading ? "Creating..." : "Create Booking"}
+        </button>
+      </div>
 
-  <input
-    type="text"
-    placeholder="Phone"
-    value={bookingForm.phone}
-    onChange={(e) =>
-      updateBookingForm("phone", e.target.value)
-    }
-  />
-
-  <input
-    type="email"
-    placeholder="Email"
-    value={bookingForm.email}
-    onChange={(e) =>
-      updateBookingForm("email", e.target.value)
-    }
-  />
-
-  <button
-    onClick={handleCreateBooking}
-    disabled={bookingLoading}
-  >
-    {bookingLoading ? "Creating..." : "Create Booking"}
-  </button>
-</div>
+      {/* Success View */}
+      {bookingSuccess && (
+        <div style={{ marginTop: "20px", padding: "15px", border: "1px solid green", borderRadius: "8px" }}>
+          <h3>Booking confirmed</h3>
+          <p>
+            {bookingSuccess.customerName}, your appointment is booked for{" "}
+            {formatSlotTime(bookingSuccess.startTime)} -{" "}
+            {formatSlotTime(bookingSuccess.endTime)}.
+          </p>
+        </div>
+      )}
     </section>
   );
 }

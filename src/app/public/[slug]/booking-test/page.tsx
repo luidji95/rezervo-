@@ -71,6 +71,7 @@ export default async function BookingTestPage({
       {services[0] && employees[0] && (
         <PublicBookingTester
             salonId={salon.id}
+            salonSlug={slug}
             services={services}
             employees={employees}
         />

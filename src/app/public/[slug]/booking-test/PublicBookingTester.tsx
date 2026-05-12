@@ -25,12 +25,16 @@ type Slot = {
 
 type PublicBookingTesterProps = {
   salonId: string;
+  salonSlug: string;
   services: Service[];
   employees: Employee[];
 };
 
+
+
 export function PublicBookingTester({
   salonId,
+  salonSlug,
   services,
   employees,
 }: PublicBookingTesterProps) {
@@ -47,6 +51,86 @@ export function PublicBookingTester({
 
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [bookingForm, setBookingForm] = useState({
+    fullName: "",
+    phone: "",
+    email: "",
+    });
+
+    const [bookingLoading, setBookingLoading] = useState(false);
+
+    const updateBookingForm = (
+    key: "fullName" | "phone" | "email",
+    value: string
+    ) => {
+    setBookingForm((prev) => ({
+        ...prev,
+        [key]: value,
+    }));
+    };
+
+    const handleCreateBooking = async () => {
+  if (!selectedServiceId || !selectedEmployeeId || !selectedSlot) {
+    alert("Please select service, employee and slot.");
+    return;
+  }
+
+  if (!bookingForm.fullName.trim()) {
+    alert("Full name is required.");
+    return;
+  }
+
+  try {
+    setBookingLoading(true);
+
+    const response = await fetch("/api/public-booking/create", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        salonSlug: salonSlug,
+        serviceId: selectedServiceId,
+        employeeId: selectedEmployeeId,
+        startTime: selectedSlot.startTime,
+        customer: {
+          fullName: bookingForm.fullName,
+          phone: bookingForm.phone,
+          email: bookingForm.email,
+        },
+      }),
+    });
+
+    const data = await response.json();
+
+    console.log(data);
+
+    if (!response.ok) {
+      alert(data.error || "Booking failed.");
+      return;
+    }
+
+    setSlots((prevSlots) =>
+  prevSlots.filter((slot) => slot.startTime !== selectedSlot.startTime)
+);
+
+setSelectedSlot(null);
+
+setBookingForm({
+  fullName: "",
+  phone: "",
+  email: "",
+});
+
+setMessage("Booking created successfully.");
+  } catch (error) {
+    console.error(error);
+    alert("Something went wrong.");
+  } finally {
+    setBookingLoading(false);
+  }
+};
 
   async function handleFetchSlots() {
     try {
@@ -205,6 +289,44 @@ export function PublicBookingTester({
           </p>
         </div>
       )}
+
+      <div>
+  <h3>Customer Details</h3>
+
+  <input
+    type="text"
+    placeholder="Full name"
+    value={bookingForm.fullName}
+    onChange={(e) =>
+      updateBookingForm("fullName", e.target.value)
+    }
+  />
+
+  <input
+    type="text"
+    placeholder="Phone"
+    value={bookingForm.phone}
+    onChange={(e) =>
+      updateBookingForm("phone", e.target.value)
+    }
+  />
+
+  <input
+    type="email"
+    placeholder="Email"
+    value={bookingForm.email}
+    onChange={(e) =>
+      updateBookingForm("email", e.target.value)
+    }
+  />
+
+  <button
+    onClick={handleCreateBooking}
+    disabled={bookingLoading}
+  >
+    {bookingLoading ? "Creating..." : "Create Booking"}
+  </button>
+</div>
     </section>
   );
 }

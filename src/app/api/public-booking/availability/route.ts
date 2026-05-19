@@ -10,6 +10,13 @@ export async function POST(request: NextRequest) {
 
     const { salonId, employeeId, serviceId, date } = body;
 
+    console.log("PUBLIC AVAILABILITY BODY:", {
+      salonId,
+      employeeId,
+      serviceId,
+      date,
+    });
+
     if (!salonId || !employeeId || !serviceId || !date) {
       return NextResponse.json(
         {
@@ -21,26 +28,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const slots = await generateAvailableSlots(
-        {
-            salonId,
-            employeeId,
-            serviceId,
-            date,
-        },
-     supabaseServer
-    );
-
     return NextResponse.json({
       success: true,
-      slots: slots.slots,
+      debug: {
+        salonId,
+        employeeId,
+        serviceId,
+        date,
+      },
     });
+
+    // PRIVREMENO ISKLJUCENO
+    // const slots = await generateAvailableSlots(
+    //   {
+    //     salonId,
+    //     employeeId,
+    //     serviceId,
+    //     date,
+    //   },
+    //   supabaseServer
+    // );
+
+    // return NextResponse.json({
+    //   success: true,
+    //   slots: slots.slots,
+    // });
   } catch (error) {
     console.error("PUBLIC AVAILABILITY ERROR:", error);
 
     return NextResponse.json(
       {
-        error: "Failed to generate available slots.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to generate available slots.",
       },
       {
         status: 500,

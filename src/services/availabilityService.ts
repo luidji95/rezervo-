@@ -109,9 +109,27 @@ export async function generateAvailableSlots(
     date,
   });
 
-  if (serviceRes.error || !serviceRes.data) {
-    throw new Error("Service not found or inactive.");
-  }
+  // if (serviceRes.error || !serviceRes.data) {
+  //   throw new Error("Service not found or inactive.");
+  // }
+  if (serviceRes.error) {
+  console.error("SERVICE QUERY ERROR:", serviceRes.error);
+  console.error("SERVICE QUERY INPUT:", {
+    salonId,
+    serviceId,
+  });
+
+  throw new Error(`Service query failed: ${serviceRes.error.message}`);
+}
+
+if (!serviceRes.data) {
+  console.error("SERVICE NOT FOUND:", {
+    salonId,
+    serviceId,
+  });
+
+  throw new Error("Service not found or inactive.");
+}
 
   if (employeesRes.error) {
     throw new Error("Failed to fetch employees.");

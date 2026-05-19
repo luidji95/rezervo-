@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { generateAvailableSlots } from "@/services/availabilityService";
-
 import { supabaseServer } from "@/lib/supabaseServer";
 
 export async function POST(request: NextRequest) {
@@ -20,6 +19,7 @@ export async function POST(request: NextRequest) {
     if (!salonId || !employeeId || !serviceId || !date) {
       return NextResponse.json(
         {
+          success: false,
           error: "Missing required fields.",
         },
         {
@@ -28,36 +28,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      debug: {
+    const result = await generateAvailableSlots(
+      {
         salonId,
         employeeId,
         serviceId,
         date,
       },
+      supabaseServer
+    );
+
+    return NextResponse.json({
+      success: true,
+      slots: result.slots,
+      debug: {
+        salonId,
+        employeeId,
+        serviceId,
+        date,
+        slotsCount: result.slots.length,
+      },
     });
-
-    // PRIVREMENO ISKLJUCENO
-    // const slots = await generateAvailableSlots(
-    //   {
-    //     salonId,
-    //     employeeId,
-    //     serviceId,
-    //     date,
-    //   },
-    //   supabaseServer
-    // );
-
-    // return NextResponse.json({
-    //   success: true,
-    //   slots: slots.slots,
-    // });
   } catch (error) {
     console.error("PUBLIC AVAILABILITY ERROR:", error);
 
     return NextResponse.json(
       {
+        success: false,
         error:
           error instanceof Error
             ? error.message

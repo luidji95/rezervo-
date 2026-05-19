@@ -12,8 +12,25 @@ type ValidateAppointmentSlotInput = {
   enforceGeneratedSlot?: boolean;
 };
 
-function getDateOnlyFromIso(isoValue: string) {
-  return isoValue.slice(0, 10);
+const SALON_TIMEZONE = "Europe/Belgrade";
+
+function getDateInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  if (!year || !month || !day) {
+    throw new Error("Failed to format appointment date.");
+  }
+
+  return `${year}-${month}-${day}`;
 }
 
 export async function validateAppointmentSlot(
@@ -29,6 +46,7 @@ export async function validateAppointmentSlot(
 ) {
   const startDate = new Date(startTime);
   const endDate = new Date(endTime);
+  const now = new Date();
 
   if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
     throw new Error("Invalid appointment time.");
@@ -38,20 +56,31 @@ export async function validateAppointmentSlot(
     throw new Error("Appointment start time must be before end time.");
   }
 
+  if (startDate <= now) {
+    throw new Error("Cannot book an appointment in the past.");
+  }
+
   if (enforceGeneratedSlot) {
+    const bookingDate = getDateInTimeZone(startDate, SALON_TIMEZONE);
+
     const availableSlots = await generateAvailableSlots(
       {
         salonId,
         employeeId,
         serviceId,
-        date: getDateOnlyFromIso(startTime),
+        date: bookingDate,
       },
       supabaseClient
     );
 
-    const isValidGeneratedSlot = availableSlots.slots.some(
-      (slot) => slot.employeeId === employeeId && slot.startTime === startTime
-    );
+    const isValidGeneratedSlot = availableSlots.slots.some((slot) => {
+      const slotStart = new Date(slot.startTime);
+
+      return (
+        slot.employeeId === employeeId &&
+        slotStart.getTime() === startDate.getTime()
+      );
+    });
 
     if (!isValidGeneratedSlot) {
       throw new Error("Selected time is not a valid booking slot.");

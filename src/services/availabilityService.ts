@@ -6,6 +6,9 @@ import type {
 
 type SupabaseClientLike = typeof supabase;
 
+const SALON_TIMEZONE = "Europe/Belgrade";
+const MIN_NOTICE_MINUTES = 30;
+
 function combineDateAndTime(date: string, time: string): Date {
   return new Date(`${date}T${time}`);
 }
@@ -23,11 +26,53 @@ function overlaps(
   return startA < endB && endA > startB;
 }
 
+function getDateInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  if (!year || !month || !day) {
+    throw new Error("Failed to format current date.");
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+function shouldSkipPastSlot(slotStart: Date, selectedDate: string): boolean {
+  const now = new Date();
+  const today = getDateInTimeZone(now, SALON_TIMEZONE);
+
+  if (selectedDate < today) {
+    return true;
+  }
+
+  if (selectedDate > today) {
+    return false;
+  }
+
+  const minimumBookableTime = addMinutes(now, MIN_NOTICE_MINUTES);
+
+  return slotStart < minimumBookableTime;
+}
+
 export async function generateAvailableSlots(
   input: GenerateAvailableSlotsInput,
   supabaseClient: SupabaseClientLike = supabase
 ): Promise<GenerateAvailableSlotsResult> {
   const { salonId, serviceId, employeeId, date } = input;
+
+  const today = getDateInTimeZone(new Date(), SALON_TIMEZONE);
+
+  if (date < today) {
+    return { slots: [] };
+  }
 
   const [serviceRes, employeesRes] = await Promise.all([
     supabaseClient
@@ -174,6 +219,11 @@ export async function generateAvailableSlots(
 
       if (currentSlotEnd > workEnd) {
         break;
+      }
+
+      if (shouldSkipPastSlot(currentSlotStart, date)) {
+        currentSlotStart = addMinutes(currentSlotStart, appointmentDuration);
+        continue;
       }
 
       const conflictsWithBreak =

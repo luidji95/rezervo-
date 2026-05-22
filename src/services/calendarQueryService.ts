@@ -5,11 +5,11 @@ export type CalendarAppointment = {
   start_time: string;
   end_time: string;
   status: string;
-  customer_notes: string | null; // <-- DODATO
-  internal_note: string | null; // dodato
+  customer_note: string | null; // <-- POPRAVLJENO: Obrisano 's' na kraju da se poklapa sa bazom
+  internal_note: string | null;
 
   clients: {
-    id: string; // <-- Dodajemo ID klijenta da bismo u budućnosti mogli da vučemo istoriju
+    id: string;
     full_name: string;
     phone: string | null;
     email: string | null;
@@ -74,7 +74,9 @@ export async function getCalendarAppointments(
   return (data ?? []) as unknown as CalendarAppointment[];
 }
 
-// Dodaj na dno fajla: src/services/calendarQueryService.ts
+// =========================================================
+// Istorija termina klijenta
+// =========================================================
 
 export type ClientHistoryAppointment = {
   id: string;
@@ -100,10 +102,10 @@ export async function getClientAppointmentHistory(
       )
     `)
     .eq("client_id", clientId)
-    .neq("id", currentAppointmentId) // Izuzimamo trenutni termin koji gledamo
-    .lt("start_time", new Date().toISOString()) // Gledamo samo prošle termine
-    .order("start_time", { ascending: false }) // Najnoviji ide prvi
-    .limit(3); // Uzimamo maksimalno 3 komada
+    .neq("id", currentAppointmentId)
+    .lt("start_time", new Date().toISOString())
+    .order("start_time", { ascending: false })
+    .limit(3);
 
   if (error) {
     throw new Error(error.message);

@@ -487,7 +487,7 @@ const formattedCurrentTime = currentTime.toLocaleTimeString("sr-RS", {
                  {selectedAppointment.customer_note && (
                   <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px dashed #e2e8f0" }}>
                     <h3 style={{ fontSize: "14px", color: "#64748b" }}>Napomena klijenta</h3>
-                    <p style={{ fontStyle: "italic" }}>"{selectedAppointment.customer_note}"</p>
+                    <p style={{ fontStyle: "italic" }}>{selectedAppointment.customer_note}</p>
                   </div>
                 )}
                 </div>

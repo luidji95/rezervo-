@@ -3,31 +3,23 @@
 import { useEffect, useState } from "react";
 import { useSalon } from "@/context/SalonContext";
 
-// Ikonice za verniji izgled prema dizajnu sa slike
-import { 
-  Phone, 
-  Mail, 
-  User, 
-  Clock, 
-  Calendar, 
-  CheckCircle2, 
-  Edit3, 
-  CalendarRange, 
-  Trash2 
-} from "lucide-react";
-
 import {
   getCalendarEmployees,
   type CalendarEmployee,
 } from "@/services/employeeQueryService";
 
-
 import {
   getCalendarAppointments,
-  getClientAppointmentHistory, // <-- DODAJ OVO
+  getClientAppointmentHistory,
+  updateAppointmentStatus,
   type CalendarAppointment,
-  type ClientHistoryAppointment, // <-- DODAJ OVO
+  type ClientHistoryAppointment,
 } from "@/services/calendarQueryService";
+
+import AppointmentDetailsPanel from "./AppointmentDetailsPanel";
+import CalendarAppointmentCard from "./CalendarAppointmentCard";
+import CalendarToolbar from "./CalendarToolbar";
+import RescheduleAppointmentModal from "./RescheduleAppointmentModal";
 
 import "./calendar.css";
 
@@ -76,34 +68,6 @@ function calculateAppointmentHeight(startTime: string, endTime: string) {
   return (diffInMinutes / 60) * 112;
 }
 
-function formatAppointmentDuration(startTime: string, endTime: string) {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  const minutes = Math.round((end.getTime() - start.getTime()) / 1000 / 60);
-  return `${minutes} min`;
-}
-
-function formatAppointmentDate(value: string) {
-  // Prilagođeno formatu sa slike: "Petak, 16. Maj 2025."
-  const date = new Date(value);
-  const formatted = date.toLocaleDateString("sr-RS", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-  // Kapitalizacija prvog slova dana i meseca radi lepšeg izgleda
-  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
-}
-
-function getAppointmentEmployeeName(appointment: CalendarAppointment) {
-  return (
-    appointment.employees?.display_name ||
-    appointment.employees?.full_name ||
-    "Zaposleni"
-  );
-}
-
 // ==========================================
 // Glavna Komponenta
 // ==========================================
@@ -121,15 +85,15 @@ export default function CalendarPage() {
   const [error, setError] = useState("");
   const [selectedAppointment, setSelectedAppointment] = useState<CalendarAppointment | null>(null);
 
-  // Ispod tvog state-a za selectedAppointment dodaj ovo:
   const [clientHistory, setClientHistory] = useState<ClientHistoryAppointment[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  // State za kontrolu vidljivosti modala
+  const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
 
-
-  // useEffect: Učitavanje zaposlenih
+  // useEffect: Učitavanje zaposlenih (trigeruje se samo pri promeni salona)
   useEffect(() => {
     async function loadEmployees() {
       if (!currentSalon) return;
@@ -153,134 +117,167 @@ export default function CalendarPage() {
     loadEmployees();
   }, [currentSalon]);
 
-  // useEffect: Učitavanje termina
+  // useEffect: Učitavanje termina pri promeni salona ili datuma
+  // Svi loading statusi i ažuriranja su unutar asinhronog izvršavanja, čime se sprečava kaskadni render
   useEffect(() => {
+    let isMounted = true;
+
     async function loadAppointments() {
       if (!currentSalon) return;
 
       try {
         setAppointmentsLoading(true);
-        setError("");
         const data = await getCalendarAppointments(currentSalon.id, selectedDate);
-        setAppointments(data);
+        if (isMounted) {
+          setAppointments(data);
+        }
       } catch (err) {
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError("Failed to load appointments.");
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : "Failed to load appointments.");
         }
       } finally {
-        setAppointmentsLoading(false);
+        if (isMounted) {
+          setAppointmentsLoading(false);
+        }
       }
     }
 
     loadAppointments();
+
+    return () => {
+      isMounted = false;
+    };
   }, [currentSalon, selectedDate]);
 
-  useEffect(() => {
-  async function loadClientHistory() {
-    // Ako nema selektovanog termina ili klijent nema ID, praznimo istoriju i prekidamo
-    if (!selectedAppointment?.clients?.id) {
-      setClientHistory([]);
-      return;
-    }
-
+  // Operativni handler za promenu statusa na klik kružića
+  const handleStatusChange = async (
+    appointmentId: string,
+    status: "confirmed" | "completed" | "cancelled" | "no_show"
+  ) => {
+    if (!currentSalon) return;
     try {
-      setHistoryLoading(true);
-      const historyData = await getClientAppointmentHistory(
-        selectedAppointment.clients.id,
-        selectedAppointment.id
-      );
-      setClientHistory(historyData);
+      // 1. Apdejtuj status u bazi
+      await updateAppointmentStatus(appointmentId, status);
+      
+      // 2. Povuci najsvežije stanje direktno u akciji klikom
+      const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate);
+      setAppointments(freshAppointments);
+      
+      // 3. Bezbedno osveži panel sa novim stanjem tog termina
+      const updated = freshAppointments.find((a) => a.id === appointmentId);
+      if (updated) {
+        setSelectedAppointment(updated);
+      }
     } catch (err) {
-      console.error("Greška pri učitavanju istorije klijenta:", err);
-    } finally {
-      setHistoryLoading(false);
+      console.error("Greška prilikom operativne promene statusa:", err);
+      alert("Sistem nije uspeo da promeni status termina.");
     }
-  }
+  };
 
-  loadClientHistory();
-}, [selectedAppointment]);
+  // UX Skeleton handler za potvrdu pomeranja termina
+  const handleRescheduleConfirm = async (
+    appointmentId: string,
+    newStart: string,
+    newEnd: string,
+    newEmployeeId: string
+  ) => {
+    console.log("=== RESCHEDULE SKELETON FLOW USPEŠAN ===");
+    console.log("ID termina:", appointmentId);
+    console.log("Novo startno vreme (ISO):", newStart);
+    console.log("Novo krajnje vreme (ISO):", newEnd);
+    console.log("ID selektovanog zaposlenog:", newEmployeeId);
+    
+    setIsRescheduleModalOpen(false);
+  };
 
-useEffect(() => {
-  // Ažuriraj vrijeme svake minute
-  const interval = setInterval(() => {
-    setCurrentTime(new Date());
-  }, 60000); // 60000 ms = 1 minuta
+  // useEffect: Učitavanje istorije selektovanog klijenta
+  useEffect(() => {
+    async function loadClientHistory() {
+      if (!selectedAppointment?.clients?.id) {
+        setClientHistory([]);
+        return;
+      }
 
-  return () => clearInterval(interval);
-}, []);
+      try {
+        setHistoryLoading(true);
+        const historyData = await getClientAppointmentHistory(
+          selectedAppointment.clients.id,
+          selectedAppointment.id
+        );
+        setClientHistory(historyData);
+      } catch (err) {
+        console.error("Greška pri učitavanju istorije klijenta:", err);
+      } finally {
+        setHistoryLoading(false);
+      }
+    }
 
-  if (salonLoading) {
-    return <p>Loading salon...</p>;
-  }
+    loadClientHistory();
+  }, [selectedAppointment?.clients?.id, selectedAppointment?.id]);
 
-  if (!currentSalon) {
-    return <p>No salon selected.</p>;
-  }
+  // Live ažuriranje crvene linije vremena
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  if (salonLoading) return <p>Loading salon...</p>;
+  if (!currentSalon) return <p>No salon selected.</p>;
 
   function calculateTimeLineTop(time: Date) {
-  const currentHours = time.getHours();
-  const currentMinutes = time.getMinutes();
-  
-  const calendarStartHour = 8; // Tvoj kalendar počinje u 08:00
-  const calendarEndHour = 20;   // Tvoj kalendar se završava oko 20:00/21:00
-  const hourHeight = 112;       // Visina jednog sata u pikselima iz tvog CSS-a
+    const currentHours = time.getHours();
+    const currentMinutes = time.getMinutes();
+    
+    const calendarStartHour = 8;
+    const calendarEndHour = 20;   
+    const hourHeight = 112;       
 
-  // Ako je trenutno vrijeme van radnog vremena kalendara, sakrij liniju
-  if (currentHours < calendarStartHour || currentHours >= calendarEndHour) {
-    return null;
+    if (currentHours < calendarStartHour || currentHours >= calendarEndHour) {
+      return null;
+    }
+
+    const totalMinutesSinceStart = (currentHours - calendarStartHour) * 60 + currentMinutes;
+    return (totalMinutesSinceStart / 60) * hourHeight;
   }
 
-  // Računamo koliko je minuta prošlo od 08:00
-  const totalMinutesSinceStart = (currentHours - calendarStartHour) * 60 + currentMinutes;
-  
-  // Pretvaramo minute u piksele (pošto 60 minuta iznosi 'hourHeight' piksela)
-  return (totalMinutesSinceStart / 60) * hourHeight;
-}
+  const timeLineTop = calculateTimeLineTop(currentTime);
 
-// Izračunaj trenutnu poziciju (ako je null, ne prikazujemo je)
-const timeLineTop = calculateTimeLineTop(currentTime);
+  const formattedCurrentTime = currentTime.toLocaleTimeString("sr-RS", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
-// Formatiramo tekst za crveni kvadratić (npr. "14:15")
-const formattedCurrentTime = currentTime.toLocaleTimeString("sr-RS", {
-  hour: "2-digit",
-  minute: "2-digit",
-});
+  const handlePreviousDay = () => {
+    const current = new Date(selectedDate);
+    current.setDate(current.getDate() - 1);
+    setSelectedDate(current.toISOString().split('T')[0]);
+  };
+
+  const handleNextDay = () => {
+    const current = new Date(selectedDate);
+    current.setDate(current.getDate() + 1);
+    setSelectedDate(current.toISOString().split('T')[0]);
+  };
+
+  const handleToday = () => {
+    setSelectedDate(getTodayDateInputValue());
+  };
 
   return (
     <main className="calendar-page">
-      {/* Header */}
-      <header className="calendar-header">
-        <div>
-          <h1>Kalendar</h1>
-          <p>Pregled svih termina i dostupnosti u tvom salonu.</p>
-        </div>
-        <button type="button" className="new-appointment-btn">
-          + Novi termin
-        </button>
-      </header>
+      <CalendarToolbar
+        selectedDate={selectedDate}
+        onDateChange={setSelectedDate}
+        onPreviousDay={handlePreviousDay}
+        onNextDay={handleNextDay}
+        onToday={handleToday}
+        employees={employees}
+        getEmployeeDisplayName={getEmployeeDisplayName}
+      />
 
-      {/* Alati / Toolbar */}
-      <section className="calendar-toolbar">
-        <button
-          type="button"
-          onClick={() => setSelectedDate(getTodayDateInputValue())}
-        >
-          Danas
-        </button>
-
-        <input
-          type="date"
-          value={selectedDate}
-          onChange={(event) => setSelectedDate(event.target.value)}
-        />
-
-        <button type="button">Svi zaposleni</button>
-        <button type="button">Filteri</button>
-      </section>
-
-      {/* Statusi i Greške */}
       {appointmentsLoading && <p>Loading appointments...</p>}
       {employeesLoading && <p>Loading employees...</p>}
       {error && <p>{error}</p>}
@@ -289,12 +286,10 @@ const formattedCurrentTime = currentTime.toLocaleTimeString("sr-RS", {
         <p>No bookable employees found.</p>
       )}
 
-      {/* Glavni sadržaj kalendara */}
       {!employeesLoading && employees.length > 0 && (
         <div className="calendar-content">
           <section className="calendar-shell">
             
-            {/* Zaglavlje mreže */}
             <div
               className="calendar-grid-header"
               style={{
@@ -317,7 +312,6 @@ const formattedCurrentTime = currentTime.toLocaleTimeString("sr-RS", {
               ))}
             </div>
 
-            {/* Sati i vremenski slotovi */}
             <div style={{ position: "relative" }}>
               {HOURS.map((hour) => (
                 <div
@@ -334,7 +328,6 @@ const formattedCurrentTime = currentTime.toLocaleTimeString("sr-RS", {
                 </div>
               ))}
 
-              {/* Lejer sa karticama termina */}
               <div
                 className="calendar-appointments-layer"
                 style={{
@@ -342,17 +335,15 @@ const formattedCurrentTime = currentTime.toLocaleTimeString("sr-RS", {
                 }}
               >
                 {timeLineTop !== null && (
-    <div 
-      className="current-time-indicator" 
-      style={{ top: `${timeLineTop}px` }}
-    >
-      {/* Crveni kvadratić sa vremenom */}
-      <div className="time-badge">{formattedCurrentTime}</div>
-      
-      {/* Sama crvena linija koja siječe kalendar */}
-      <div className="time-line"></div>
-    </div>
-  )}
+                  <div 
+                    className="current-time-indicator" 
+                    style={{ top: `${timeLineTop}px` }}
+                  >
+                    <div className="time-badge">{formattedCurrentTime}</div>
+                    <div className="time-line"></div>
+                  </div>
+                )}
+                
                 {employees.map((employee) => (
                   <div key={employee.id} className="calendar-employee-column">
                     {appointments
@@ -360,39 +351,17 @@ const formattedCurrentTime = currentTime.toLocaleTimeString("sr-RS", {
                       .map((appointment) => {
                         const top = calculateAppointmentTop(appointment.start_time);
                         const height = calculateAppointmentHeight(appointment.start_time, appointment.end_time);
+                        const isSelected = selectedAppointment?.id === appointment.id;
 
                         return (
-                          <div
+                          <CalendarAppointmentCard
                             key={appointment.id}
-                            className="calendar-appointment-card"
-                            style={{ top, height }}
-                            onClick={() => setSelectedAppointment(appointment)}
-                          >
-                            <div className="calendar-appointment-time">
-                              {new Date(appointment.start_time).toLocaleTimeString("sr-RS", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                              {" - "}
-                              {new Date(appointment.end_time).toLocaleTimeString("sr-RS", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </div>
-
-                            <div>
-                              <span className="calendar-appointment-client">
-                                {appointment.clients?.full_name ?? "Klijent"}
-                              </span>
-                              <span className="calendar-appointment-service">
-                                • {appointment.services?.name ?? "Usluga"}
-                              </span>
-                            </div>
-
-                            <div className="calendar-appointment-status">
-                              {appointment.status}
-                            </div>
-                          </div>
+                            appointment={appointment}
+                            top={top}
+                            height={height}
+                            isSelected={isSelected}
+                            onSelect={setSelectedAppointment}
+                          />
                         );
                       })}
                   </div>
@@ -401,160 +370,24 @@ const formattedCurrentTime = currentTime.toLocaleTimeString("sr-RS", {
             </div>
           </section>
 
-          {/* ========================================================= */}
-          {/* REFAKTORISAN: Desni panel sa detaljima (ASIDE) prema slici */}
-          {/* ========================================================= */}
-          <aside className="calendar-details-panel">
-            {!selectedAppointment ? (
-              <p className="calendar-details-empty">
-                Izaberi termin iz kalendara za prikaz detalja.
-              </p>
-            ) : (
-              <div className="details-container">
-                
-                {/* Gornji red: Vreme i Usluga Badge */}
-                <div className="details-header-row">
-                  <span className="details-time-range">
-                    {new Date(selectedAppointment.start_time).toLocaleTimeString("sr-RS", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                    {" - "}
-                    {new Date(selectedAppointment.end_time).toLocaleTimeString("sr-RS", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                  
-                  <span className="details-service-badge">
-                    {selectedAppointment.services?.name ?? "Usluga"}
-                  </span>
-                </div>
-
-                {/* Ime Klijenta */}
-                <h2 className="details-client-name">
-                  {selectedAppointment.clients?.full_name ?? "Klijent"}
-                </h2>
-
-                {/* Detalji sa ikonicama */}
-                <div className="details-info-list">
-                  <div className="info-item">
-                    <Phone size={18} className="info-icon" />
-                    <span>{selectedAppointment.clients?.phone || "Nije unet"}</span>
-                  </div>
-
-                  <div className="info-item">
-                    <Mail size={18} className="info-icon" />
-                    <span>{selectedAppointment.clients?.email || "Nije unet"}</span>
-                  </div>
-
-                  <div className="info-item">
-                    <User size={18} className="info-icon" />
-                    <span>
-                      {getAppointmentEmployeeName(selectedAppointment)} ({selectedAppointment.services?.name ?? "Usluga"})
-                    </span>
-                  </div>
-
-                  <div className="info-item">
-                    <Clock size={18} className="info-icon" />
-                    <span>
-                      {formatAppointmentDuration(selectedAppointment.start_time, selectedAppointment.end_time)}
-                    </span>
-                  </div>
-
-                  <div className="info-item">
-                    <Calendar size={18} className="info-icon" />
-                    <span>{formatAppointmentDate(selectedAppointment.start_time)}</span>
-                  </div>
-                </div>
-
-                {/* Status Badge */}
-                <div className="details-status-container">
-                  <span className={`status-badge ${selectedAppointment.status?.toLowerCase()}`}>
-                    {selectedAppointment.status ?? "Potvrđeno"}
-                  </span>
-                </div>
-
-                <hr className="details-divider" />
-
-                {/* Sekcija: Napomena */}
-                <div className="details-notes-section">
-                  <h3>Napomena zaposlenog</h3>
-                  <p>
-                    {selectedAppointment.internal_note || "Nema interne napomene za ovaj termin."}
-                  </p>
-
-                 {selectedAppointment.customer_note && (
-                  <div style={{ marginTop: "12px", paddingTop: "12px", borderTop: "1px dashed #e2e8f0" }}>
-                    <h3 style={{ fontSize: "14px", color: "#64748b" }}>Napomena klijenta</h3>
-                    <p style={{ fontStyle: "italic" }}>{selectedAppointment.customer_note}</p>
-                  </div>
-                )}
-                </div>
-
-                <hr className="details-divider" />
-
-                {/* Sekcija: Istorija termina */}
-<div className="details-history-section">
-  <h3>Istorija termina</h3>
-  
-  {historyLoading && <p style={{ fontSize: "14px", color: "#667085" }}>Učitavam istoriju...</p>}
-
-  {!historyLoading && clientHistory.length === 0 && (
-    <p style={{ fontSize: "14px", color: "#667085", fontStyle: "italic" }}>
-      Ovo je prvi termin za ovog klijenta.
-    </p>
-  )}
-
-  {!historyLoading && clientHistory.length > 0 && (
-    <div className="history-list">
-      {clientHistory.map((historyItem) => (
-        <div className="history-item" key={historyItem.id}>
-          <span className="history-date">
-            {new Date(historyItem.start_time).toLocaleDateString("sr-RS", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-            })}.
-          </span>
-          <span className="history-service">
-            {historyItem.services?.name ?? "Usluga"}
-          </span>
-          <CheckCircle2 size={16} className="history-check-icon" />
+          <AppointmentDetailsPanel
+            selectedAppointment={selectedAppointment}
+            clientHistory={clientHistory}
+            historyLoading={historyLoading}
+            onStatusChange={handleStatusChange}
+            onRescheduleClick={() => setIsRescheduleModalOpen(true)}
+          />
         </div>
-      ))}
-    </div>
-  )}
+      )}
 
-  {clientHistory.length > 0 && (
-    <button type="button" className="view-all-history-btn">
-      Pogledaj sve
-    </button>
-  )}
-</div>
-
-                {/* Akciona dugmad sa ikonicama */}
-                <div className="details-actions-stack">
-                  <button type="button" className="btn-action btn-edit">
-                    <Edit3 size={18} />
-                    Izmeni termin
-                  </button>
-
-                  <button type="button" className="btn-action btn-reschedule">
-                    <CalendarRange size={18} />
-                    Pomeri termin
-                  </button>
-
-                  <button type="button" className="btn-action btn-cancel">
-                    <Trash2 size={18} />
-                    Otkaži termin
-                  </button>
-                </div>
-
-              </div>
-            )}
-          </aside>
-        </div>
+      {selectedAppointment && (
+        <RescheduleAppointmentModal
+          isOpen={isRescheduleModalOpen}
+          onClose={() => setIsRescheduleModalOpen(false)}
+          appointment={selectedAppointment}
+          employees={employees}
+          onRescheduleConfirm={handleRescheduleConfirm}
+        />
       )}
     </main>
   );

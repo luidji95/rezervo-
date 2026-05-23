@@ -5,7 +5,7 @@ export type CalendarAppointment = {
   start_time: string;
   end_time: string;
   status: string;
-  customer_note: string | null; // <-- POPRAVLJENO: Obrisano 's' na kraju da se poklapa sa bazom
+  customer_note: string | null;
   internal_note: string | null;
 
   clients: {
@@ -26,6 +26,22 @@ export type CalendarAppointment = {
   } | null;
 };
 
+export type ClientHistoryAppointment = {
+  id: string;
+  start_time: string;
+  status: string;
+  services: {
+    name: string;
+  } | null;
+};
+
+// =========================================================
+// Upiti za kalendar (Fetch functions)
+// =========================================================
+
+/**
+ * Dobavlja sve termine za određeni salon i izabrani datum.
+ */
 export async function getCalendarAppointments(
   salonId: string,
   date: string
@@ -74,19 +90,9 @@ export async function getCalendarAppointments(
   return (data ?? []) as unknown as CalendarAppointment[];
 }
 
-// =========================================================
-// Istorija termina klijenta
-// =========================================================
-
-export type ClientHistoryAppointment = {
-  id: string;
-  start_time: string;
-  status: string;
-  services: {
-    name: string;
-  } | null;
-};
-
+/**
+ * Dobavlja istoriju poslednja 3 termina za klijenta, isključujući trenutni termin.
+ */
 export async function getClientAppointmentHistory(
   clientId: string,
   currentAppointmentId: string
@@ -112,4 +118,66 @@ export async function getClientAppointmentHistory(
   }
 
   return (data ?? []) as unknown as ClientHistoryAppointment[];
+}
+
+// =========================================================
+// Operativne akcije (Ažuriranje i Reschedule)
+// =========================================================
+
+/**
+ * Ažurira status termina u bazi podataka na osnovu stabilnih engleskih vrednosti.
+ * @param appointmentId ID rezervacije koju menjamo
+ * @param status Nova vrednost statusa ('confirmed', 'completed', 'cancelled', 'pending', 'no_show')
+ */
+export async function updateAppointmentStatus(
+  appointmentId: string,
+  status: "confirmed" | "completed" | "cancelled" | "pending" | "no_show"
+) {
+  const { data, error } = await supabase
+    .from("appointments")
+    .update({ status })
+    .eq("id", appointmentId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+/**
+ * Pomera termin na novo vreme/datum i opciono dodeljuje drugom zaposlenom.
+ * Rešena explicit-any greška korišćenjem strogog Record tipa.
+ */
+export async function updateAppointmentTime(
+  appointmentId: string,
+  startTime: string,
+  endTime: string,
+  employeeId?: string
+) {
+  // Strogo tipiziran objekat za promenu podataka bez korišćenja 'any'
+  const updateData: Record<string, string> = {
+    start_time: startTime,
+    end_time: endTime,
+    status: "confirmed"
+  };
+
+  if (employeeId) {
+    updateData.employee_id = employeeId;
+  }
+
+  const { data, error } = await supabase
+    .from("appointments")
+    .update(updateData)
+    .eq("id", appointmentId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
 }

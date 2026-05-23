@@ -9,6 +9,8 @@ import { getMySalon } from "@/services/salonService";
 
 import { SalonProvider } from "@/context/SalonContext";
 
+
+
 export default function AppLayout({
   children,
 }: {

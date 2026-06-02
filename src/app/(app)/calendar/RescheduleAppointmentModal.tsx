@@ -19,16 +19,6 @@ type RescheduleAppointmentModalProps = {
   ) => Promise<void>;
 };
 
-// Lokalni interfejs da umirimo TypeScript kompajler za specifična polja iz baze
-type ExtendedCalendarAppointment = Omit<CalendarAppointment, "services"> & {
-  salon_id?: string;
-  service_id?: string;
-  services?: {
-    id: string;
-    name: string;
-  };
-};
-
 export default function RescheduleAppointmentModal({
   isOpen,
   onClose,
@@ -52,11 +42,9 @@ export default function RescheduleAppointmentModal({
     if (!isOpen) return;
 
     async function fetchRealSlots() {
-      // Bezbedno kastujemo i proveravamo gde leže ključni ID-evi unutar objekta
-      const extendedApp = appointment as ExtendedCalendarAppointment;
-      
-      const salonId = extendedApp.salon_id;
-      const serviceId = extendedApp.service_id || extendedApp.services?.id;
+      // Sada bezbedno vučemo podatke jer tipovi u potpunosti postoje na CalendarAppointment objektu
+      const salonId = appointment.salon_id;
+      const serviceId = appointment.services?.id;
 
       if (!salonId || !serviceId) {
         console.error("Nedostaju salonId ili serviceId podaci na appointment objektu:", appointment);
@@ -184,7 +172,7 @@ export default function RescheduleAppointmentModal({
             </select>
           </div>
 
-          {/* Slotovi izbbačeni kroz tvoj pravi Availability Engine */}
+          {/* Slotovi izbačeni kroz tvoj pravi Availability Engine */}
           <div>
             <label style={{ display: "block", fontSize: "13px", fontWeight: 500, color: "#334155", marginBottom: "8px" }}>
               Slobodni termini (Trajanje: {Math.round(durationMs / 1000 / 60)} min)

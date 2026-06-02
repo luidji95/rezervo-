@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase/client";
 
 export type CalendarAppointment = {
   id: string;
+  salon_id: string; // <-- DODATO: Tipiziran salon_id za lakši dohvat u modalima
   start_time: string;
   end_time: string;
   status: string;
@@ -16,6 +17,7 @@ export type CalendarAppointment = {
   } | null;
 
   services: {
+    id: string;   // <-- DODATO: ID usluge je sada dostupan kroz tipove
     name: string;
   } | null;
 
@@ -54,6 +56,7 @@ export async function getCalendarAppointments(
     .select(
       `
       id,
+      salon_id,              
       start_time,
       end_time,
       status,
@@ -68,6 +71,7 @@ export async function getCalendarAppointments(
       ),
 
       services:primary_service_id (
+        id,                 
         name
       ),
 
@@ -157,7 +161,6 @@ export async function updateAppointmentTime(
   endTime: string,
   employeeId?: string
 ) {
-  // Strogo tipiziran objekat za promenu podataka bez korišćenja 'any'
   const updateData: Record<string, string> = {
     start_time: startTime,
     end_time: endTime,

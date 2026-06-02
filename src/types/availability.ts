@@ -14,3 +14,5 @@ export type AvailableSlot = {
 export type GenerateAvailableSlotsResult = {
   slots: AvailableSlot[];
 };
+
+

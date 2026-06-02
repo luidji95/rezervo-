@@ -62,11 +62,14 @@ function shouldSkipPastSlot(slotStart: Date, selectedDate: string): boolean {
   return slotStart < minimumBookableTime;
 }
 
+// =========================================================
+// GLAVNA AVAILABILITY FUNKCIJA
+// =========================================================
 export async function generateAvailableSlots(
-  input: GenerateAvailableSlotsInput,
+  input: GenerateAvailableSlotsInput & { excludeAppointmentId?: string },
   supabaseClient: SupabaseClientLike = supabase
 ): Promise<GenerateAvailableSlotsResult> {
-  const { salonId, serviceId, employeeId, date } = input;
+  const { salonId, serviceId, employeeId, date, excludeAppointmentId } = input;
 
   const today = getDateInTimeZone(new Date(), SALON_TIMEZONE);
 
@@ -107,29 +110,18 @@ export async function generateAvailableSlots(
     serviceId,
     employeeId,
     date,
+    excludeAppointmentId,
   });
 
-  // if (serviceRes.error || !serviceRes.data) {
-  //   throw new Error("Service not found or inactive.");
-  // }
   if (serviceRes.error) {
-  console.error("SERVICE QUERY ERROR:", serviceRes.error);
-  console.error("SERVICE QUERY INPUT:", {
-    salonId,
-    serviceId,
-  });
+    console.error("SERVICE QUERY ERROR:", serviceRes.error);
+    throw new Error(`Service query failed: ${serviceRes.error.message}`);
+  }
 
-  throw new Error(`Service query failed: ${serviceRes.error.message}`);
-}
-
-if (!serviceRes.data) {
-  console.error("SERVICE NOT FOUND:", {
-    salonId,
-    serviceId,
-  });
-
-  throw new Error("Service not found or inactive.");
-}
+  if (!serviceRes.data) {
+    console.error("SERVICE NOT FOUND:", { salonId, serviceId });
+    throw new Error("Service not found or inactive.");
+  }
 
   if (employeesRes.error) {
     throw new Error("Failed to fetch employees.");
@@ -145,12 +137,25 @@ if (!serviceRes.data) {
   const targetDate = new Date(`${date}T00:00:00`);
   const dayOfWeek = targetDate.getDay();
 
-  const compatibleEmployeeIds = compatibleEmployees.map(
-    (employee) => employee.id
-  );
+  const compatibleEmployeeIds = compatibleEmployees.map((employee) => employee.id);
 
   const dayStart = combineDateAndTime(date, "00:00:00");
   const dayEnd = combineDateAndTime(date, "23:59:59");
+
+  // Priprema dinamičkog upita za termine
+  let appointmentsQuery = supabaseClient
+    .from("appointments")
+    .select("*")
+    .eq("salon_id", salonId)
+    .in("employee_id", compatibleEmployeeIds)
+    .lt("start_time", dayEnd.toISOString())
+    .gt("end_time", dayStart.toISOString())
+    .not("status", "in", "(cancelled,no_show)");
+
+  // AKO JE RESCHEDULE FLOW: Ignorišemo trenutni appointmentId da ne pravi konflikt sam sa sobom
+  if (excludeAppointmentId) {
+    appointmentsQuery = appointmentsQuery.neq("id", excludeAppointmentId);
+  }
 
   const [workingHoursRes, closuresRes, appointmentsRes] = await Promise.all([
     supabaseClient
@@ -169,27 +174,12 @@ if (!serviceRes.data) {
       .lt("starts_at", dayEnd.toISOString())
       .gt("ends_at", dayStart.toISOString()),
 
-    supabaseClient
-      .from("appointments")
-      .select("*")
-      .eq("salon_id", salonId)
-      .in("employee_id", compatibleEmployeeIds)
-      .lt("start_time", dayEnd.toISOString())
-      .gt("end_time", dayStart.toISOString())
-      .not("status", "in", "(cancelled,no_show)"),
+    appointmentsQuery,
   ]);
 
-  if (workingHoursRes.error) {
-    throw new Error("Failed to fetch working hours.");
-  }
-
-  if (closuresRes.error) {
-    throw new Error("Failed to fetch closures.");
-  }
-
-  if (appointmentsRes.error) {
-    throw new Error("Failed to fetch appointments.");
-  }
+  if (workingHoursRes.error) throw new Error("Failed to fetch working hours.");
+  if (closuresRes.error) throw new Error("Failed to fetch closures.");
+  if (appointmentsRes.error) throw new Error("Failed to fetch appointments.");
 
   const workingHours = workingHoursRes.data ?? [];
   const closures = closuresRes.data ?? [];
@@ -236,8 +226,7 @@ if (!serviceRes.data) {
       ? combineDateAndTime(date, schedule.break_ends_at)
       : null;
 
-    const appointmentDuration =
-      service.duration_minutes + service.buffer_minutes;
+    const appointmentDuration = service.duration_minutes + (service.buffer_minutes ?? 0);
 
     let currentSlotStart = workStart;
 
@@ -288,6 +277,7 @@ if (!serviceRes.data) {
         });
       }
 
+      // Pomeramo petlju na sledeći potencijalni slot (ovde možeš promeniti korak na npr. 15 ili 30 min ako ne želiš koračanje celim trajanjem)
       currentSlotStart = addMinutes(currentSlotStart, appointmentDuration);
     }
   }

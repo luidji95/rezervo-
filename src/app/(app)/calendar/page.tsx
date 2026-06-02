@@ -16,6 +16,8 @@ import {
   type ClientHistoryAppointment,
 } from "@/services/calendarQueryService";
 
+import { rescheduleAppointment } from "@/services/appointmentService";
+
 import AppointmentDetailsPanel from "./AppointmentDetailsPanel";
 import CalendarAppointmentCard from "./CalendarAppointmentCard";
 import CalendarToolbar from "./CalendarToolbar";
@@ -118,7 +120,6 @@ export default function CalendarPage() {
   }, [currentSalon]);
 
   // useEffect: Učitavanje termina pri promeni salona ili datuma
-  // Svi loading statusi i ažuriranja su unutar asinhronog izvršavanja, čime se sprečava kaskadni render
   useEffect(() => {
     let isMounted = true;
 
@@ -174,20 +175,37 @@ export default function CalendarPage() {
     }
   };
 
-  // UX Skeleton handler za potvrdu pomeranja termina
+  // Operativni handler za potvrdu pomeranja termina - POVEZAN SA BAZOM
   const handleRescheduleConfirm = async (
     appointmentId: string,
     newStart: string,
     newEnd: string,
     newEmployeeId: string
   ) => {
-    console.log("=== RESCHEDULE SKELETON FLOW USPEŠAN ===");
-    console.log("ID termina:", appointmentId);
-    console.log("Novo startno vreme (ISO):", newStart);
-    console.log("Novo krajnje vreme (ISO):", newEnd);
-    console.log("ID selektovanog zaposlenog:", newEmployeeId);
-    
-    setIsRescheduleModalOpen(false);
+    if (!currentSalon) return;
+
+    try {
+      // 1. Izvrši mutaciju direktno u Supabase bazi
+      await rescheduleAppointment(appointmentId, newStart, newEnd, newEmployeeId);
+
+      // 2. Povuci najsvežije podatke za trenutni datum da osvežiš celu kalendarsku mrežu
+      const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate);
+      setAppointments(freshAppointments);
+
+      // 3. Pronađi taj izmenjeni termin i sinhronizuj desni detaljni panel sa novim podacima
+      if (freshAppointments) {
+        const updated = freshAppointments.find((a) => a.id === appointmentId);
+        if (updated) {
+          setSelectedAppointment(updated);
+        }
+      }
+
+      // 4. Zatvori modal tek nakon uspešnog završetka celog pipeline-a
+      setIsRescheduleModalOpen(false);
+    } catch (err) {
+      console.error("Greška prilikom pomeranja termina u bazi:", err);
+      alert("Sistem nije uspeo da pomeri termin. Proveri konzolu.");
+    }
   };
 
   // useEffect: Učitavanje istorije selektovanog klijenta

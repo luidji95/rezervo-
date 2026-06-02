@@ -204,3 +204,39 @@ export async function createAppointment(
 
   return appointment;
 }
+
+// =========================================================
+// Reschedule Akcija (Pomeranje termina)
+// =========================================================
+
+/**
+ * Pomera postojeći termin na novo vreme/datum i opciono dodeljuje drugom zaposlenom.
+ * Nakon pomeranja, status se automatski postavlja na 'confirmed' (Potvrđeno).
+ */
+export async function rescheduleAppointment(
+  appointmentId: string,
+  newStart: string,
+  newEnd: string,
+  newEmployeeId: string
+) {
+  // Strogo tipiziran objekat koji odgovara strukturama tvoje baze
+  const updateData: Record<string, string> = {
+    start_time: newStart,
+    end_time: newEnd,
+    employee_id: newEmployeeId,
+    status: "confirmed" // Vraćamo termin u status potvrđenog nakon pomeranja
+  };
+
+  const { data, error } = await supabase
+    .from("appointments")
+    .update(updateData)
+    .eq("id", appointmentId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}

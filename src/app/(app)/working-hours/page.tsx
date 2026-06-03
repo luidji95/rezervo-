@@ -1,316 +1,101 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
+import { Settings, Clock, CalendarX } from "lucide-react"; // <-- Dodat CalendarX ikonice
+import WorkingHoursManager from "@/features/settings/working-hours/WorkingHoursManager";
+// Ovde ćemo uvesti ClosuresManager u sledećem koraku, za sada ga komentarišemo da ne puca
+// import ClosuresManager from "@/features/settings/closures/ClosuresManager";
+import "./settings.css";
 
-import { useSalon } from "@/context/SalonContext";
-
-import {
-  getEmployeeWorkingHours,
-  getSalonWorkingHours,
-  upsertWorkingHour,
-} from "@/services/workingService";
-
-import { getSalonEmployees } from "@/services/employeeService";
-
-import type { Employee } from "@/types/employee";
-import type { WorkingHour } from "@/types/workingHour";
-
-import {
-  workingHourSchema,
-  type WorkingHourFormInput,
-  type WorkingHourFormData,
-} from "./workingHourSchema";
-
-const DAYS = [
-  { value: 1, label: "Monday" },
-  { value: 2, label: "Tuesday" },
-  { value: 3, label: "Wednesday" },
-  { value: 4, label: "Thursday" },
-  { value: 5, label: "Friday" },
-  { value: 6, label: "Saturday" },
-  { value: 0, label: "Sunday" },
-];
-
-function toTimeInputValue(time?: string | null) {
-  if (!time) return "";
-  return time.slice(0, 5);
-}
-
-export default function WorkingHoursPage() {
-  const { currentSalon } = useSalon();
-
-  const [salonWorkingHours, setSalonWorkingHours] = useState<WorkingHour[]>([]);
-  const [employeeWorkingHours, setEmployeeWorkingHours] = useState<
-    WorkingHour[]
-  >([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
-  const [loading, setLoading] = useState(true);
-
-  const isEmployeeMode = Boolean(selectedEmployeeId);
-
-  useEffect(() => {
-    if (!currentSalon?.id) {
-      setLoading(false);
-      return;
-    }
-
-    const salonId = currentSalon.id;
-    let ignore = false;
-
-    async function loadInitialData() {
-      try {
-        const [hoursData, employeesData] = await Promise.all([
-          getSalonWorkingHours(salonId),
-          getSalonEmployees(salonId),
-        ]);
-
-        if (!ignore) {
-          setSalonWorkingHours(hoursData);
-          setEmployees(employeesData);
-        }
-      } catch (error) {
-        console.error(error);
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadInitialData();
-
-    return () => {
-      ignore = true;
-    };
-  }, [currentSalon?.id]);
-
-  useEffect(() => {
-    if (!currentSalon?.id || !selectedEmployeeId) {
-      setEmployeeWorkingHours([]);
-      return;
-    }
-
-    const salonId = currentSalon.id;
-    const employeeId = selectedEmployeeId;
-    let ignore = false;
-
-    async function loadEmployeeHours() {
-      try {
-        const data = await getEmployeeWorkingHours(salonId, employeeId);
-
-        if (!ignore) {
-          setEmployeeWorkingHours(data);
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    }
-
-    loadEmployeeHours();
-
-    return () => {
-      ignore = true;
-    };
-  }, [currentSalon?.id, selectedEmployeeId]);
-
-  async function refreshWorkingHours() {
-    if (!currentSalon?.id) return;
-
-    if (selectedEmployeeId) {
-      const updated = await getEmployeeWorkingHours(
-        currentSalon.id,
-        selectedEmployeeId
-      );
-
-      setEmployeeWorkingHours(updated);
-      return;
-    }
-
-    const updated = await getSalonWorkingHours(currentSalon.id);
-    setSalonWorkingHours(updated);
-  }
-
-  function getSalonHourForDay(day: number) {
-    return salonWorkingHours.find((hour) => hour.day_of_week === day);
-  }
-
-  function getEmployeeHourForDay(day: number) {
-    return employeeWorkingHours.find((hour) => hour.day_of_week === day);
-  }
-
-  function getDisplayedHourForDay(day: number) {
-    const employeeHour = getEmployeeHourForDay(day);
-    const salonHour = getSalonHourForDay(day);
-
-    return employeeHour ?? salonHour;
-  }
-
-  if (loading) {
-    return <p>Loading working hours...</p>;
-  }
+export default function SettingsPage() {
+  const [activeSubMenu, setActiveSubMenu] = useState("opste");
 
   return (
-    <div>
-      <h1>Working Hours</h1>
-
-      <p>
-        Set salon default working hours or override hours for a specific
-        employee.
-      </p>
-
-      <div style={{ marginBottom: "24px" }}>
-        <label>Editing mode</label>
-
-        <select
-          value={selectedEmployeeId}
-          onChange={(event) => setSelectedEmployeeId(event.target.value)}
-        >
-          <option value="">Salon default hours</option>
-
-          {employees.map((employee) => (
-            <option key={employee.id} value={employee.id}>
-              {employee.display_name || employee.full_name}
-            </option>
-          ))}
-        </select>
+    <div className="settings-page">
+      {/* GORNJI NASLOV */}
+      <div className="settings-top-header">
+        <h1>Podešavanja salona</h1>
+        <p>Upravljajte osnovnim informacijama, radnim vremenom i konfiguracijom vašeg salona.</p>
       </div>
 
-      <div>
-        {DAYS.map((day) => {
-          const displayedHour = getDisplayedHourForDay(day.value);
-          const employeeOverride = getEmployeeHourForDay(day.value);
-          const isUsingSalonDefault = isEmployeeMode && !employeeOverride;
+      {/* TROKOLONSKI GRID */}
+      <div className="settings-layout-grid">
+        
+        {/* KOLONA 1: LEVI POD-MENI */}
+        <aside className="settings-submenu-sidebar">
+          <button
+            onClick={() => setActiveSubMenu("opste")}
+            className={`submenu-btn ${activeSubMenu === "opste" ? "active" : ""}`}
+          >
+            <Settings size={18} className="lucide-icon" />
+            Opšte informacije
+          </button>
+          
+          <button
+            onClick={() => setActiveSubMenu("radno-vreme")}
+            className={`submenu-btn ${activeSubMenu === "radno-vreme" ? "active" : ""}`}
+          >
+            <Clock size={18} className="lucide-icon" />
+            Radno vreme
+          </button>
 
-          return (
-            <WorkingDayCard
-              key={`${selectedEmployeeId || "salon"}-${day.value}`}
-              salonId={currentSalon?.id}
-              employeeId={selectedEmployeeId || null}
-              dayValue={day.value}
-              dayLabel={day.label}
-              existingHour={displayedHour}
-              isUsingSalonDefault={isUsingSalonDefault}
-              onSaved={refreshWorkingHours}
-            />
-          );
-        })}
+          {/* NOVI TAB ZA NERADNE DANE */}
+          <button
+            onClick={() => setActiveSubMenu("neradni-dani")}
+            className={`submenu-btn ${activeSubMenu === "neradni-dani" ? "active" : ""}`}
+          >
+            <CalendarX size={18} className="lucide-icon" />
+            Neradni dani
+          </button>
+        </aside>
+
+        {/* KOLONA 2: SREDIŠNJI SADRŽAJ */}
+        <main className="settings-main-content">
+          {activeSubMenu === "opste" && (
+            <div className="settings-card">
+              <h3>Opšte informacije</h3>
+              <p className="card-sub">Osnovni podaci o vašem salonu koji se prikazuju klijentima prilikom zakazivanja.</p>
+              <div style={{ padding: "24px", textAlign: "center", color: "#6b7280", border: "2px dashed #e5e7eb", borderRadius: "8px" }}>
+                Forma za izmenu naziva, adrese i telefona salona.
+              </div>
+            </div>
+          )}
+
+          {activeSubMenu === "radno-vreme" && <WorkingHoursManager />}
+
+          {/* USLOV ZA RENDER NOVOG MENADŽERA */}
+          {activeSubMenu === "neradni-dani" && (
+            <div className="settings-card">
+              <h3>Neradni dani i praznici</h3>
+              <p className="card-sub">Dodajte jednokratne ili ponovljive neradne dane kada salon ili kompletna ekipa ne rade (npr. državni praznici, kolektivni odmor).</p>
+              {/* Ovde uskače <ClosuresManager /> čim ga napravimo */}
+              <div style={{ padding: "24px", textAlign: "center", color: "#6b7280", border: "2px dashed #e5e7eb", borderRadius: "8px" }}>
+                U sledećem koraku pravimo ClosuresManager.
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* KOLONA 3: DESNI SIDEBAR */}
+        <section className="settings-right-sidebar">
+          <div className="sidebar-widget-card">
+            <div className="widget-header">
+              <h4>Vaš Paket</h4>
+              <span className="plan-badge">Premium</span>
+            </div>
+            <p className="plan-date">Ističe: 01. Januara 2027.</p>
+            <button className="btn-widget-primary">Unapredi paket</button>
+          </div>
+
+          <div className="sidebar-widget-card" style={{ background: "#f9fafb" }}>
+            <h4 style={{ margin: "0 0 8px 0", fontSize: "13px" }}>Potrebna vam je pomoć?</h4>
+            <p style={{ margin: 0, fontSize: "12px", color: "#6b7280", lineHeight: "1.5" }}>
+              Ako imate problema sa podešavanjem radnog vremena ili zaposlenih, kontaktirajte našu podršku.
+            </p>
+          </div>
+        </section>
+
       </div>
-    </div>
-  );
-}
-
-type WorkingDayCardProps = {
-  salonId: string | undefined;
-  employeeId: string | null;
-  dayValue: number;
-  dayLabel: string;
-  existingHour: WorkingHour | undefined;
-  isUsingSalonDefault: boolean;
-  onSaved: () => Promise<void>;
-};
-
-function WorkingDayCard({
-  salonId,
-  employeeId,
-  dayValue,
-  dayLabel,
-  existingHour,
-  isUsingSalonDefault,
-  onSaved,
-}: WorkingDayCardProps) {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<WorkingHourFormInput, unknown, WorkingHourFormData>({
-    resolver: zodResolver(workingHourSchema),
-    values: {
-      day_of_week: dayValue,
-      opens_at: toTimeInputValue(existingHour?.opens_at) || "09:00",
-      closes_at: toTimeInputValue(existingHour?.closes_at) || "17:00",
-      break_starts_at: toTimeInputValue(existingHour?.break_starts_at),
-      break_ends_at: toTimeInputValue(existingHour?.break_ends_at),
-      is_working_day: existingHour?.is_working_day ?? true,
-    },
-  });
-
-  async function onSubmit(data: WorkingHourFormData) {
-    if (!salonId) return;
-
-    try {
-      await upsertWorkingHour({
-        salon_id: salonId,
-        employee_id: employeeId,
-        day_of_week: dayValue,
-        opens_at: data.opens_at,
-        closes_at: data.closes_at,
-        break_starts_at: data.break_starts_at || null,
-        break_ends_at: data.break_ends_at || null,
-        is_working_day: data.is_working_day,
-      });
-
-      await onSaved();
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  return (
-    <div
-      style={{
-        border: isUsingSalonDefault ? "1px dashed #777" : "1px solid #333",
-        padding: "16px",
-        marginBottom: "16px",
-        borderRadius: "8px",
-      }}
-    >
-      <h3>{dayLabel}</h3>
-
-      {isUsingSalonDefault && (
-        <p style={{ fontSize: "14px", opacity: 0.7 }}>
-          Using salon default hours. Saving will create an employee override.
-        </p>
-      )}
-
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <input type="hidden" {...register("day_of_week")} />
-
-        <div>
-          <label>Opens at</label>
-          <input type="time" {...register("opens_at")} />
-          {errors.opens_at && <p>{errors.opens_at.message}</p>}
-        </div>
-
-        <div>
-          <label>Closes at</label>
-          <input type="time" {...register("closes_at")} />
-          {errors.closes_at && <p>{errors.closes_at.message}</p>}
-        </div>
-
-        <div>
-          <label>Break starts</label>
-          <input type="time" {...register("break_starts_at")} />
-          {errors.break_starts_at && <p>{errors.break_starts_at.message}</p>}
-        </div>
-
-        <div>
-          <label>Break ends</label>
-          <input type="time" {...register("break_ends_at")} />
-          {errors.break_ends_at && <p>{errors.break_ends_at.message}</p>}
-        </div>
-
-        <label>
-          <input type="checkbox" {...register("is_working_day")} />
-          Working day
-        </label>
-
-        <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Saving..." : `Save ${dayLabel}`}
-        </button>
-      </form>
     </div>
   );
 }

@@ -11,6 +11,9 @@ function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60 * 1000);
 }
 
+// =========================================================
+// Create Action (Kreiranje novog termina)
+// =========================================================
 export async function createAppointment(
   input: CreateAppointmentInput,
   supabaseClient: SupabaseClientLike = supabase,
@@ -118,7 +121,7 @@ export async function createAppointment(
       .eq("phone", normalizedPhone)
       .maybeSingle();
 
-    if (error) {
+  if (error) {
       throw new Error("Failed to check existing client by phone.");
     }
 
@@ -208,26 +211,21 @@ export async function createAppointment(
 // =========================================================
 // Reschedule Akcija (Pomeranje termina)
 // =========================================================
-
-/**
- * Pomera postojeći termin na novo vreme/datum i opciono dodeljuje drugom zaposlenom.
- * Nakon pomeranja, status se automatski postavlja na 'confirmed' (Potvrđeno).
- */
 export async function rescheduleAppointment(
   appointmentId: string,
   newStart: string,
   newEnd: string,
-  newEmployeeId: string
+  newEmployeeId: string,
+  supabaseClient: SupabaseClientLike = supabase // Dodata opcija za prosleđivanje klijenta radi konzistentnosti
 ) {
-  // Strogo tipiziran objekat koji odgovara strukturama tvoje baze
-  const updateData: Record<string, string> = {
+  const updateData = {
     start_time: newStart,
     end_time: newEnd,
     employee_id: newEmployeeId,
-    status: "confirmed" // Vraćamo termin u status potvrđenog nakon pomeranja
+    status: "confirmed"
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseClient
     .from("appointments")
     .update(updateData)
     .eq("id", appointmentId)
@@ -239,4 +237,49 @@ export async function rescheduleAppointment(
   }
 
   return data;
+}
+
+// =========================================================
+// Update Details Akcija (Izmena tekstualnih podataka)
+// =========================================================
+export async function updateAppointmentDetails(
+  appointmentId: string,
+  clientId: string,
+  data: {
+    fullName: string;
+    phone: string;
+    email: string;
+    internalNote: string;
+    customerNote: string;
+  },
+  supabaseClient: SupabaseClientLike = supabase // SADA KORISTI KONZISTENTAN KLIJENT
+) {
+  // 1. Ažuriramo klijenta (trimujemo ulaze odmah radi čiste baze)
+  const { error: clientError } = await supabaseClient
+    .from("clients")
+    .update({
+      full_name: data.fullName.trim(),
+      phone: data.phone?.trim() || null,
+      email: data.email?.trim() || null,
+    })
+    .eq("id", clientId);
+
+  if (clientError) {
+    throw new Error(`Greška pri ažuriranju klijenta: ${clientError.message}`);
+  }
+
+  // 2. Ažuriramo termin (napomene)
+  const { error: appointmentError } = await supabaseClient
+    .from("appointments")
+    .update({
+      internal_note: data.internalNote?.trim() || null,
+      customer_note: data.customerNote?.trim() || null,
+    })
+    .eq("id", appointmentId);
+
+  if (appointmentError) {
+    throw new Error(`Greška pri ažuriranju napomena termina: ${appointmentError.message}`);
+  }
+
+  return { success: true };
 }

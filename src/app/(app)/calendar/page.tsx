@@ -16,12 +16,14 @@ import {
   type ClientHistoryAppointment,
 } from "@/services/calendarQueryService";
 
-import { rescheduleAppointment } from "@/services/appointmentService";
+// DODATO: Uvoz updateAppointmentDetails servisa za upis u bazu
+import { rescheduleAppointment, updateAppointmentDetails } from "@/services/appointmentService";
 
 import AppointmentDetailsPanel from "./AppointmentDetailsPanel";
 import CalendarAppointmentCard from "./CalendarAppointmentCard";
 import CalendarToolbar from "./CalendarToolbar";
 import RescheduleAppointmentModal from "./RescheduleAppointmentModal";
+import EditAppointmentModal from "./EditAppointmentModal";
 
 import "./calendar.css";
 
@@ -94,6 +96,7 @@ export default function CalendarPage() {
 
   // State za kontrolu vidljivosti modala
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   // useEffect: Učitavanje zaposlenih (trigeruje se samo pri promeni salona)
   useEffect(() => {
@@ -157,14 +160,11 @@ export default function CalendarPage() {
   ) => {
     if (!currentSalon) return;
     try {
-      // 1. Apdejtuj status u bazi
       await updateAppointmentStatus(appointmentId, status);
       
-      // 2. Povuci najsvežije stanje direktno u akciji klikom
       const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate);
       setAppointments(freshAppointments);
       
-      // 3. Bezbedno osveži panel sa novim stanjem tog termina
       const updated = freshAppointments.find((a) => a.id === appointmentId);
       if (updated) {
         setSelectedAppointment(updated);
@@ -185,14 +185,11 @@ export default function CalendarPage() {
     if (!currentSalon) return;
 
     try {
-      // 1. Izvrši mutaciju direktno u Supabase bazi
       await rescheduleAppointment(appointmentId, newStart, newEnd, newEmployeeId);
 
-      // 2. Povuci najsvežije podatke za trenutni datum da osvežiš celu kalendarsku mrežu
       const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate);
       setAppointments(freshAppointments);
 
-      // 3. Pronađi taj izmenjeni termin i sinhronizuj desni detaljni panel sa novim podacima
       if (freshAppointments) {
         const updated = freshAppointments.find((a) => a.id === appointmentId);
         if (updated) {
@@ -200,11 +197,47 @@ export default function CalendarPage() {
         }
       }
 
-      // 4. Zatvori modal tek nakon uspešnog završetka celog pipeline-a
       setIsRescheduleModalOpen(false);
     } catch (err) {
       console.error("Greška prilikom pomeranja termina u bazi:", err);
       alert("Sistem nije uspeo da pomeri termin. Proveri konzolu.");
+    }
+  };
+
+  // REFAKTORISANO: Operativni handler povezan sa pravim Supabase servisom
+  const handleEditConfirm = async (formData: {
+    fullName: string;
+    phone: string;
+    email: string;
+    internalNote: string;
+    customerNote: string;
+  }) => {
+    if (!currentSalon || !selectedAppointment) return;
+    const clientId = selectedAppointment.clients?.id;
+
+    if (!clientId) {
+      alert("Nije moguće ažurirati klijenta jer ne postoji ID klijenta u selektovanom terminu.");
+      return;
+    }
+
+    try {
+      // 1. Pokrećemo paralelni ili sekvencijalni upis u tabele `clients` i `appointments` kroz servis
+      await updateAppointmentDetails(selectedAppointment.id, clientId, formData);
+
+      // 2. Povlačimo najsvežije stanje baze kako bi osvežili UI mrežu
+      const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate);
+      setAppointments(freshAppointments);
+      
+      // 3. Sinkujemo desni detaljni panel sa novim unetim podacima i napomenama
+      const updated = freshAppointments.find((a) => a.id === selectedAppointment.id);
+      if (updated) {
+        setSelectedAppointment(updated);
+      }
+      
+      setIsEditModalOpen(false);
+    } catch (err) {
+      console.error("Greška pri ažuriranju detalja termina u bazi:", err);
+      alert("Sistem nije uspeo da sačuva izmene. Proveri konzolu.");
     }
   };
 
@@ -251,7 +284,7 @@ export default function CalendarPage() {
     
     const calendarStartHour = 8;
     const calendarEndHour = 20;   
-    const hourHeight = 112;       
+    const hourHeight = 112;      
 
     if (currentHours < calendarStartHour || currentHours >= calendarEndHour) {
       return null;
@@ -394,6 +427,7 @@ export default function CalendarPage() {
             historyLoading={historyLoading}
             onStatusChange={handleStatusChange}
             onRescheduleClick={() => setIsRescheduleModalOpen(true)}
+            onEditClick={() => setIsEditModalOpen(true)}
           />
         </div>
       )}
@@ -405,6 +439,17 @@ export default function CalendarPage() {
           appointment={selectedAppointment}
           employees={employees}
           onRescheduleConfirm={handleRescheduleConfirm}
+        />
+      )}
+
+      {/* REFAKTORISANO: Dodat ključ key={selectedAppointment.id} da uništi/podigne modal sa novim podacima */}
+      {selectedAppointment && (
+        <EditAppointmentModal
+          key={selectedAppointment.id}
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          appointment={selectedAppointment}
+          onUpdateConfirm={handleEditConfirm}
         />
       )}
     </main>

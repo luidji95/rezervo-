@@ -27,7 +27,8 @@ type AppointmentDetailsPanelProps = {
     appointmentId: string,
     status: "confirmed" | "completed" | "cancelled" | "no_show"
   ) => Promise<void>;
-  onRescheduleClick: () => void; // <-- Novi prop za otvaranje modala
+  onRescheduleClick: () => void; // Prop za otvaranje reschedule modala
+  onEditClick: () => void;       // <-- DODATO: Novi prop za otvaranje Edit modala
 };
 
 function formatAppointmentDuration(start: string, end: string): string {
@@ -77,7 +78,8 @@ export default function AppointmentDetailsPanel({
   clientHistory,
   historyLoading,
   onStatusChange,
-  onRescheduleClick, // <-- Destrukturiran novi prop
+  onRescheduleClick,
+  onEditClick, // <-- Destrukturiran novi prop
 }: AppointmentDetailsPanelProps) {
   const [localLoading, setLocalLoading] = useState(false);
 
@@ -314,16 +316,20 @@ export default function AppointmentDetailsPanel({
 
         {/* GLAVNE STRUKTURALNE AKCIJE */}
         <div className="details-actions-stack">
-          <button type="button" className="btn-action btn-edit">
+          {/* SADA POTPUNO OPERATIVNO EDIT DUGME */}
+          <button 
+            type="button" 
+            className="btn-action btn-edit"
+            onClick={onEditClick} // <-- Aktivirana akcija na klik za izmenu
+          >
             <Edit3 size={18} />
             Izmeni termin
           </button>
 
-          {/* SADA POTPUNO OPERATIVNO DUGME */}
           <button 
             type="button" 
             className="btn-action btn-reschedule"
-            onClick={onRescheduleClick} // <-- Aktivirana akcija na klik
+            onClick={onRescheduleClick}
           >
             <CalendarRange size={18} />
             Pomeri termin

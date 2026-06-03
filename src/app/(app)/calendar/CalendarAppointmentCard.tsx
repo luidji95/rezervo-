@@ -91,9 +91,7 @@ export default function CalendarAppointmentCard({
       </div>
 
       {/* Status termina - UI label na srpskom */}
-      <div className="calendar-appointment-status">
-        {getAppointmentStatusLabel(appointment.status)}
-      </div>
+        
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, CalendarDays, ChevronRight, SlidersHorizontal, UserSquare2 } from "lucide-react";
+import { ChevronLeft, CalendarDays, ChevronRight, SlidersHorizontal, UserSquare2, Plus } from "lucide-react";
 import type { CalendarEmployee } from "@/services/employeeQueryService";
 
 type CalendarToolbarProps = {
@@ -11,6 +11,7 @@ type CalendarToolbarProps = {
   onToday: () => void;
   employees: CalendarEmployee[];
   getEmployeeDisplayName: (employee: CalendarEmployee) => string;
+  onCreateClick: () => void; // <-- DODATO: Novi prop za otvaranje Create modala
 };
 
 export default function CalendarToolbar({
@@ -21,6 +22,7 @@ export default function CalendarToolbar({
   onToday,
   employees,
   getEmployeeDisplayName,
+  onCreateClick, // <-- Destrukturiran novi prop
 }: CalendarToolbarProps) {
   return (
     <section className="calendar-toolbar">
@@ -71,7 +73,7 @@ export default function CalendarToolbar({
         </div>
       </div>
 
-      {/* DESNA STRANA: Filteri (Spremni za dalji rast) */}
+      {/* DESNA STRANA: Filteri i Primarna Akcija */}
       <div className="calendar-toolbar__right">
         <div className="filter-select-wrapper">
           <UserSquare2 size={16} className="filter-icon-left" />
@@ -88,6 +90,16 @@ export default function CalendarToolbar({
         <button type="button" className="btn-filter-toggle">
           <SlidersHorizontal size={16} />
           <span>Filteri</span>
+        </button>
+
+        {/* GLAVNA AKCIJA: Povezana na klik menadžera */}
+        <button 
+          type="button" 
+          className="topbar-new-appointment-btn"
+          onClick={onCreateClick} // <-- Aktivirana akcija na klik
+        >
+          <Plus size={16} />
+          <span>Novi termin</span>
         </button>
       </div>
     </section>

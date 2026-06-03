@@ -130,10 +130,7 @@ export default function AppShell({ children }: AppShellProps) {
           {/* Desna strana: Novi termin, Notifikacije i profil */}
           <div className="topbar__actions">
             {/* Ubačeno premium dugme za kreiranje novog termina direktno iz topbar-a */}
-            <button type="button" className="topbar-new-appointment-btn">
-              <Plus size={16} />
-              <span>Novi termin</span>
-            </button>
+            
 
             {/* Zvonce za notifikacije */}
             <button type="button" className="topbar-icon-btn" aria-label="Notifikacije">

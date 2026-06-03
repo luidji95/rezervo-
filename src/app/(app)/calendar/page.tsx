@@ -16,14 +16,24 @@ import {
   type ClientHistoryAppointment,
 } from "@/services/calendarQueryService";
 
-// DODATO: Uvoz updateAppointmentDetails servisa za upis u bazu
-import { rescheduleAppointment, updateAppointmentDetails } from "@/services/appointmentService";
+// DODATO: Importujemo i Service tip, kao i funkciju za povlačenje usluga sa beka
+import { Service } from "@/types/service";
+// Napomena: Zamenio sam pretpostavljeni servis. Ako ti se funkcija za povlačenje usluga zove drugačije, samo ovde promeni naziv
+ 
+import { getSalonServices } from "@/services/serviceService";
+
+// DODATO: Uvoz servisa za kreiranje novog termina i tipa forme
+import { rescheduleAppointment, updateAppointmentDetails, createAppointment } from "@/services/appointmentService";
+import { CreateAppointmentFormInput } from "@/types/appointment";
 
 import AppointmentDetailsPanel from "./AppointmentDetailsPanel";
 import CalendarAppointmentCard from "./CalendarAppointmentCard";
 import CalendarToolbar from "./CalendarToolbar";
 import RescheduleAppointmentModal from "./RescheduleAppointmentModal";
 import EditAppointmentModal from "./EditAppointmentModal";
+
+// DODATO: Uvoz novog modala za kreiranje termina
+import { CreateAppointmentModal } from "./CreateAppointmentModal";
 
 import "./calendar.css";
 
@@ -82,9 +92,11 @@ export default function CalendarPage() {
   // State menadžment
   const [selectedDate, setSelectedDate] = useState(getTodayDateInputValue());
   const [employees, setEmployees] = useState<CalendarEmployee[]>([]);
+  const [services, setServices] = useState<Service[]>([]); // DODATO: Držanje usluga salona u state-u
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
   
   const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [servicesLoading, setServicesLoading] = useState(false); // DODATO: Loading za usluge
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedAppointment, setSelectedAppointment] = useState<CalendarAppointment | null>(null);
@@ -97,6 +109,7 @@ export default function CalendarPage() {
   // State za kontrolu vidljivosti modala
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isCreateAppointmentModalOpen, setIsCreateAppointmentModalOpen] = useState(false);
 
   // useEffect: Učitavanje zaposlenih (trigeruje se samo pri promeni salona)
   useEffect(() => {
@@ -120,6 +133,26 @@ export default function CalendarPage() {
     }
 
     loadEmployees();
+  }, [currentSalon]);
+
+  // DODATO: useEffect za učitavanje usluga salona
+  useEffect(() => {
+    async function loadServices() {
+      if (!currentSalon) return;
+
+      try {
+        setServicesLoading(true);
+        // Pozivamo tvoj query servis za povlačenje svih usluga ovog salona
+        const data = await getSalonServices(currentSalon.id); 
+        setServices(data);
+      } catch (err) {
+        console.error("Greška prilikom učitavanja usluga salona:", err);
+      } finally {
+        setServicesLoading(false);
+      }
+    }
+
+    loadServices();
   }, [currentSalon]);
 
   // useEffect: Učitavanje termina pri promeni salona ili datuma
@@ -204,7 +237,7 @@ export default function CalendarPage() {
     }
   };
 
-  // REFAKTORISANO: Operativni handler povezan sa pravim Supabase servisom
+  // Operativni handler za izmenu detalja postojećeg termina
   const handleEditConfirm = async (formData: {
     fullName: string;
     phone: string;
@@ -221,14 +254,11 @@ export default function CalendarPage() {
     }
 
     try {
-      // 1. Pokrećemo paralelni ili sekvencijalni upis u tabele `clients` i `appointments` kroz servis
       await updateAppointmentDetails(selectedAppointment.id, clientId, formData);
 
-      // 2. Povlačimo najsvežije stanje baze kako bi osvežili UI mrežu
       const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate);
       setAppointments(freshAppointments);
       
-      // 3. Sinkujemo desni detaljni panel sa novim unetim podacima i napomenama
       const updated = freshAppointments.find((a) => a.id === selectedAppointment.id);
       if (updated) {
         setSelectedAppointment(updated);
@@ -238,6 +268,25 @@ export default function CalendarPage() {
     } catch (err) {
       console.error("Greška pri ažuriranju detalja termina u bazi:", err);
       alert("Sistem nije uspeo da sačuva izmene. Proveri konzolu.");
+    }
+  };
+
+  // DODATO: Operativni handler za upis NOVOG termina u bazu podataka (Supabase)
+  const handleCreateAppointmentConfirm = async (formData: CreateAppointmentFormInput) => {
+    if (!currentSalon) return;
+
+    try {
+      // Pozivamo tvoj kreirani servis iz appointmentService.ts koji odrađuje insert
+      await createAppointment(formData);
+
+      // Ponovo povlačimo termine sa baze za trenutni dan da bi se novi termin odmah iscrtao
+      const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate);
+      setAppointments(freshAppointments);
+
+      setIsCreateAppointmentModalOpen(false);
+    } catch (err) {
+      console.error("Greška prilikom kreiranja novog termina u bazi:", err);
+      alert("Sistem nije uspeo da zakaže novi termin.");
     }
   };
 
@@ -327,10 +376,12 @@ export default function CalendarPage() {
         onToday={handleToday}
         employees={employees}
         getEmployeeDisplayName={getEmployeeDisplayName}
+        onCreateClick={() => setIsCreateAppointmentModalOpen(true)}
       />
 
       {appointmentsLoading && <p>Loading appointments...</p>}
       {employeesLoading && <p>Loading employees...</p>}
+      {servicesLoading && <p>Loading services...</p>}
       {error && <p>{error}</p>}
 
       {!employeesLoading && !error && employees.length === 0 && (
@@ -442,7 +493,6 @@ export default function CalendarPage() {
         />
       )}
 
-      {/* REFAKTORISANO: Dodat ključ key={selectedAppointment.id} da uništi/podigne modal sa novim podacima */}
       {selectedAppointment && (
         <EditAppointmentModal
           key={selectedAppointment.id}
@@ -452,6 +502,17 @@ export default function CalendarPage() {
           onUpdateConfirm={handleEditConfirm}
         />
       )}
+
+      {/* DODATO: Renderovanje CreateAppointmentModal komponente sa prosleđenim podacima */}
+      <CreateAppointmentModal
+        isOpen={isCreateAppointmentModalOpen}
+        onClose={() => setIsCreateAppointmentModalOpen(false)}
+        salonId={currentSalon.id}
+        employees={employees}
+        services={services}
+        selectedDate={selectedDate} // Podrazumevano prosleđuje trenutno otvoren datum na kalendaru
+        onSuccess={handleCreateAppointmentConfirm}
+      />
     </main>
   );
 }

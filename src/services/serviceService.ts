@@ -9,6 +9,7 @@ const SERVICE_SELECT = `
   id,
   salon_id,
   category_id,
+  category_name,
   name,
   description,
   duration_minutes,
@@ -27,8 +28,11 @@ export async function createService({
   salonId,
   name,
   description,
+  categoryName,
   durationMinutes,
   priceAmount,
+  isActive = true,
+  isPublic = true,
 }: CreateServiceInput): Promise<Service> {
   const { data, error } = await supabase
     .from("services")
@@ -36,8 +40,11 @@ export async function createService({
       salon_id: salonId,
       name,
       description: description || null,
+      category_name: categoryName || null,
       duration_minutes: durationMinutes,
       price: priceAmount,
+      is_active: isActive,
+      is_public: isPublic,
     })
     .select(SERVICE_SELECT)
     .single();
@@ -67,16 +74,22 @@ export async function updateService({
   serviceId,
   name,
   description,
+  categoryName,
   durationMinutes,
   priceAmount,
+  isActive,
+  isPublic,
 }: UpdateServiceInput): Promise<Service> {
   const { data, error } = await supabase
     .from("services")
     .update({
       name,
       description: description || null,
+      category_name: categoryName || null,
       duration_minutes: durationMinutes,
       price: priceAmount,
+      ...(typeof isActive === "boolean" ? { is_active: isActive } : {}),
+      ...(typeof isPublic === "boolean" ? { is_public: isPublic } : {}),
     })
     .eq("id", serviceId)
     .select(SERVICE_SELECT)

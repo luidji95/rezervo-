@@ -1,17 +1,23 @@
 import { z } from "zod";
 
 export const servicesSchema = z.object({
-  name: z.string().min(2, "Service name is required"),
+  name: z.string().trim().min(2, "Naziv usluge je obavezan"),
 
-  description: z.string().optional(),
+  description: z.string().trim().optional(),
+
+  categoryName: z.string().trim().optional(),
 
   durationMinutes: z.coerce
     .number()
-    .min(5, "Duration must be at least 5 minutes"),
+    .min(5, "Trajanje mora biti najmanje 5 minuta"),
 
   priceAmount: z.coerce
     .number()
-    .min(0, "Price cannot be negative"),
+    .min(0, "Cena ne može biti negativna"),
+
+  isActive: z.boolean().optional(),
+
+  isPublic: z.boolean().optional(),
 });
 
 export type ServicesFormInput = z.input<typeof servicesSchema>;

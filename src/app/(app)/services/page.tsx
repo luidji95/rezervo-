@@ -1,343 +1,172 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-
-import { useSalon } from "@/context/SalonContext";
-
+import { useState } from "react";
 import {
-  createService,
-  deleteService,
-  getSalonServices,
-  updateService,
-} from "@/services/serviceService";
+  BarChart3,
+  Clock,
+  Euro,
+  Plus,
+  Scissors,
+} from "lucide-react";
 
 import type { Service } from "@/types/service";
+import { AddServiceModal } from "./AddServiceModal";
+import { KpiCard } from "./KpiCard";
+import { ServiceDetailsPanel } from "./ServiceDetailsPanel";
+import { ServiceTable } from "./ServiceTable";
+import { useServicesPageData } from "./useServicesPageData";
 
-import {
-  servicesSchema,
-  type ServicesFormData,
-  type ServicesFormInput,
-} from "./serviceSchema";
-
-const emptyFormValues: ServicesFormInput = {
-  name: "",
-  description: "",
-  durationMinutes: 30,
-  priceAmount: 0,
-};
+import "./services.css";
 
 export default function ServicesPage() {
-  const { currentSalon, salonLoading } = useSalon();
-
-  const [services, setServices] = useState<Service[]>([]);
-  const [servicesLoading, setServicesLoading] = useState(false);
-
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
 
   const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<ServicesFormInput, unknown, ServicesFormData>({
-    resolver: zodResolver(servicesSchema),
-    defaultValues: emptyFormValues,
-  });
+    averageDuration,
+    categories,
+    currentSalon,
+    filteredServices,
+    handleDeleteService,
+    loadData,
+    loading,
+    salonId,
+    salonLoading,
+    searchValue,
+    selectedCategory,
+    selectedService,
+    services,
+    setSearchValue,
+    setSelectedCategory,
+    setSelectedService,
+    setSortOption,
+    setStatusFilter,
+    sortOption,
+    statusFilter,
+    totalServices,
+  } = useServicesPageData();
 
-  useEffect(() => {
-  const salonId = currentSalon?.id;
-
-  if (!salonId) return;
-
-  let ignore = false;
-
-  async function loadServices() {
-    setServicesLoading(true);
-
-    try {
-      const data = await getSalonServices(salonId);
-
-      if (!ignore) {
-        setServices(data);
-      }
-    } catch (error) {
-      console.error("Failed to fetch services:", error);
-    } finally {
-      if (!ignore) {
-        setServicesLoading(false);
-      }
-    }
-  }
-
-  loadServices();
-
-  return () => {
-    ignore = true;
-  };
-}, [currentSalon?.id]);
-
-  async function onSubmit(data: ServicesFormData) {
-    if (!currentSalon) return;
-
-    setSubmitError(null);
-
-    try {
-      if (editingService) {
-        const updatedService = await updateService({
-          serviceId: editingService.id,
-          name: data.name,
-          description: data.description || null,
-          durationMinutes: data.durationMinutes,
-          priceAmount: data.priceAmount,
-        });
-
-        setServices((prev) =>
-          prev.map((service) =>
-            service.id === updatedService.id ? updatedService : service
-          )
-        );
-
-        setEditingService(null);
-
-        reset(emptyFormValues);
-
-        return;
-      }
-
-      const newService = await createService({
-        salonId: currentSalon.id,
-        name: data.name,
-        description: data.description || null,
-        durationMinutes: data.durationMinutes,
-        priceAmount: data.priceAmount,
-      });
-
-      setServices((prev) => [newService, ...prev]);
-
-      reset(emptyFormValues);
-    } catch (error) {
-      console.error("Failed to save service:", error);
-
-      setSubmitError("Something went wrong while saving service.");
-    }
-  }
-
-  async function handleDelete(serviceId: string) {
-    setDeleteError(null);
-
-    setDeletingId(serviceId);
-
-    try {
-      await deleteService(serviceId);
-
-      setServices((prev) =>
-        prev.filter((service) => service.id !== serviceId)
-      );
-
-      if (editingService?.id === serviceId) {
-        setEditingService(null);
-
-        reset(emptyFormValues);
-      }
-    } catch (error) {
-      console.error("Failed to delete service:", error);
-
-      setDeleteError("Something went wrong while deleting service.");
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
-  function handleStartEdit(service: Service) {
-    setSubmitError(null);
-    setDeleteError(null);
-
-    setEditingService(service);
-
-    reset({
-      name: service.name,
-      description: service.description ?? "",
-      durationMinutes: service.duration_minutes,
-      priceAmount: Number(service.price),
-    });
-  }
-
-  function handleCancelEdit() {
+  function openCreateModal() {
     setEditingService(null);
-
-    reset(emptyFormValues);
+    setIsModalOpen(true);
   }
 
-  if (salonLoading) {
-    return <p>Loading salon...</p>;
+  function openEditModal(service: Service) {
+    setEditingService(service);
+    setIsModalOpen(true);
   }
 
-  if (!currentSalon) {
-    return <p>No salon found.</p>;
+  if (salonLoading || loading) {
+    return (
+      <div className="services-page">
+        <div className="services-card">
+          <p>Učitavanje usluga...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentSalon || !salonId) {
+    return (
+      <div className="services-page">
+        <div className="services-card">
+          <p className="services-error">Salon nije pronađen.</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <main>
-      <h1>Services</h1>
-
-      <p>Manage services for {currentSalon.name}</p>
-
-      <form onSubmit={handleSubmit(onSubmit)} noValidate>
-        <h2>
-          {editingService ? "Edit service" : "Create service"}
-        </h2>
-
+    <div className="services-page">
+      <header className="services-header">
         <div>
-          <label htmlFor="name">Service name</label>
-
-          <input
-            id="name"
-            type="text"
-            {...register("name")}
-          />
-
-          {errors.name && (
-            <p>{errors.name.message}</p>
-          )}
+          <h1>Usluge</h1>
+          <p>Upravljajte ponudom salona, cenama, trajanjem i statusima.</p>
         </div>
-
-        <div>
-          <label htmlFor="description">
-            Description
-          </label>
-
-          <input
-            id="description"
-            type="text"
-            {...register("description")}
-          />
-        </div>
-
-        <div>
-          <label htmlFor="durationMinutes">
-            Duration minutes
-          </label>
-
-          <input
-            id="durationMinutes"
-            type="number"
-            {...register("durationMinutes")}
-          />
-
-          {errors.durationMinutes && (
-            <p>{errors.durationMinutes.message}</p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="priceAmount">
-            Price
-          </label>
-
-          <input
-            id="priceAmount"
-            type="number"
-            {...register("priceAmount")}
-          />
-
-          {errors.priceAmount && (
-            <p>{errors.priceAmount.message}</p>
-          )}
-        </div>
-
-        {submitError && (
-          <p>{submitError}</p>
-        )}
 
         <button
-          type="submit"
-          disabled={isSubmitting}
+          type="button"
+          className="services-primary-btn"
+          onClick={openCreateModal}
         >
-          {isSubmitting
-            ? editingService
-              ? "Saving..."
-              : "Creating..."
-            : editingService
-              ? "Save changes"
-              : "Create service"}
+          <Plus size={17} />
+          Nova usluga
         </button>
+      </header>
 
-        {editingService && (
-          <button
-            type="button"
-            onClick={handleCancelEdit}
-          >
-            Cancel edit
-          </button>
-        )}
-      </form>
-
-      <section>
-        <h2>Existing services</h2>
-
-        {deleteError && (
-          <p>{deleteError}</p>
-        )}
-
-        {servicesLoading && (
-          <p>Loading services...</p>
-        )}
-
-        {!servicesLoading &&
-          services.length === 0 && (
-            <p>No services yet.</p>
-          )}
-
-        {!servicesLoading &&
-          services.map((service) => (
-            <article key={service.id}>
-              <h3>{service.name}</h3>
-
-              {service.description && (
-                <p>{service.description}</p>
-              )}
-
-              <p>
-                {service.duration_minutes} min
-              </p>
-
-              <p>
-                {service.price}{" "}
-                {service.currency}
-              </p>
-
-              <button
-                type="button"
-                onClick={() =>
-                  handleStartEdit(service)
-                }
-              >
-                Edit
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  handleDelete(service.id)
-                }
-                disabled={
-                  deletingId === service.id
-                }
-              >
-                {deletingId === service.id
-                  ? "Deleting..."
-                  : "Delete"}
-              </button>
-            </article>
-          ))}
+      <section className="service-kpi-grid">
+        <KpiCard
+          label="Ukupno usluga"
+          value={String(totalServices)}
+          icon={<Scissors size={18} />}
+          muted="+2 nove ove nedelje"
+        />
+        <KpiCard
+          label="Najpopularnija usluga"
+          value="Šišanje"
+          icon={<BarChart3 size={18} />}
+          muted="45 termina ove nedelje"
+        />
+        <KpiCard
+          label="Prosečno trajanje"
+          value={`${averageDuration} min`}
+          icon={<Clock size={18} />}
+        />
+        <KpiCard
+          label="Ukupan prihod"
+          value="€3.200"
+          icon={<Euro size={18} />}
+          muted="dummy"
+        />
       </section>
-    </main>
+
+      <div className="services-layout">
+        <main className="services-main">
+          <ServiceTable
+            categories={categories}
+            services={filteredServices}
+            selectedCategory={selectedCategory}
+            selectedService={selectedService}
+            searchValue={searchValue}
+            statusFilter={statusFilter}
+            sortOption={sortOption}
+            totalServices={services.length}
+            onCategoryChange={setSelectedCategory}
+            onDeleteService={(serviceId) => {
+              void handleDeleteService(serviceId);
+            }}
+            onEditService={openEditModal}
+            onSearchChange={setSearchValue}
+            onSelectService={setSelectedService}
+            onSortChange={setSortOption}
+            onStatusFilterChange={setStatusFilter}
+          />
+        </main>
+
+        <aside className="services-side">
+          <ServiceDetailsPanel
+            service={selectedService}
+            onEditService={openEditModal}
+          />
+        </aside>
+      </div>
+
+      {isModalOpen && (
+        <AddServiceModal
+          salonId={salonId}
+          categories={categories.map((category) => category.name)}
+          editingService={editingService}
+          onClose={() => {
+            setIsModalOpen(false);
+            setEditingService(null);
+          }}
+          onSaved={async () => {
+            setIsModalOpen(false);
+            setEditingService(null);
+            await loadData();
+          }}
+        />
+      )}
+    </div>
   );
 }

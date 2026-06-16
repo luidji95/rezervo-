@@ -4,6 +4,7 @@ export type Service = {
   id: string;
   salon_id: string;
   category_id: string | null;
+  category_name: string | null;
   name: string;
   description: string | null;
   duration_minutes: number;
@@ -22,13 +23,19 @@ export type CreateServiceInput = {
   salonId: string;
   name: string;
   description: string | null;
+  categoryName: string | null;
   durationMinutes: number;
   priceAmount: number;
+  isActive?: boolean;
+  isPublic?: boolean;
 };
 export type UpdateServiceInput = {
   serviceId: string;
   name: string;
   description: string | null;
+  categoryName: string | null;
   durationMinutes: number;
   priceAmount: number;
+  isActive?: boolean;
+  isPublic?: boolean;
 };

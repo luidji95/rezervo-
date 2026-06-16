@@ -2,7 +2,6 @@
 
 import {
   Eye,
-  MoreVertical,
   Pencil,
   Scissors,
   Search,
@@ -127,7 +126,6 @@ export function ServiceTable({
 
       <div className="services-table">
         <div className="services-table-head">
-          <span></span>
           <span>Usluga</span>
           <span>Kategorija</span>
           <span>Trajanje</span>
@@ -153,13 +151,6 @@ export function ServiceTable({
                 className={`services-table-row ${isSelected ? "active" : ""}`}
                 onClick={() => onSelectService(service)}
               >
-                <span
-                  className="service-checkbox"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <input type="checkbox" aria-label="Izaberi uslugu" />
-                </span>
-
                 <div className="service-name-cell">
                   <div className="service-avatar">
                     <Scissors size={18} />
@@ -186,33 +177,41 @@ export function ServiceTable({
                 </span>
 
                 <div className="service-actions-cell">
-                  <span className="service-icon-btn">
-                    <Eye size={15} />
-                  </span>
-
-                  <span
+                  <button
+                    type="button"
                     className="service-icon-btn"
+                    aria-label="Pregled usluge"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSelectService(service);
+                    }}
+                  >
+                    <Eye size={15} />
+                  </button>
+
+                  <button
+                    type="button"
+                    className="service-icon-btn"
+                    aria-label="Izmeni uslugu"
                     onClick={(event) => {
                       event.stopPropagation();
                       onEditService(service);
                     }}
                   >
                     <Pencil size={15} />
-                  </span>
+                  </button>
 
-                  <span
+                  <button
+                    type="button"
                     className="service-icon-btn danger"
+                    aria-label="Obriši uslugu"
                     onClick={(event) => {
                       event.stopPropagation();
                       onDeleteService(service.id);
                     }}
                   >
                     <Trash2 size={15} />
-                  </span>
-
-                  <span className="service-icon-btn">
-                    <MoreVertical size={15} />
-                  </span>
+                  </button>
                 </div>
               </button>
             );

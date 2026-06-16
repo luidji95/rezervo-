@@ -200,21 +200,20 @@
 .services-table-row {
   display: grid;
   grid-template-columns:
-    34px
-    minmax(230px, 1.7fr)
-    120px
-    90px
-    90px
-    130px
-    90px
-    140px;
-  gap: 12px;
+    minmax(210px, 1.7fr)
+    108px
+    78px
+    82px
+    116px
+    76px
+    96px;
+  gap: 8px;
   align-items: center;
-  min-width: 990px;
+  min-width: 860px;
 }
 
 .services-table-head {
-  padding: 0 12px 12px;
+  padding: 0 8px 10px;
   border-bottom: 1px solid #e2e8f0;
   color: #64748b;
   font-size: 12px;
@@ -226,7 +225,7 @@
   border: none;
   background: transparent;
   text-align: left;
-  padding: 14px 12px;
+  padding: 12px 8px;
   border-bottom: 1px solid #f1f5f9;
   cursor: pointer;
 }
@@ -234,12 +233,6 @@
 .services-table-row:hover,
 .services-table-row.active {
   background: #f0fdfa;
-}
-
-.service-checkbox input {
-  width: 15px;
-  height: 15px;
-  accent-color: #0891b2;
 }
 
 .service-name-cell {
@@ -316,6 +309,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
 }
 
 .service-icon-btn:hover {

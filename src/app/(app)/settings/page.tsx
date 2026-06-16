@@ -1,119 +1,127 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { Settings, Clock, CalendarX, Scissors, Users } from 'lucide-react';
+import { useState } from "react";
+import {
+  CalendarX,
+  Clock,
+  CreditCard,
+  Scissors,
+  Settings,
+  Sparkles,
+  Users,
+} from "lucide-react";
 
-// Uvozi tvoje prave menadžere koje smo spakovali i optimizovali
-import GeneralManager from '@/features/settings/general/GeneralManager';
-import WorkingHoursManager from '@/features/settings/working-hours/WorkingHoursManager';
-import ClosuresManager from '@/features/settings/closures/ClosureManager';
+import GeneralManager from "@/features/settings/general/GeneralManager";
+import WorkingHoursManager from "@/features/settings/working-hours/WorkingHoursManager";
+import ClosuresManager from "@/features/settings/closures/ClosureManager";
 
-import './settings.css';
+import "./settings.css";
 
-type SubMenuType = 'opste' | 'radno-vreme' | 'neradni-dani' | 'usluge' | 'tim';
+export type SettingsTabId =
+  | "general"
+  | "working-hours"
+  | "closures"
+  | "services"
+  | "team"
+  | "ai"
+  | "billing";
+
+const SETTINGS_TABS = [
+  { id: "general", label: "Opšte", icon: Settings },
+  { id: "working-hours", label: "Radno vreme", icon: Clock },
+  { id: "closures", label: "Neradni dani", icon: CalendarX },
+  { id: "services", label: "Usluge i cene", icon: Scissors },
+  { id: "team", label: "Tim i dozvole", icon: Users },
+  { id: "ai", label: "AI Receptionist", icon: Sparkles },
+  { id: "billing", label: "Plaćanje i plan", icon: CreditCard },
+] satisfies {
+  id: SettingsTabId;
+  label: string;
+  icon: typeof Settings;
+}[];
 
 export default function SettingsPage() {
-  const [activeSubMenu, setActiveSubMenu] = useState<SubMenuType>('opste');
+  const [activeTab, setActiveTab] = useState<SettingsTabId>("general");
 
   return (
     <div className="settings-page">
-      
-      {/* VRH STRANICE */}
-      <div className="settings-top-header">
-        <h1>Podešavanja</h1>
-        <p>Upravljajte svojim salonom, timom i postavkama sistema.</p>
-      </div>
+      <header className="settings-top-header">
+        <div>
+          <h1>Podešavanja</h1>
+          <p>Upravljajte salonom, timom, uslugama i sistemskim podešavanjima.</p>
+        </div>
+      </header>
 
-      {/* GLAVNI TROKOLONSKI RASPORED */}
-      <div className="settings-layout-grid">
-        
-        {/* KOLONA 1: VERTIKALNI POD-MENI */}
-        <aside className="settings-submenu-sidebar">
-          <button 
-            className={`submenu-btn ${activeSubMenu === 'opste' ? 'active' : ''}`} 
-            onClick={() => setActiveSubMenu('opste')}
-          >
-            <Settings className="lucide-icon" size={18} /> Opšte
-          </button>
-          <button 
-            className={`submenu-btn ${activeSubMenu === 'radno-vreme' ? 'active' : ''}`} 
-            onClick={() => setActiveSubMenu('radno-vreme')}
-          >
-            <Clock className="lucide-icon" size={18} /> Radno vreme
-          </button>
-          <button 
-            className={`submenu-btn ${activeSubMenu === 'neradni-dani' ? 'active' : ''}`} 
-            onClick={() => setActiveSubMenu('neradni-dani')}
-          >
-            <CalendarX className="lucide-icon" size={18} /> Neradni dani
-          </button>
-          <button 
-            className={`submenu-btn ${activeSubMenu === 'usluge' ? 'active' : ''}`} 
-            onClick={() => setActiveSubMenu('usluge')}
-          >
-            <Scissors className="lucide-icon" size={18} /> Usluge i cene
-          </button>
-          <button 
-            className={`submenu-btn ${activeSubMenu === 'tim' ? 'active' : ''}`} 
-            onClick={() => setActiveSubMenu('tim')}
-          >
-            <Users className="lucide-icon" size={18} /> Tim i dozvole
-          </button>
-        </aside>
+      <nav className="settings-tabs">
+        {SETTINGS_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
 
-        {/* KOLONA 2: DINAMIČKI PRIKAZ LOGIKE (SREDINA) */}
-        <main className="settings-main-content">
-          {activeSubMenu === 'opste' && <GeneralManager />}
-          
-          {/* Ubacujemo pravi WorkingHoursManager umesto placeholdera */}
-          {activeSubMenu === 'radno-vreme' && <WorkingHoursManager />}
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              className={`settings-tab-btn ${isActive ? "active" : ""}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <Icon size={17} />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </nav>
 
-          {/* Ubacujemo pravi ClosuresManager umesto placeholdera */}
-          {activeSubMenu === 'neradni-dani' && <ClosuresManager />}
+      <main className="settings-content">
+        {activeTab === "general" && (
+          <GeneralManager onChangeTab={setActiveTab} />
+        )}
 
-          {/* Placebolderi za buduće module koji čekaju svoj red */}
-          {activeSubMenu === 'usluge' && (
-            <div className="settings-card">
-              <h3>Usluge i cene</h3>
-              <p className="card-sub">Ovde će se renderovati vaš ServicesManager.</p>
-            </div>
-          )}
+        {activeTab === "working-hours" && <WorkingHoursManager />}
+        {activeTab === "closures" && <ClosuresManager />}
 
-          {activeSubMenu === 'tim' && (
-            <div className="settings-card">
-              <h3>Tim i dozvole</h3>
-              <p className="card-sub">Ovde će se renderovati vaš TeamManager.</p>
-            </div>
-          )}
-        </main>
+        {activeTab === "services" && (
+          <SettingsPlaceholder
+            title="Usluge i cene"
+            description="Ovde ćemo kasnije ubaciti ServicesManager."
+          />
+        )}
 
-        {/* KOLONA 3: DESNI SIDEBAR */}
-        <aside className="settings-right-sidebar">
-          <div className="sidebar-widget-card">
-            <div className="widget-header">
-              <h4>👑 Vaš plan</h4>
-              <span className="plan-badge">Pro Plan</span>
-            </div>
-            <p className="plan-date">Aktivan do 12.06.2027.</p>
-            <ul className="plan-features-list" style={{ listStyle: 'none', padding: 0, margin: '12px 0', fontSize: '13px' }}>
-              <li style={{ marginBottom: '6px' }}>✓ AI Receptionist</li>
-              <li style={{ marginBottom: '6px' }}>✓ Neograničeni termini</li>
-              <li style={{ marginBottom: '6px' }}>✓ Integracije</li>
-            </ul>
-            <button className="btn-widget-primary">Upravljaj planom</button>
-          </div>
+        {activeTab === "team" && (
+          <SettingsPlaceholder
+            title="Tim i dozvole"
+            description="Ovde ćemo kasnije ubaciti TeamManager v1."
+          />
+        )}
 
-          <div className="sidebar-widget-card" style={{ marginTop: '16px' }}>
-            <h4>Integracije</h4>
-            <p className="widget-desc">Povezani kanali sa sistemom.</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>📷 Instagram</span> <span style={{ color: '#16a34a', fontWeight: 600 }}>Spojeno</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>💬 WhatsApp</span> <span style={{ color: '#16a34a', fontWeight: 600 }}>Spojeno</span></div>
-            </div>
-          </div>
-        </aside>
+        {activeTab === "ai" && (
+          <SettingsPlaceholder
+            title="AI Receptionist"
+            description="Podešavanja AI recepcionera dolaze kasnije."
+          />
+        )}
 
-      </div>
+        {activeTab === "billing" && (
+          <SettingsPlaceholder
+            title="Plaćanje i plan"
+            description="Billing sistem još nije implementiran."
+          />
+        )}
+      </main>
+    </div>
+  );
+}
+
+function SettingsPlaceholder({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="settings-card">
+      <h3>{title}</h3>
+      <p className="card-sub">{description}</p>
     </div>
   );
 }

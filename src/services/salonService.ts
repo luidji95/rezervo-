@@ -85,6 +85,10 @@ export async function getCurrentSalon(profileId: string) {
       owner_id,
       name,
       slug,
+      description,
+      short_description,
+      logo_url,
+      cover_image_url,
       phone,
       email,
       website_url,
@@ -97,6 +101,10 @@ export async function getCurrentSalon(profileId: string) {
       default_currency,
       booking_enabled,
       online_booking_enabled,
+      public_booking_url,
+      instagram_url,
+      facebook_url,
+      tiktok_url,
       created_at
     `)
     .eq("owner_id", profileId)
@@ -115,8 +123,10 @@ export async function updateCurrentSalon({
   phone,
   email,
   websiteUrl,
+  instagramUrl,
   city,
   addressLine,
+  description,
 }: UpdateSalonInput) {
   const { data, error } = await supabase
     .from("salons")
@@ -124,9 +134,11 @@ export async function updateCurrentSalon({
       name,
       phone,
       email,
-      website_url: websiteUrl,
-      city,
+      website_url: websiteUrl || null,
+      instagram_url: instagramUrl || null,
+      city: city || null,
       address_line: addressLine,
+      description: description || null,
     })
     .eq("id", salonId)
     .select()

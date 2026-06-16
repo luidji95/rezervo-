@@ -1,22 +1,165 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useSalon } from '@/context/SalonContext';
-import { updateCurrentSalon } from '@/services/salonService';
+import Image from "next/image";
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Globe, Mail, MapPin, Phone } from "lucide-react";
 
-// TIP ZA PROPSE IZ CONTEXTA (Ovo automatski izvlači tip tvog salona)
-type SalonType = NonNullable<ReturnType<typeof useSalon>['currentSalon']>;
+import { useSalon } from "@/context/SalonContext";
+import { updateCurrentSalon } from "@/services/salonService";
+import { getSalonWorkingHours } from "@/services/workingService";
+import type { WorkingHour } from "@/types/workingHour";
+import { generalSchema, type GeneralFormData } from "./generalSchema";
 
-/* ==========================================================================
-   1. PARENT KOMPONENTA: Upravlja učitavanjem podataka i proverom stanja
-   ========================================================================== */
-export default function GeneralManager() {
-  const { currentSalon, salonLoading } = useSalon();
+type Salon = NonNullable<ReturnType<typeof useSalon>["currentSalon"]>;
+
+const DAYS = [
+  { value: 1, label: "Ponedeljak" },
+  { value: 2, label: "Utorak" },
+  { value: 3, label: "Sreda" },
+  { value: 4, label: "Četvrtak" },
+  { value: 5, label: "Petak" },
+  { value: 6, label: "Subota" },
+  { value: 0, label: "Nedelja" },
+];
+
+function formatTime(time?: string | null) {
+  if (!time) return "";
+  return time.slice(0, 5);
+}
+
+function formatWorkingTime(hour?: WorkingHour) {
+  if (!hour) return "Nije podešeno";
+  if (!hour.is_working_day) return "Zatvoreno";
+
+  return `${formatTime(hour.opens_at)} - ${formatTime(hour.closes_at)}`;
+}
+
+export default function GeneralManager({
+  onChangeTab,
+}: {
+  onChangeTab?: (tab: "working-hours") => void;
+}) {
+  const { currentSalon, salonLoading, refetchSalon } = useSalon();
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [message, setMessage] = useState("");
+  const [workingHours, setWorkingHours] = useState<WorkingHour[]>([]);
+  const [workingHoursLoading, setWorkingHoursLoading] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<GeneralFormData>({
+    resolver: zodResolver(generalSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      phone: "",
+      address_line: "",
+      website_url: "",
+      instagram_url: "",
+      description: "",
+    },
+  });
+
+  useEffect(() => {
+    if (!currentSalon) return;
+
+    reset({
+      name: currentSalon.name || "",
+      email: currentSalon.email || "",
+      phone: currentSalon.phone || "",
+      address_line: currentSalon.address_line || "",
+      website_url: currentSalon.website_url || "",
+      instagram_url: currentSalon.instagram_url || "",
+      description: currentSalon.description || "",
+    });
+  }, [currentSalon, reset]);
+
+useEffect(() => {
+  const salonId = currentSalon?.id;
+
+  if (!salonId) return;
+
+  let ignore = false;
+
+  async function loadWorkingHours() {
+    try {
+      setWorkingHoursLoading(true);
+
+      const data = await getSalonWorkingHours(salonId);
+
+      if (!ignore) {
+        setWorkingHours(data);
+      }
+    } catch (error) {
+      console.error("Greška pri učitavanju radnog vremena:", error);
+    } finally {
+      if (!ignore) {
+        setWorkingHoursLoading(false);
+      }
+    }
+  }
+
+  loadWorkingHours();
+
+  return () => {
+    ignore = true;
+  };
+}, [currentSalon?.id]);
+
+  async function onSubmit(data: GeneralFormData) {
+    if (!currentSalon) return;
+
+    try {
+      setMessage("");
+
+      await updateCurrentSalon({
+        salonId: currentSalon.id,
+        name: data.name,
+        phone: data.phone,
+        email: data.email,
+        websiteUrl: data.website_url,
+        instagramUrl: data.instagram_url,
+        addressLine: data.address_line,
+        description: data.description,
+      });
+
+      await refetchSalon();
+
+      setIsEditing(false);
+      setMessage("Podaci su uspešno sačuvani.");
+    } catch (error) {
+      console.error("Greška pri čuvanju salona:", error);
+      setMessage("Došlo je do greške pri čuvanju.");
+    }
+  }
+
+  function handleCancel() {
+    if (!currentSalon) return;
+
+    reset({
+      name: currentSalon.name || "",
+      email: currentSalon.email || "",
+      phone: currentSalon.phone || "",
+      address_line: currentSalon.address_line || "",
+      website_url: currentSalon.website_url || "",
+      instagram_url: currentSalon.instagram_url || "",
+      description: currentSalon.description || "",
+    });
+
+    setIsEditing(false);
+    setMessage("");
+  }
 
   if (salonLoading) {
     return (
       <div className="settings-card">
-        <p>Učitavanje podataka o vašem salonu...</p>
+        <p>Učitavanje opštih podešavanja...</p>
       </div>
     );
   }
@@ -24,260 +167,294 @@ export default function GeneralManager() {
   if (!currentSalon) {
     return (
       <div className="settings-card">
-        <p style={{ color: '#dc2626' }}>Greška: Podaci o salonu nisu uspešno učitani.</p>
+        <p className="settings-error-text">Salon nije pronađen.</p>
       </div>
     );
   }
 
-  // Tek kada smo 100% sigurni da imamo salon, renderujemo formu i prosleđujemo ga kao prop
-  return <GeneralSettingsForm salon={currentSalon} />;
+  return (
+    <div className="general-layout">
+      <div className="general-left-column">
+        <section className="settings-card">
+          <div className="settings-card-header">
+            <div>
+              <h3>Osnovne informacije</h3>
+              <p>Pregled osnovnih informacija o salonu.</p>
+            </div>
+
+            {!isEditing && (
+              <button
+                type="button"
+                className="settings-secondary-btn"
+                onClick={() => setIsEditing(true)}
+              >
+                Izmeni
+              </button>
+            )}
+          </div>
+
+          {!isEditing ? (
+            <SalonInfoView salon={currentSalon} />
+          ) : (
+            <form onSubmit={handleSubmit(onSubmit)} className="general-edit-form">
+              <div className="salon-form-fields">
+                <FormField label="Naziv salona *" error={errors.name?.message} full>
+                  <input {...register("name")} />
+                </FormField>
+
+                <FormField label="Email" error={errors.email?.message}>
+                  <input {...register("email")} />
+                </FormField>
+
+                <FormField label="Telefon" error={errors.phone?.message}>
+                  <input {...register("phone")} />
+                </FormField>
+
+                <FormField label="Adresa" error={errors.address_line?.message} full>
+                  <input {...register("address_line")} />
+                </FormField>
+
+                <FormField label="Web sajt">
+                  <input {...register("website_url")} />
+                </FormField>
+
+                <FormField label="Instagram">
+                  <input {...register("instagram_url")} placeholder="@salon" />
+                </FormField>
+
+                <FormField label="Opis salona" full>
+                  <textarea rows={4} {...register("description")} />
+                </FormField>
+
+                <div className="form-actions full">
+                  <button
+                    type="button"
+                    className="settings-secondary-btn"
+                    onClick={handleCancel}
+                    disabled={isSubmitting}
+                  >
+                    Otkaži
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="settings-primary-btn"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? "Čuvanje..." : "Sačuvaj izmene"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
+
+          {message && <p className="settings-save-message standalone">{message}</p>}
+        </section>
+
+        <section className="settings-card">
+          <div className="settings-card-header">
+            <div>
+              <h3>Radno vreme — sažetak</h3>
+              <p>Vaše trenutno radno vreme iz baze.</p>
+            </div>
+            <button
+              type="button"
+              className="settings-secondary-btn"
+              onClick={() => onChangeTab?.("working-hours")}
+            >
+              Izmeni
+            </button>
+          </div>
+
+          {workingHoursLoading ? (
+            <p className="card-sub">Učitavanje radnog vremena...</p>
+          ) : (
+            <div className="working-summary-grid">
+              {DAYS.map((day) => {
+                const hour = workingHours.find(
+                  (item) => item.day_of_week === day.value
+                );
+
+                return (
+                  <WorkingSummaryDay
+                    key={day.value}
+                    day={day.label}
+                    time={formatWorkingTime(hour)}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <aside className="general-right-column">
+        <PublicPreviewCard salon={currentSalon} />
+        <MapCard />
+      </aside>
+    </div>
+  );
 }
 
-/* ==========================================================================
-   2. CHILD KOMPONENTA: Inicijalizuje state instant pri mount-u (NEMA useEffect-a)
-   ========================================================================== */
-function GeneralSettingsForm({ salon }: { salon: SalonType }) {
-  const { refetchSalon } = useSalon();
-  
-  // Kontrola režima izmene za kartice
-  const [isEditingInfo, setIsEditingInfo] = useState(false);
-  const [isEditingLang, setIsEditingLang] = useState(false);
-  
-  // Čist useState - dobija podatke ODMAH, bez čekanja na efekte
-  const [formData, setFormData] = useState({
-    name: salon.name || '',
-    phone: salon.phone || '',
-    email: salon.email || '',
-    websiteUrl: salon.website_url || '',
-    city: salon.city || '',
-    addressLine: salon.address_line || '',
-  });
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleInfoSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    setErrorMsg(null);
-
-    try {
-      await updateCurrentSalon({
-        salonId: salon.id,
-        name: formData.name,
-        phone: formData.phone || null,
-        email: formData.email || null,
-        websiteUrl: formData.websiteUrl || null,
-        city: formData.city || null,
-        addressLine: formData.addressLine || null,
-      });
-
-      await refetchSalon(); 
-      setIsEditingInfo(false);
-    } catch (error: unknown) {
-      console.error('Greška tokom ažuriranja:', error);
-      if (error instanceof Error) {
-        setErrorMsg(error.message);
-      } else {
-        setErrorMsg('Došlo je do greške prilikom čuvanja podataka.');
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
+function SalonInfoView({ salon }: { salon: Salon }) {
   return (
-    <div className="settings-view-wrapper">
-      
-      {/* KARTICA 1: OPŠTE INFORMACIJE SALONA */}
-      <div className="settings-card">
-        <div className="card-header-actions">
-          <div>
-            <h3>Opšte informacije</h3>
-            <p>Osnovni identitet i kontakt podaci vašeg salona.</p>
-          </div>
-          {!isEditingInfo && (
-            <button className="btn-card-edit" onClick={() => setIsEditingInfo(true)}>
-              Uredi
-            </button>
-          )}
-        </div>
-
-        {errorMsg && <div className="error-banner" style={{ color: '#dc2626', marginBottom: '16px', fontSize: '13px', fontWeight: 500 }}>{errorMsg}</div>}
-
-        {!isEditingInfo ? (
-          /* READ-ONLY PRIKAZ */
-          <div className="salon-info-block">
-            <div className="salon-logo-placeholder">
-              <span className="logo-text">
-                {salon.name ? salon.name.charAt(0).toUpperCase() : 'H'}
-              </span>
-            </div>
-            <div className="salon-info-data-grid">
-              <div>
-                <span className="data-label">Naziv salona</span>
-                <p className="data-value">{salon.name || '/'}</p>
-              </div>
-              <div>
-                <span className="data-label">Grad</span>
-                <p className="data-value">{salon.city || '/'}</p>
-              </div>
-              <div>
-                <span className="data-label">Adresa</span>
-                <p className="data-value">{salon.address_line || '/'}</p>
-              </div>
-              <div>
-                <span className="data-label">Email</span>
-                <p className="data-value">{salon.email || '/'}</p>
-              </div>
-              <div>
-                <span className="data-label">Web sajt</span>
-                <p className="data-value">{salon.website_url || '/'}</p>
-              </div>
-              <div>
-                <span className="data-label">Telefon</span>
-                <p className="data-value">{salon.phone || '/'}</p>
-              </div>
-            </div>
-          </div>
+    <div className="salon-info-view">
+      <div className="salon-info-logo">
+        {salon.logo_url ? (
+          <Image
+            src={salon.logo_url}
+            alt={salon.name}
+            width={150}
+            height={150}
+            unoptimized
+          />
         ) : (
-          /* INTERAKTIVNA FORMA ZA IZMENU */
-          <form onSubmit={handleInfoSubmit} className="salon-edit-form">
-            <div className="form-grid-inputs">
-              <div className="input-field-group">
-                <label>Naziv salona *</label>
-                <input 
-                  type="text" 
-                  value={formData.name} 
-                  onChange={e => setFormData({...formData, name: e.target.value})} 
-                  required
-                />
-              </div>
-              <div className="input-field-group">
-                <label>Grad</label>
-                <input 
-                  type="text" 
-                  value={formData.city} 
-                  onChange={e => setFormData({...formData, city: e.target.value})} 
-                />
-              </div>
-              <div className="input-field-group">
-                <label>Adresa</label>
-                <input 
-                  type="text" 
-                  value={formData.addressLine} 
-                  onChange={e => setFormData({...formData, addressLine: e.target.value})} 
-                />
-              </div>
-              <div className="input-field-group">
-                <label>Email</label>
-                <input 
-                  type="email" 
-                  value={formData.email} 
-                  onChange={e => setFormData({...formData, email: e.target.value})} 
-                />
-              </div>
-              <div className="input-field-group">
-                <label>Web sajt</label>
-                <input 
-                  type="text" 
-                  value={formData.websiteUrl} 
-                  onChange={e => setFormData({...formData, websiteUrl: e.target.value})} 
-                />
-              </div>
-              <div className="input-field-group">
-                <label>Telefon</label>
-                <input 
-                  type="text" 
-                  value={formData.phone} 
-                  onChange={e => setFormData({...formData, phone: e.target.value})} 
-                />
-              </div>
-            </div>
-            <div className="form-actions-buttons">
-              <button type="button" className="btn-cancel" onClick={() => setIsEditingInfo(false)}>
-                Otkaži
-              </button>
-              <button type="submit" className="btn-save" disabled={isSubmitting}>
-                {isSubmitting ? 'Čuvanje...' : 'Sačuvaj izmene'}
-              </button>
-            </div>
-          </form>
+          <span>{salon.name.charAt(0).toUpperCase()}</span>
         )}
       </div>
 
-      {/* KARTICA 2: VALUTA I JEZIK */}
-      <div className="settings-card">
-        <div className="card-header-actions">
-          <div>
-            <h3>Valuta i jezik</h3>
-            <p>Konfiguracija lokalizacije za vaš salon.</p>
+      <div className="salon-info-grid">
+        <InfoItem label="Naziv salona" value={salon.name} />
+        <InfoItem label="Email" value={salon.email || "Nije uneto"} />
+        <InfoItem label="Telefon" value={salon.phone || "Nije uneto"} />
+        <InfoItem label="Adresa" value={salon.address_line || "Nije uneto"} />
+        <InfoItem label="Web sajt" value={salon.website_url || "Nije uneto"} />
+        <InfoItem label="Instagram" value={salon.instagram_url || "Nije uneto"} />
+        <InfoItem label="Grad" value={salon.city || "Nije uneto"} />
+        <InfoItem label="Vremenska zona" value={salon.timezone || "Europe/Belgrade"} />
+
+        <div className="info-item full">
+          <span>Opis salona</span>
+          <strong>{salon.description || "Opis još nije dodat."}</strong>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PublicPreviewCard({ salon }: { salon: Salon }) {
+  return (
+    <section className="settings-card public-preview-card">
+      <div className="settings-card-header">
+        <div>
+          <h3>Pregled javnog prikaza</h3>
+          <p>Ovako će vaš salon izgledati klijentima na online rezervacijama.</p>
+        </div>
+      </div>
+
+      <div className="public-salon-preview">
+        <div className="public-cover-image" />
+
+        <div className="public-preview-body">
+          <div className="public-logo-floating">
+            {salon.logo_url ? (
+              <Image
+                src={salon.logo_url}
+                alt={salon.name}
+                width={86}
+                height={86}
+                unoptimized
+              />
+            ) : (
+              <span>{salon.name.charAt(0).toUpperCase()}</span>
+            )}
           </div>
-          <button className="btn-card-edit" onClick={() => setIsEditingLang(!isEditingLang)}>
-            {isEditingLang ? 'Zatvori' : 'Uredi'}
+
+          <h3>{salon.name}</h3>
+          <p className="public-rating">⭐ 4.9 (128 ocena)</p>
+
+          <PreviewLine
+            icon={<MapPin size={15} />}
+            text={salon.address_line || "Adresa nije uneta"}
+          />
+          <PreviewLine
+            icon={<Phone size={15} />}
+            text={salon.phone || "Telefon nije unet"}
+          />
+          <PreviewLine
+            icon={<Mail size={15} />}
+            text={salon.email || "Email nije unet"}
+          />
+          <PreviewLine
+            icon={<Globe size={15} />}
+            text={salon.website_url || "Web sajt nije unet"}
+          />
+
+          <button type="button" className="preview-booking-btn">
+            Pogledaj stranicu za rezervacije
           </button>
         </div>
-        <div className="form-row-inputs">
-          <div className="input-select-wrapper">
-            <label>Valuta sistema</label>
-            <select disabled={!isEditingLang} defaultValue={salon.default_currency || "RSD"}>
-              <option value="RSD">RSD (Srpski dinar)</option>
-              <option value="EUR">EUR (Euro)</option>
-            </select>
-          </div>
-          <div className="input-select-wrapper">
-            <label>Jezik interfejsa</label>
-            <select disabled={!isEditingLang}>
-              <option>Srpski (Latinica)</option>
-              <option>English</option>
-            </select>
-          </div>
-        </div>
       </div>
+    </section>
+  );
+}
 
-      {/* KARTICA 3: AUTOMATIZACIJA I SISTEM */}
-      <div className="settings-card">
-        <h3>Podešavanje sistema</h3>
-        <p className="card-sub">Pravila ponašanja aplikacije pri zakazivanju klijenata.</p>
-        
-        <div className="system-toggles-list">
-          <div className="toggle-row">
-            <div className="toggle-info">
-              <div>
-                <h4>Automatsko potvrđivanje termina</h4>
-                <p>Nove rezervacije sa javnog linka dobijaju status &apos;potvrđeno&apos; instant.</p>
-              </div>
-            </div>
-            <label className="switch">
-              <input type="checkbox" defaultChecked={salon.booking_enabled} />
-              <span className="slider round"></span>
-            </label>
-          </div>
-
-          <div className="toggle-row">
-            <div className="toggle-info">
-              <div>
-                <h4>Online otkazivanje termina</h4>
-                <p>Klijenti mogu sami da otkažu dolazak preko linka iz obaveštenja.</p>
-              </div>
-            </div>
-            <label className="switch">
-              <input type="checkbox" defaultChecked={salon.online_booking_enabled} />
-              <span className="slider round"></span>
-            </label>
-          </div>
-        </div>
-      </div>
-
-      {/* KARTICA 4: OPASNA ZONA */}
-      <div className="settings-card danger-card">
+function MapCard() {
+  return (
+    <section className="settings-card map-card">
+      <div className="settings-card-header">
         <div>
-          <h3 className="danger-title">Opasna zona</h3>
-          <p>Trajno brisanje salona i svih zabeleženih termina. Akcija je nepovratna.</p>
+          <h3>Lokacija na mapi</h3>
+          <p>Vaša adresa koja je prikazana klijentima.</p>
         </div>
-        <button className="btn-danger-outline">Obriši salon</button>
       </div>
 
+      <div className="fake-map">
+        <MapPin size={34} />
+      </div>
+
+      <button type="button" className="settings-secondary-btn full-width">
+        Promeni lokaciju
+      </button>
+    </section>
+  );
+}
+
+function InfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="info-item">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function FormField({
+  label,
+  error,
+  full,
+  children,
+}: {
+  label: string;
+  error?: string;
+  full?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`form-field ${full ? "full" : ""}`}>
+      <label>{label}</label>
+      {children}
+      {error && <small>{error}</small>}
+    </div>
+  );
+}
+
+function WorkingSummaryDay({ day, time }: { day: string; time: string }) {
+  return (
+    <div className="working-summary-day">
+      <span>{day}</span>
+      <strong>{time}</strong>
+    </div>
+  );
+}
+
+function PreviewLine({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="preview-info-row">
+      {icon}
+      <span>{text}</span>
     </div>
   );
 }

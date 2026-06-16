@@ -75,7 +75,7 @@ export function useEmployeesPageData() {
         return employeesData[0] ?? null;
       });
     } catch (error) {
-      console.error("GreÅ¡ka pri uÄitavanju zaposlenih:", error);
+      console.error("Greška pri učitavanju zaposlenih:", error);
     } finally {
       setLoading(false);
     }
@@ -121,7 +121,7 @@ export function useEmployeesPageData() {
           setSelectedEmployeeHours(data);
         }
       } catch (error) {
-        console.error("GreÅ¡ka pri uÄitavanju radnog vremena zaposlenog:", error);
+        console.error("Greška pri učitavanju radnog vremena zaposlenog:", error);
       }
     }
 
@@ -171,7 +171,7 @@ export function useEmployeesPageData() {
 
   async function handleDeleteEmployee(employeeId: string) {
     const confirmed = window.confirm(
-      "Da li sigurno Å¾eliÅ¡ da obriÅ¡eÅ¡ zaposlenog?"
+      "Da li sigurno želiš da obrišeš zaposlenog?"
     );
 
     if (!confirmed) return;
@@ -180,7 +180,7 @@ export function useEmployeesPageData() {
       await deleteEmployee(employeeId);
       await loadData();
     } catch (error) {
-      console.error("GreÅ¡ka pri brisanju zaposlenog:", error);
+      console.error("Greška pri brisanju zaposlenog:", error);
     }
   }
 

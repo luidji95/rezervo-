@@ -14,6 +14,7 @@ import {
 import GeneralManager from "@/features/settings/general/GeneralManager";
 import WorkingHoursManager from "@/features/settings/working-hours/WorkingHoursManager";
 import ClosuresManager from "@/features/settings/closures/ClosureManager";
+import TeamManager from "@/features/settings/team/TeamManager";
 
 import "./settings.css";
 
@@ -86,12 +87,7 @@ export default function SettingsPage() {
           />
         )}
 
-        {activeTab === "team" && (
-          <SettingsPlaceholder
-            title="Tim i dozvole"
-            description="Ovde ćemo kasnije ubaciti TeamManager v1."
-          />
-        )}
+        {activeTab === "team" && <TeamManager />}
 
         {activeTab === "ai" && (
           <SettingsPlaceholder

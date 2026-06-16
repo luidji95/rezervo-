@@ -87,7 +87,7 @@ export function AddEmployeeModal({
         <div className="employee-modal-header">
           <div>
             <h3>Novi zaposleni</h3>
-            <p>Dodajte zaposlenog i usluge koje moÅ¾e da obavlja.</p>
+            <p>Dodajte zaposlenog i usluge koje može da obavlja.</p>
           </div>
 
           <button type="button" onClick={onClose}>
@@ -153,7 +153,7 @@ export function AddEmployeeModal({
               className="employees-secondary-btn"
               onClick={onClose}
             >
-              OtkaÅ¾i
+              Otkaži
             </button>
 
             <button
@@ -161,7 +161,7 @@ export function AddEmployeeModal({
               className="employees-primary-btn"
               disabled={isSubmitting}
             >
-              {isSubmitting ? "ÄŒuvanje..." : "SaÄuvaj zaposlenog"}
+              {isSubmitting ? "Čuvanje..." : "Sačuvaj zaposlenog"}
             </button>
           </div>
         </form>

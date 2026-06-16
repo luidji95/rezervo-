@@ -49,7 +49,7 @@ export function EmployeeTable({
           <input
             value={searchValue}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="PretraÅ¾i zaposlene..."
+            placeholder="Pretraži zaposlene..."
           />
         </div>
 

@@ -105,7 +105,7 @@ export function EmployeeDetailsPanel({
 
         <div className="employee-stats-grid">
           <MiniStat label="Termini" value="42" />
-          <MiniStat label="Prihod" value="â‚¬1.240" />
+          <MiniStat label="Prihod" value="€1.240" />
           <MiniStat label="Popunjenost" value="78%" />
           <MiniStat label="Novi klijenti" value="12" />
           <MiniStat label="Povratni" value="30" />

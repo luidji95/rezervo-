@@ -41,7 +41,7 @@ export default function EmployeesPage() {
     return (
       <div className="employees-page">
         <div className="employees-card">
-          <p>UÄitavanje zaposlenih...</p>
+          <p>Učitavanje zaposlenih...</p>
         </div>
       </div>
     );
@@ -51,7 +51,7 @@ export default function EmployeesPage() {
     return (
       <div className="employees-page">
         <div className="employees-card">
-          <p className="employees-error">Salon nije pronaÄ‘en.</p>
+          <p className="employees-error">Salon nije pronađen.</p>
         </div>
       </div>
     );
@@ -88,7 +88,7 @@ export default function EmployeesPage() {
         />
         <KpiCard
           label="Ukupan prihod"
-          value="â‚¬12.450"
+          value="€12.450"
           icon={<CalendarDays size={18} />}
           muted="dummy"
         />

@@ -4,7 +4,7 @@ export const DAYS = [
   { value: 1, label: "Pon" },
   { value: 2, label: "Uto" },
   { value: 3, label: "Sre" },
-  { value: 4, label: "ÄŒet" },
+  { value: 4, label: "Čet" },
   { value: 5, label: "Pet" },
   { value: 6, label: "Sub" },
   { value: 0, label: "Ned" },
@@ -33,7 +33,7 @@ export function formatTime(time?: string | null) {
 }
 
 export function formatWorkingHour(hour?: WorkingHour) {
-  if (!hour) return "NasleÄ‘eno";
+  if (!hour) return "Nasleđeno";
   if (!hour.is_working_day) return "-";
 
   return `${formatTime(hour.opens_at)} - ${formatTime(hour.closes_at)}`;

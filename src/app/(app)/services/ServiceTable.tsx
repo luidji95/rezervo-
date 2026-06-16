@@ -145,11 +145,18 @@ export function ServiceTable({
             const popularity = getDummyPopularity(service.id);
 
             return (
-              <button
+              <div
                 key={service.id}
-                type="button"
+                role="button"
+                tabIndex={0}
                 className={`services-table-row ${isSelected ? "active" : ""}`}
                 onClick={() => onSelectService(service)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelectService(service);
+                  }
+                }}
               >
                 <div className="service-name-cell">
                   <div className="service-avatar">
@@ -213,7 +220,7 @@ export function ServiceTable({
                     <Trash2 size={15} />
                   </button>
                 </div>
-              </button>
+              </div>
             );
           })
         )}

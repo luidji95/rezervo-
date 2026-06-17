@@ -25,8 +25,12 @@ export async function getUpcomingAppointments(
       start_time,
       end_time,
       status,
+      payment_status,
+      booking_source,
       price,
       currency,
+      customer_note,
+      internal_note,
       clients ( id, full_name ),
       employees ( id, full_name, display_name ),
       services:primary_service_id ( id, name )

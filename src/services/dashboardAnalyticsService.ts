@@ -47,7 +47,9 @@ export async function getPopularServices(
   const reducer = new Map<string, PopularService>();
 
   (data ?? []).forEach((appointment) => {
-    const service = appointment.services;
+    const services = appointment.services;
+    const service = Array.isArray(services) ? services[0] : services;
+
     if (!service?.id) {
       return;
     }

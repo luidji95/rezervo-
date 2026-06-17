@@ -4,10 +4,12 @@ export type AppointmentListItem = {
   start_time: string;
   end_time: string;
   status: string;
-  payment_status: string;
-  booking_source: string;
-  price: number;
-  currency: string;
+
+  payment_status: string | null;
+  booking_source: string | null;
+  price: number | null;
+  currency: string | null;
+
   customer_note: string | null;
   internal_note: string | null;
 

@@ -101,7 +101,8 @@ export async function getTopClients(
   const reducer = new Map<string, TopClient>();
 
   (data ?? []).forEach((appointment) => {
-    const client = appointment.clients;
+    const clients = appointment.clients;
+    const client = Array.isArray(clients) ? clients[0] : clients;
 
     if (!client?.id) {
       return;

@@ -122,63 +122,6 @@
   cursor: pointer;
 }
 
-/* Zaposleni Select Meni */
-.filter-select-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.filter-icon-left {
-  position: absolute;
-  left: 12px;
-  color: #94a3b8;
-  pointer-events: none;
-}
-
-.employee-filter-select {
-  background-color: #ffffff;
-  color: #1e293b;
-  border: 1px solid #e2e8f0;
-  padding: 8px 36px 8px 36px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  outline: none;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2.5' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 14px;
-  transition: all 0.2s;
-}
-
-.employee-filter-select:hover {
-  border-color: #cbd5e1;
-}
-
-/* Dugme Filteri */
-.btn-filter-toggle {
-  background-color: #ffffff;
-  color: #1e293b;
-  border: 1px solid #e2e8f0;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-filter-toggle:hover {
-  background-color: #f8fafc;
-  border-color: #cbd5e1;
-}
-
 /* PRIMARNO CTA DUGME: Novi Termin */
 .topbar-new-appointment-btn {
   display: flex;
@@ -521,6 +464,7 @@
 .history-item {
   display: flex;
   align-items: center;
+  gap: 8px;
   font-size: 14px;
   color: #344054;
 }
@@ -549,6 +493,172 @@
 
 .view-all-history-btn:hover {
   text-decoration: underline;
+}
+
+.history-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.history-status--completed {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.history-status--cancelled {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.history-status--no-show {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.history-status--pending {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.history-status--confirmed {
+  background: #e0e7ff;
+  color: #4f46e5;
+}
+
+.history-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(4px);
+}
+
+.history-modal {
+  width: min(100%, 620px);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.24);
+}
+
+.history-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.history-modal__header h2 {
+  margin: 0;
+  color: #101828;
+  font-size: 20px;
+}
+
+.history-modal__header p {
+  margin: 4px 0 0;
+  color: #667085;
+  font-size: 14px;
+}
+
+.history-modal__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #667085;
+  cursor: pointer;
+}
+
+.history-modal__close:hover,
+.history-modal__close:focus-visible {
+  background: #f2f4f7;
+  color: #101828;
+  outline: none;
+}
+
+.history-modal__list {
+  max-height: calc(min(760px, 100vh - 48px) - 90px);
+  overflow-y: auto;
+  padding: 8px 24px 20px;
+}
+
+.history-modal__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 0;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.history-modal__item:last-child {
+  border-bottom: 0;
+}
+
+.history-modal__appointment {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.history-modal__appointment time {
+  color: #667085;
+  font-size: 13px;
+}
+
+.history-modal__appointment strong {
+  overflow: hidden;
+  color: #101828;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .history-modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .history-modal {
+    max-height: 88vh;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .history-modal__header,
+  .history-modal__list {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .history-modal__item {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
 }
 
 /* Operativna dugmad za promenu statusa i edit na dnu panela */

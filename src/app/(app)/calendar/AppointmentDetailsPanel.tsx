@@ -13,6 +13,7 @@ import {
   CalendarRange,
   Trash2,
 } from "lucide-react";
+import ClientHistoryModal, { HistoryStatusBadge } from "./ClientHistoryModal";
 
 import type {
   CalendarAppointment,
@@ -82,6 +83,7 @@ export default function AppointmentDetailsPanel({
   onEditClick, // <-- Destrukturiran novi prop
 }: AppointmentDetailsPanelProps) {
   const [localLoading, setLocalLoading] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
   if (!selectedAppointment) {
     return (
@@ -210,7 +212,7 @@ export default function AppointmentDetailsPanel({
             </p>
           ) : (
             <div className="history-list">
-              {clientHistory.map((appointment) => (
+              {clientHistory.slice(0, 3).map((appointment) => (
                 <div className="history-item" key={appointment.id}>
                   <span className="history-date">
                     {formatAppointmentDate(appointment.start_time)}
@@ -218,14 +220,18 @@ export default function AppointmentDetailsPanel({
                   <span className="history-service">
                     {appointment.services?.name || "Usluga"}
                   </span>
-                  <CheckCircle2 size={16} className="history-check-icon" />
+                  <HistoryStatusBadge status={appointment.status} />
                 </div>
               ))}
             </div>
           )}
 
           {clientHistory.length > 0 && (
-            <button type="button" className="view-all-history-btn">
+            <button
+              type="button"
+              className="view-all-history-btn"
+              onClick={() => setIsHistoryModalOpen(true)}
+            >
               Pogledaj sve
             </button>
           )}
@@ -347,6 +353,14 @@ export default function AppointmentDetailsPanel({
         </div>
 
       </div>
+
+      {isHistoryModalOpen && (
+        <ClientHistoryModal
+          clientName={selectedAppointment.clients?.full_name || "Klijent"}
+          appointments={clientHistory}
+          onClose={() => setIsHistoryModalOpen(false)}
+        />
+      )}
     </aside>
   );
 }

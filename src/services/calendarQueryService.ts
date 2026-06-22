@@ -95,7 +95,7 @@ export async function getCalendarAppointments(
 }
 
 /**
- * Dobavlja istoriju poslednja 3 termina za klijenta, isključujući trenutni termin.
+ * Dobavlja kompletnu istoriju termina za klijenta, isključujući trenutni termin.
  */
 export async function getClientAppointmentHistory(
   clientId: string,
@@ -114,8 +114,7 @@ export async function getClientAppointmentHistory(
     .eq("client_id", clientId)
     .neq("id", currentAppointmentId)
     .lt("start_time", new Date().toISOString())
-    .order("start_time", { ascending: false })
-    .limit(3);
+    .order("start_time", { ascending: false });
 
   if (error) {
     throw new Error(error.message);

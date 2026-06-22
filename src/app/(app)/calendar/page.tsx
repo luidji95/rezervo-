@@ -374,8 +374,6 @@ export default function CalendarPage() {
         onPreviousDay={handlePreviousDay}
         onNextDay={handleNextDay}
         onToday={handleToday}
-        employees={employees}
-        getEmployeeDisplayName={getEmployeeDisplayName}
         onCreateClick={() => setIsCreateAppointmentModalOpen(true)}
       />
 

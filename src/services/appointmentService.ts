@@ -1,5 +1,9 @@
 import { supabase } from "@/lib/supabase/client";
 import { validateAppointmentSlot } from "@/services/appointmentValidationService";
+import {
+  createNotification,
+  formatNotificationAppointmentTime,
+} from "@/services/notificationService";
 import type {
   CreateAppointmentInput,
   CreateAppointmentResult,
@@ -205,6 +209,18 @@ export async function createAppointment(
     throw new Error("Appointment created, but service snapshot failed.");
   }
 
+  await createNotification(
+    {
+      salonId,
+      type: "appointment_created",
+      title: "Novi termin",
+      message: `${client.fullName.trim()} je rezervisao/la ${service.name} za ${formatNotificationAppointmentTime(startIso)}`,
+      entityType: "appointment",
+      entityId: appointment.id,
+    },
+    supabaseClient
+  );
+
   return appointment;
 }
 
@@ -229,14 +245,40 @@ export async function rescheduleAppointment(
     .from("appointments")
     .update(updateData)
     .eq("id", appointmentId)
-    .select()
+    .select(`
+      id,
+      salon_id,
+      start_time,
+      clients (full_name),
+      services:primary_service_id (name)
+    `)
     .single();
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return data;
+  const appointment = data as unknown as {
+    id: string;
+    salon_id: string;
+    start_time: string;
+    clients: { full_name: string } | null;
+    services: { name: string } | null;
+  };
+
+  await createNotification(
+    {
+      salonId: appointment.salon_id,
+      type: "appointment_rescheduled",
+      title: "Termin pomeren",
+      message: `${appointment.clients?.full_name || "Klijent"}: ${appointment.services?.name || "usluga"} je pomerena za ${formatNotificationAppointmentTime(appointment.start_time)}`,
+      entityType: "appointment",
+      entityId: appointment.id,
+    },
+    supabaseClient
+  );
+
+  return appointment;
 }
 
 // =========================================================

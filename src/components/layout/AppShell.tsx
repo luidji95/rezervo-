@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { logoutUser } from "@/services/authService";
+import NotificationBell from "@/components/layout/NotificationBell";
 
 // Svi importi ikonica spakovani na jedno mesto bez dupliranja
 import { 
@@ -14,9 +15,7 @@ import {
   Settings, 
   ChevronLeft,
   ChevronRight,
-  Bell,
   User,
-  Plus
 } from "lucide-react";
 
 type AppShellProps = {
@@ -132,11 +131,7 @@ export default function AppShell({ children }: AppShellProps) {
             {/* Ubačeno premium dugme za kreiranje novog termina direktno iz topbar-a */}
             
 
-            {/* Zvonce za notifikacije */}
-            <button type="button" className="topbar-icon-btn" aria-label="Notifikacije">
-              <Bell size={20} />
-              <span className="notification-dot"></span>
-            </button>
+            <NotificationBell />
             
             {/* Avatar - Logout okidač */}
             <button 

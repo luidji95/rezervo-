@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useSalon } from "@/context/SalonContext";
 
 import {
@@ -10,6 +11,7 @@ import {
 
 import {
   getCalendarAppointments,
+  getCalendarAppointmentById,
   getClientAppointmentHistory,
   updateAppointmentStatus,
   type CalendarAppointment,
@@ -86,8 +88,21 @@ function calculateAppointmentHeight(startTime: string, endTime: string) {
 // Glavna Komponenta
 // ==========================================
 
-export default function CalendarPage() {
+function getAppointmentDateInputValue(dateString: string) {
+  const parts = new Intl.DateTimeFormat("en", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Europe/Belgrade",
+  }).formatToParts(new Date(dateString));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function CalendarPageContent() {
   const { currentSalon, salonLoading } = useSalon();
+  const searchParams = useSearchParams();
+  const linkedAppointmentId = searchParams.get("appointment");
 
   // State menadžment
   const [selectedDate, setSelectedDate] = useState(getTodayDateInputValue());
@@ -110,6 +125,38 @@ export default function CalendarPage() {
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isCreateAppointmentModalOpen, setIsCreateAppointmentModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!currentSalon || !linkedAppointmentId) return;
+
+    let ignore = false;
+    const salonId = currentSalon.id;
+
+    async function loadLinkedAppointment() {
+      try {
+        const appointment = await getCalendarAppointmentById(
+          salonId,
+          linkedAppointmentId as string
+        );
+
+        if (!ignore) {
+          setSelectedDate(getAppointmentDateInputValue(appointment.start_time));
+          setSelectedAppointment(appointment);
+        }
+      } catch (linkedAppointmentError) {
+        console.error(
+          "Greška pri otvaranju termina iz notifikacije:",
+          linkedAppointmentError
+        );
+      }
+    }
+
+    void loadLinkedAppointment();
+
+    return () => {
+      ignore = true;
+    };
+  }, [currentSalon, linkedAppointmentId]);
 
   // useEffect: Učitavanje zaposlenih (trigeruje se samo pri promeni salona)
   useEffect(() => {
@@ -512,5 +559,13 @@ export default function CalendarPage() {
         onSuccess={handleCreateAppointmentConfirm}
       />
     </main>
+  );
+}
+
+export default function CalendarPage() {
+  return (
+    <Suspense fallback={<p>Učitavanje kalendara...</p>}>
+      <CalendarPageContent />
+    </Suspense>
   );
 }

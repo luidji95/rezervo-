@@ -1,4 +1,34 @@
 import { supabase } from "@/lib/supabase/client";
+import {
+  createNotification,
+  formatNotificationAppointmentTime,
+  type NotificationType,
+} from "@/services/notificationService";
+
+const CALENDAR_APPOINTMENT_SELECT = `
+  id,
+  salon_id,
+  start_time,
+  end_time,
+  status,
+  customer_note,
+  internal_note,
+  clients (
+    id,
+    full_name,
+    phone,
+    email
+  ),
+  services:primary_service_id (
+    id,
+    name
+  ),
+  employees (
+    id,
+    full_name,
+    display_name
+  )
+`;
 
 export type CalendarAppointment = {
   id: string;
@@ -53,35 +83,7 @@ export async function getCalendarAppointments(
 
   const { data, error } = await supabase
     .from("appointments")
-    .select(
-      `
-      id,
-      salon_id,              
-      start_time,
-      end_time,
-      status,
-      customer_note, 
-      internal_note,
-
-      clients (
-        id,
-        full_name,
-        phone,
-        email
-      ),
-
-      services:primary_service_id (
-        id,                 
-        name
-      ),
-
-      employees (
-        id,
-        full_name,
-        display_name
-      )
-    `
-    )
+    .select(CALENDAR_APPOINTMENT_SELECT)
     .eq("salon_id", salonId)
     .gte("start_time", startOfDay.toISOString())
     .lte("start_time", endOfDay.toISOString())
@@ -92,6 +94,22 @@ export async function getCalendarAppointments(
   }
 
   return (data ?? []) as unknown as CalendarAppointment[];
+}
+
+export async function getCalendarAppointmentById(
+  salonId: string,
+  appointmentId: string
+): Promise<CalendarAppointment> {
+  const { data, error } = await supabase
+    .from("appointments")
+    .select(CALENDAR_APPOINTMENT_SELECT)
+    .eq("salon_id", salonId)
+    .eq("id", appointmentId)
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  return data as unknown as CalendarAppointment;
 }
 
 /**
@@ -140,14 +158,69 @@ export async function updateAppointmentStatus(
     .from("appointments")
     .update({ status })
     .eq("id", appointmentId)
-    .select()
+    .select(`
+      id,
+      salon_id,
+      start_time,
+      clients (full_name),
+      services:primary_service_id (name)
+    `)
     .single();
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return data;
+  const appointment = data as unknown as {
+    id: string;
+    salon_id: string;
+    start_time: string;
+    clients: { full_name: string } | null;
+    services: { name: string } | null;
+  };
+
+  const notificationByStatus: Partial<
+    Record<
+      typeof status,
+      { type: NotificationType; title: string; action: string }
+    >
+  > = {
+    confirmed: {
+      type: "appointment_confirmed",
+      title: "Termin potvrđen",
+      action: "potvrđen",
+    },
+    completed: {
+      type: "appointment_completed",
+      title: "Termin završen",
+      action: "završen",
+    },
+    cancelled: {
+      type: "appointment_cancelled",
+      title: "Termin otkazan",
+      action: "otkazan",
+    },
+    no_show: {
+      type: "appointment_no_show",
+      title: "Klijent se nije pojavio",
+      action: "označen kao nedolazak",
+    },
+  };
+
+  const notification = notificationByStatus[status];
+
+  if (notification) {
+    await createNotification({
+      salonId: appointment.salon_id,
+      type: notification.type,
+      title: notification.title,
+      message: `${appointment.clients?.full_name || "Klijent"} – ${appointment.services?.name || "usluga"}: termin je ${notification.action} (${formatNotificationAppointmentTime(appointment.start_time)})`,
+      entityType: "appointment",
+      entityId: appointment.id,
+    });
+  }
+
+  return appointment;
 }
 
 /**

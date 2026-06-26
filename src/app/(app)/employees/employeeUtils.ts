@@ -27,6 +27,21 @@ export function formatDate(date: string) {
   }).format(new Date(date));
 }
 
+export function formatEmployeeDate(value: string | null | undefined) {
+  if (!value) return "Nema termina";
+
+  return formatDate(value);
+}
+
+export function formatMoney(value: number) {
+  return new Intl.NumberFormat("sr-RS", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 export function formatTime(time?: string | null) {
   if (!time) return "";
   return time.slice(0, 5);
@@ -47,9 +62,4 @@ export function getEmployeeMainWorkingTime(hours: WorkingHour[]) {
   return `${formatTime(firstWorkingDay.opens_at)} - ${formatTime(
     firstWorkingDay.closes_at
   )}`;
-}
-
-export function getDummyOccupancy(employeeId: string) {
-  const value = employeeId.charCodeAt(0) % 25;
-  return 70 + value;
 }

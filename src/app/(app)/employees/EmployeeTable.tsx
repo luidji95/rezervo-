@@ -2,17 +2,18 @@
 
 import {
   Eye,
-  MoreVertical,
   Pencil,
   Search,
   Trash2,
 } from "lucide-react";
 
+import type { EmployeeStats } from "@/services/employeeAnalyticsService";
 import type { Employee } from "@/types/employee";
 import type { WorkingHour } from "@/types/workingHour";
 
 import {
-  getDummyOccupancy,
+  formatEmployeeDate,
+  formatMoney,
   getEmployeeMainWorkingTime,
   getInitials,
 } from "./employeeUtils";
@@ -20,6 +21,7 @@ import type { EmployeeStatusFilter } from "./useEmployeesPageData";
 
 type EmployeeTableProps = {
   employees: Employee[];
+  employeeStatsByEmployeeId: Record<string, EmployeeStats>;
   selectedEmployee: Employee | null;
   salonWorkingHours: WorkingHour[];
   searchValue: string;
@@ -32,6 +34,7 @@ type EmployeeTableProps = {
 
 export function EmployeeTable({
   employees,
+  employeeStatsByEmployeeId,
   selectedEmployee,
   salonWorkingHours,
   searchValue,
@@ -70,9 +73,14 @@ export function EmployeeTable({
         <div className="employees-table-head">
           <span>Zaposleni</span>
           <span>Uloga</span>
-          <span>Tim</span>
           <span>Radno vreme</span>
+          <span>Termini</span>
+          <span>Completed</span>
+          <span>Prihod</span>
+          <span>Novi</span>
+          <span>Povratni</span>
           <span>Popunjenost</span>
+          <span>Poslednji</span>
           <span>Akcije</span>
         </div>
 
@@ -83,7 +91,8 @@ export function EmployeeTable({
         ) : (
           employees.map((employee) => {
             const isSelected = selectedEmployee?.id === employee.id;
-            const occupancy = getDummyOccupancy(employee.id);
+            const stats = employeeStatsByEmployeeId[employee.id];
+            const occupancy = stats?.occupancy ?? 0;
 
             return (
               <button
@@ -111,9 +120,12 @@ export function EmployeeTable({
                   {employee.position || "Zaposleni"}
                 </span>
 
-                <span>Frizerski tim</span>
-
                 <span>{getEmployeeMainWorkingTime(salonWorkingHours)}</span>
+                <span>{stats?.totalAppointments ?? 0}</span>
+                <span>{stats?.completedAppointments ?? 0}</span>
+                <span>{formatMoney(stats?.revenue ?? 0)}</span>
+                <span>{stats?.newClients ?? 0}</span>
+                <span>{stats?.returningClients ?? 0}</span>
 
                 <div className="employee-occupancy-cell">
                   <span>{occupancy}%</span>
@@ -124,6 +136,7 @@ export function EmployeeTable({
                     />
                   </div>
                 </div>
+                <span>{formatEmployeeDate(stats?.lastAppointmentAt)}</span>
 
                 <div className="employee-actions-cell">
                   <span className="employee-icon-btn">
@@ -142,10 +155,6 @@ export function EmployeeTable({
                     }}
                   >
                     <Trash2 size={15} />
-                  </span>
-
-                  <span className="employee-icon-btn">
-                    <MoreVertical size={15} />
                   </span>
                 </div>
               </button>

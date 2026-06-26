@@ -1,5 +1,6 @@
 import { CalendarDays, Mail, Phone } from "lucide-react";
 
+import type { EmployeeStats } from "@/services/employeeAnalyticsService";
 import type { Employee } from "@/types/employee";
 import type { Service } from "@/types/service";
 import type { WorkingHour } from "@/types/workingHour";
@@ -7,6 +8,8 @@ import type { WorkingHour } from "@/types/workingHour";
 import {
   DAYS,
   formatDate,
+  formatEmployeeDate,
+  formatMoney,
   formatWorkingHour,
   getInitials,
 } from "./employeeUtils";
@@ -16,6 +19,7 @@ type EmployeeDetailsPanelProps = {
   services: Service[];
   salonWorkingHours: WorkingHour[];
   employeeWorkingHours: WorkingHour[];
+  stats: EmployeeStats;
 };
 
 export function EmployeeDetailsPanel({
@@ -23,6 +27,7 @@ export function EmployeeDetailsPanel({
   services,
   salonWorkingHours,
   employeeWorkingHours,
+  stats,
 }: EmployeeDetailsPanelProps) {
   if (!employee) {
     return (
@@ -101,14 +106,26 @@ export function EmployeeDetailsPanel({
       </div>
 
       <div className="employee-section">
-        <h4>Statistika meseca</h4>
+        <h4>Statistika</h4>
 
         <div className="employee-stats-grid">
-          <MiniStat label="Termini" value="42" />
-          <MiniStat label="Prihod" value="€1.240" />
-          <MiniStat label="Popunjenost" value="78%" />
-          <MiniStat label="Novi klijenti" value="12" />
-          <MiniStat label="Povratni" value="30" />
+          <MiniStat label="Termini" value={String(stats.totalAppointments)} />
+          <MiniStat
+            label="Završeni"
+            value={String(stats.completedAppointments)}
+          />
+          <MiniStat label="Prihod" value={formatMoney(stats.revenue)} />
+          <MiniStat label="Novi klijenti" value={String(stats.newClients)} />
+          <MiniStat label="Povratni" value={String(stats.returningClients)} />
+          <MiniStat label="Popunjenost" value={`${stats.occupancy}%`} />
+          <MiniStat
+            label="Poslednji termin"
+            value={formatEmployeeDate(stats.lastAppointmentAt)}
+          />
+          <MiniStat
+            label="Prosečna vrednost"
+            value={formatMoney(stats.averageAppointmentValue)}
+          />
         </div>
       </div>
     </section>

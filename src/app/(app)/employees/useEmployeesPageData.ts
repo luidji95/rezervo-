@@ -4,12 +4,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useSalon } from "@/context/SalonContext";
 import {
+  createEmptyEmployeeStats,
+  getEmployeeAnalytics,
+  type EmployeeAnalytics,
+  type EmployeeKPIs,
+  type EmployeeStats,
+} from "@/services/employeeAnalyticsService";
+import {
   deleteEmployee,
   getSalonEmployees,
 } from "@/services/employeeService";
 import { getSalonEmployeeServices } from "@/services/employeeServiceRelationService";
 import { getSalonServices } from "@/services/serviceService";
 import {
+  getAllWorkingHoursForSalon,
   getEmployeeWorkingHours,
   getSalonWorkingHours,
 } from "@/services/workingService";
@@ -21,10 +29,21 @@ import type { WorkingHour } from "@/types/workingHour";
 
 export type EmployeeStatusFilter = "all" | "active" | "inactive";
 
+const emptyEmployeeKPIs: EmployeeKPIs = {
+  totalEmployees: 0,
+  activeToday: 0,
+  totalRevenue: 0,
+  averageOccupancy: 0,
+};
+
 export function useEmployeesPageData() {
   const { currentSalon, salonLoading } = useSalon();
 
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [analytics, setAnalytics] = useState<EmployeeAnalytics>({
+    kpis: emptyEmployeeKPIs,
+    statsByEmployeeId: {},
+  });
   const [services, setServices] = useState<Service[]>([]);
   const [employeeServices, setEmployeeServices] = useState<EmployeeService[]>(
     []
@@ -50,15 +69,27 @@ export function useEmployeesPageData() {
     try {
       setLoading(true);
 
-      const [employeesData, servicesData, relationsData, workingHoursData] =
-        await Promise.all([
+      const [
+        employeesData,
+        servicesData,
+        relationsData,
+        workingHoursData,
+        allWorkingHoursData,
+      ] = await Promise.all([
           getSalonEmployees(salonId),
           getSalonServices(salonId),
           getSalonEmployeeServices(salonId),
           getSalonWorkingHours(salonId),
+          getAllWorkingHoursForSalon(salonId),
         ]);
+      const analyticsData = await getEmployeeAnalytics(
+        salonId,
+        employeesData,
+        allWorkingHoursData
+      );
 
       setEmployees(employeesData);
+      setAnalytics(analyticsData);
       setServices(servicesData);
       setEmployeeServices(relationsData);
       setSalonWorkingHours(workingHoursData);
@@ -151,10 +182,16 @@ export function useEmployeesPageData() {
     });
   }, [employees, searchValue, statusFilter]);
 
-  const totalEmployees = employees.length;
-  const activeEmployees = employees.filter(
-    (employee) => employee.is_active
-  ).length;
+  const selectedEmployeeStats = useMemo((): EmployeeStats => {
+    if (!selectedEmployee) {
+      return createEmptyEmployeeStats();
+    }
+
+    return (
+      analytics.statsByEmployeeId[selectedEmployee.id] ??
+      createEmptyEmployeeStats()
+    );
+  }, [analytics.statsByEmployeeId, selectedEmployee]);
 
   const getServicesForEmployee = useCallback(
     (employeeId: string) => {
@@ -185,8 +222,9 @@ export function useEmployeesPageData() {
   }
 
   return {
-    activeEmployees,
     currentSalon,
+    employeeKPIs: analytics.kpis,
+    employeeStatsByEmployeeId: analytics.statsByEmployeeId,
     filteredEmployees,
     getServicesForEmployee,
     handleDeleteEmployee,
@@ -198,11 +236,11 @@ export function useEmployeesPageData() {
     searchValue,
     selectedEmployee,
     selectedEmployeeHours,
+    selectedEmployeeStats,
     services,
     setSearchValue,
     setSelectedEmployee,
     setStatusFilter,
     statusFilter,
-    totalEmployees,
   };
 }

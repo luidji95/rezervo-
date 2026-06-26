@@ -7,6 +7,7 @@ import { AddEmployeeModal } from "./AddEmployeeModal";
 import { EmployeeDetailsPanel } from "./EmployeeDetailsPanel";
 import { EmployeeTable } from "./EmployeeTable";
 import { KpiCard } from "./KpiCard";
+import { formatMoney } from "./employeeUtils";
 import { useEmployeesPageData } from "./useEmployeesPageData";
 
 import "./employees.css";
@@ -16,8 +17,9 @@ export default function EmployeesPage() {
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
 
   const {
-    activeEmployees,
     currentSalon,
+    employeeKPIs,
+    employeeStatsByEmployeeId,
     filteredEmployees,
     getServicesForEmployee,
     handleDeleteEmployee,
@@ -29,12 +31,12 @@ export default function EmployeesPage() {
     searchValue,
     selectedEmployee,
     selectedEmployeeHours,
+    selectedEmployeeStats,
     services,
     setSearchValue,
     setSelectedEmployee,
     setStatusFilter,
     statusFilter,
-    totalEmployees,
   } = useEmployeesPageData();
 
   if (salonLoading || loading) {
@@ -78,25 +80,25 @@ export default function EmployeesPage() {
       <section className="employee-kpi-grid">
         <KpiCard
           label="Ukupno zaposlenih"
-          value={String(totalEmployees)}
+          value={String(employeeKPIs.totalEmployees)}
           icon={<UserRound size={18} />}
         />
         <KpiCard
-          label="Aktivni zaposleni"
-          value={String(activeEmployees)}
+          label="Aktivni danas"
+          value={String(employeeKPIs.activeToday)}
           icon={<Briefcase size={18} />}
         />
         <KpiCard
           label="Ukupan prihod"
-          value="€12.450"
+          value={formatMoney(employeeKPIs.totalRevenue)}
           icon={<CalendarDays size={18} />}
-          muted="dummy"
+          muted="Completed termini"
         />
         <KpiCard
-          label="Popunjenost"
-          value="84%"
+          label="Prosečna popunjenost"
+          value={`${employeeKPIs.averageOccupancy}%`}
           icon={<CalendarDays size={18} />}
-          muted="dummy"
+          muted="Prema radnom vremenu"
         />
       </section>
 
@@ -104,6 +106,7 @@ export default function EmployeesPage() {
         <main className="employees-main">
           <EmployeeTable
             employees={filteredEmployees}
+            employeeStatsByEmployeeId={employeeStatsByEmployeeId}
             selectedEmployee={selectedEmployee}
             salonWorkingHours={salonWorkingHours}
             searchValue={searchValue}
@@ -125,6 +128,7 @@ export default function EmployeesPage() {
             }
             salonWorkingHours={salonWorkingHours}
             employeeWorkingHours={selectedEmployeeHours}
+            stats={selectedEmployeeStats}
           />
         </aside>
       </div>

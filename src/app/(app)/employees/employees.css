@@ -57,7 +57,7 @@
 
 .employee-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -650,13 +650,18 @@
 .employees-table-row {
   display: grid;
   grid-template-columns:
-    minmax(220px, 1.6fr)
+    minmax(220px, 1.5fr)
     110px
     120px
-    130px
+    76px
+    90px
+    110px
+    70px
+    80px
     140px
+    120px
     140px;
   gap: 12px;
   align-items: center;
-  min-width: 820px;
+  min-width: 1350px;
 }

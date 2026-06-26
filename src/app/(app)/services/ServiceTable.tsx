@@ -1,22 +1,17 @@
 "use client";
 
 import {
-  Eye,
-  Pencil,
   Scissors,
   Search,
-  Trash2,
 } from "lucide-react";
 
+import type { ServiceStats } from "@/services/serviceAnalyticsService";
 import type { Service } from "@/types/service";
 import {
   formatDuration,
   formatMoney,
   formatPrice,
-  formatServiceDate,
-  getServiceCategory,
 } from "./serviceUtils";
-import type { ServiceStats } from "@/services/serviceAnalyticsService";
 import type {
   ServiceSortOption,
   ServiceStatusFilter,
@@ -33,8 +28,6 @@ type ServiceTableProps = {
   sortOption: ServiceSortOption;
   totalServices: number;
   onCategoryChange: (category: string) => void;
-  onDeleteService: (serviceId: string) => void;
-  onEditService: (service: Service) => void;
   onSearchChange: (value: string) => void;
   onSelectService: (service: Service) => void;
   onSortChange: (value: ServiceSortOption) => void;
@@ -52,8 +45,6 @@ export function ServiceTable({
   sortOption,
   totalServices,
   onCategoryChange,
-  onDeleteService,
-  onEditService,
   onSearchChange,
   onSelectService,
   onSortChange,
@@ -131,14 +122,11 @@ export function ServiceTable({
       <div className="services-table">
         <div className="services-table-head">
           <span>Usluga</span>
-          <span>Kategorija</span>
-          <span>Trajanje</span>
           <span>Cena</span>
+          <span>Trajanje</span>
           <span>Termini</span>
           <span>Prihod</span>
-          <span>Poslednja rez.</span>
           <span>Status</span>
-          <span>Akcije</span>
         </div>
 
         {services.length === 0 ? (
@@ -175,17 +163,10 @@ export function ServiceTable({
                   </div>
                 </div>
 
-                <span className="service-category-pill">
-                  {getServiceCategory(service)}
-                </span>
-                <span>{formatDuration(service.duration_minutes)}</span>
                 <span>{formatPrice(service)}</span>
-                <span>
-                  {stats?.totalAppointments ?? 0} / {stats?.completedAppointments ?? 0}
-                  <small>{stats?.popularityPercent ?? 0}% popularnost</small>
-                </span>
+                <span>{formatDuration(service.duration_minutes)}</span>
+                <span>{stats?.totalAppointments ?? 0}</span>
                 <span>{formatMoney(stats?.revenue ?? 0)}</span>
-                <span>{formatServiceDate(stats?.lastBookedAt)}</span>
                 <span
                   className={`service-status-pill ${
                     service.is_active ? "active" : "inactive"
@@ -193,44 +174,6 @@ export function ServiceTable({
                 >
                   {service.is_active ? "ON" : "OFF"}
                 </span>
-
-                <div className="service-actions-cell">
-                  <button
-                    type="button"
-                    className="service-icon-btn"
-                    aria-label="Pregled usluge"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onSelectService(service);
-                    }}
-                  >
-                    <Eye size={15} />
-                  </button>
-
-                  <button
-                    type="button"
-                    className="service-icon-btn"
-                    aria-label="Izmeni uslugu"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onEditService(service);
-                    }}
-                  >
-                    <Pencil size={15} />
-                  </button>
-
-                  <button
-                    type="button"
-                    className="service-icon-btn danger"
-                    aria-label="Obriši uslugu"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDeleteService(service.id);
-                    }}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
               </div>
             );
           })

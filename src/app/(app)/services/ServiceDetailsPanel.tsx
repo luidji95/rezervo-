@@ -48,34 +48,6 @@ export function ServiceDetailsPanel({
         </div>
       </div>
 
-      <div className="service-info-list">
-        <InfoRow
-          icon={<Clock size={15} />}
-          label="Trajanje"
-          value={formatDuration(service.duration_minutes)}
-        />
-        <InfoRow
-          icon={<Euro size={15} />}
-          label="Cena"
-          value={formatPrice(service)}
-        />
-        <InfoRow
-          icon={<Scissors size={15} />}
-          label="Kategorija"
-          value={getServiceCategory(service)}
-        />
-        <InfoRow
-          icon={<CalendarCheck size={15} />}
-          label="Poslednji termin"
-          value={formatServiceDate(stats.lastBookedAt)}
-        />
-        <InfoRow
-          icon={<TrendingUp size={15} />}
-          label="Popularnost"
-          value={`${stats.popularity} completed (${stats.popularityPercent}%)`}
-        />
-      </div>
-
       <div className="service-section">
         <h4>Opis</h4>
         <p className="service-muted-text">
@@ -84,7 +56,28 @@ export function ServiceDetailsPanel({
       </div>
 
       <div className="service-section">
-        <h4>Statistika</h4>
+        <h4>Osnovne informacije</h4>
+        <div className="service-info-list compact">
+          <InfoRow
+            icon={<Clock size={15} />}
+            label="Trajanje"
+            value={formatDuration(service.duration_minutes)}
+          />
+          <InfoRow
+            icon={<Euro size={15} />}
+            label="Cena"
+            value={formatPrice(service)}
+          />
+          <InfoRow
+            icon={<Scissors size={15} />}
+            label="Kategorija"
+            value={getServiceCategory(service)}
+          />
+        </div>
+      </div>
+
+      <div className="service-section">
+        <h4>Analitika</h4>
         <div className="service-stats-grid">
           <MiniStat label="Broj termina" value={String(stats.totalAppointments)} />
           <MiniStat
@@ -97,12 +90,24 @@ export function ServiceDetailsPanel({
             value={formatMoney(stats.averageAppointmentValue)}
           />
           <MiniStat
-            label="Poslednji"
+            label="Popularnost"
+            value={`${stats.popularity} (${stats.popularityPercent}%)`}
+          />
+        </div>
+      </div>
+
+      <div className="service-section">
+        <h4>Istorija</h4>
+        <div className="service-info-list compact">
+          <InfoRow
+            icon={<CalendarCheck size={15} />}
+            label="Poslednja rezervacija"
             value={formatServiceDate(stats.lastBookedAt)}
           />
-          <MiniStat
-            label="Popularnost"
-            value={`${stats.popularityPercent}%`}
+          <InfoRow
+            icon={<TrendingUp size={15} />}
+            label="Completed"
+            value={String(stats.completedAppointments)}
           />
         </div>
       </div>

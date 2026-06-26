@@ -193,25 +193,22 @@
 }
 
 .services-table {
-  overflow-x: auto;
+  overflow-x: visible;
 }
 
 .services-table-head,
 .services-table-row {
   display: grid;
   grid-template-columns:
-    minmax(210px, 1.7fr)
-    108px
-    78px
-    82px
-    116px
-    96px
-    116px
-    76px
-    96px;
-  gap: 8px;
+    minmax(180px, 1.8fr)
+    minmax(78px, 0.7fr)
+    minmax(72px, 0.7fr)
+    minmax(70px, 0.6fr)
+    minmax(92px, 0.8fr)
+    minmax(66px, 0.6fr);
+  gap: 10px;
   align-items: center;
-  min-width: 1080px;
+  min-width: 0;
 }
 
 .services-table-head {

@@ -27,7 +27,6 @@ export default function ServicesPage() {
     categories,
     currentSalon,
     filteredServices,
-    handleDeleteService,
     loadData,
     loading,
     salonId,
@@ -136,10 +135,6 @@ export default function ServicesPage() {
             sortOption={sortOption}
             totalServices={services.length}
             onCategoryChange={setSelectedCategory}
-            onDeleteService={(serviceId) => {
-              void handleDeleteService(serviceId);
-            }}
-            onEditService={openEditModal}
             onSearchChange={setSearchValue}
             onSelectService={setSelectedService}
             onSortChange={setSortOption}

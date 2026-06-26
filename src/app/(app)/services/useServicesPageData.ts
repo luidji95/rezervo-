@@ -4,11 +4,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useSalon } from "@/context/SalonContext";
 import {
+  createEmptyServiceStats,
+  getServiceAnalytics,
+  type ServiceAnalytics,
+  type ServiceKPIs,
+  type ServiceStats,
+} from "@/services/serviceAnalyticsService";
+import {
   deleteService,
   getSalonServices,
 } from "@/services/serviceService";
 import type { Service } from "@/types/service";
-import { getAverageDuration, getServiceCategory } from "./serviceUtils";
+import { getServiceCategory } from "./serviceUtils";
 
 export type ServiceStatusFilter = "all" | "active" | "inactive";
 export type ServiceSortOption =
@@ -17,10 +24,21 @@ export type ServiceSortOption =
   | "duration-desc"
   | "popular-desc";
 
+const emptyServiceKPIs: ServiceKPIs = {
+  totalServices: 0,
+  activeServices: 0,
+  averagePrice: 0,
+  averageDuration: 0,
+};
+
 export function useServicesPageData() {
   const { currentSalon, salonLoading } = useSalon();
 
   const [services, setServices] = useState<Service[]>([]);
+  const [analytics, setAnalytics] = useState<ServiceAnalytics>({
+    kpis: emptyServiceKPIs,
+    statsByServiceId: {},
+  });
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchValue, setSearchValue] = useState("");
@@ -38,8 +56,10 @@ export function useServicesPageData() {
       setLoading(true);
 
       const servicesData = await getSalonServices(salonId);
+      const analyticsData = await getServiceAnalytics(salonId, servicesData);
 
       setServices(servicesData);
+      setAnalytics(analyticsData);
       setSelectedService((current) => {
         if (current) {
           return (
@@ -112,15 +132,32 @@ export function useServicesPageData() {
         }
 
         if (sortOption === "popular-desc") {
-          return second.id.charCodeAt(0) - first.id.charCodeAt(0);
+          const firstStats =
+            analytics.statsByServiceId[first.id] ?? createEmptyServiceStats();
+          const secondStats =
+            analytics.statsByServiceId[second.id] ?? createEmptyServiceStats();
+
+          return secondStats.popularity - firstStats.popularity;
         }
 
         return first.name.localeCompare(second.name, "sr");
       });
-  }, [searchValue, selectedCategory, services, sortOption, statusFilter]);
+  }, [
+    analytics.statsByServiceId,
+    searchValue,
+    selectedCategory,
+    services,
+    sortOption,
+    statusFilter,
+  ]);
 
-  const totalServices = services.length;
-  const averageDuration = getAverageDuration(services);
+  const selectedServiceStats = useMemo((): ServiceStats => {
+    if (!selectedService) {
+      return createEmptyServiceStats();
+    }
+
+    return analytics.statsByServiceId[selectedService.id] ?? createEmptyServiceStats();
+  }, [analytics.statsByServiceId, selectedService]);
 
   async function handleDeleteService(serviceId: string) {
     const confirmed = window.confirm(
@@ -138,7 +175,6 @@ export function useServicesPageData() {
   }
 
   return {
-    averageDuration,
     categories,
     currentSalon,
     filteredServices,
@@ -150,6 +186,9 @@ export function useServicesPageData() {
     searchValue,
     selectedCategory,
     selectedService,
+    selectedServiceStats,
+    serviceKPIs: analytics.kpis,
+    serviceStatsByServiceId: analytics.statsByServiceId,
     services,
     setSearchValue,
     setSelectedCategory,
@@ -158,6 +197,5 @@ export function useServicesPageData() {
     setStatusFilter,
     sortOption,
     statusFilter,
-    totalServices,
   };
 }

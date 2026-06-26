@@ -8,13 +8,6 @@ export const DEFAULT_SERVICE_CATEGORIES = [
   "Nadogradnja",
 ];
 
-export const SERVICE_INCLUDED_ITEMS = [
-  "Pranje kose",
-  "Šišanje",
-  "Feniranje",
-  "Saveti za održavanje",
-];
-
 export function getServiceCategory(service: Service) {
   return service.category_name || "Bez kategorije";
 }
@@ -34,18 +27,21 @@ export function formatPrice(service: Service) {
   return `${value.toLocaleString("sr-RS")} ${currency}`;
 }
 
-export function getDummyPopularity(serviceId: string) {
-  const value = serviceId.charCodeAt(0) % 24;
-  return 28 + value;
+export function formatMoney(value: number) {
+  return new Intl.NumberFormat("sr-RS", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
-export function getAverageDuration(services: Service[]) {
-  if (services.length === 0) return 0;
+export function formatServiceDate(value: string | null | undefined) {
+  if (!value) return "Nema rezervacija";
 
-  const total = services.reduce(
-    (sum, service) => sum + service.duration_minutes,
-    0
-  );
-
-  return Math.round(total / services.length);
+  return new Intl.DateTimeFormat("sr-RS", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(value));
 }

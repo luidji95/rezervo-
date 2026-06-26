@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import {
-  BarChart3,
+  CheckCircle2,
   Clock,
   Euro,
   Plus,
@@ -14,6 +14,7 @@ import { AddServiceModal } from "./AddServiceModal";
 import { KpiCard } from "./KpiCard";
 import { ServiceDetailsPanel } from "./ServiceDetailsPanel";
 import { ServiceTable } from "./ServiceTable";
+import { formatMoney } from "./serviceUtils";
 import { useServicesPageData } from "./useServicesPageData";
 
 import "./services.css";
@@ -23,7 +24,6 @@ export default function ServicesPage() {
   const [editingService, setEditingService] = useState<Service | null>(null);
 
   const {
-    averageDuration,
     categories,
     currentSalon,
     filteredServices,
@@ -35,6 +35,9 @@ export default function ServicesPage() {
     searchValue,
     selectedCategory,
     selectedService,
+    selectedServiceStats,
+    serviceKPIs,
+    serviceStatsByServiceId,
     services,
     setSearchValue,
     setSelectedCategory,
@@ -43,7 +46,6 @@ export default function ServicesPage() {
     setStatusFilter,
     sortOption,
     statusFilter,
-    totalServices,
   } = useServicesPageData();
 
   function openCreateModal() {
@@ -97,26 +99,27 @@ export default function ServicesPage() {
       <section className="service-kpi-grid">
         <KpiCard
           label="Ukupno usluga"
-          value={String(totalServices)}
+          value={String(serviceKPIs.totalServices)}
           icon={<Scissors size={18} />}
-          muted="+2 nove ove nedelje"
+          muted="Iz services tabele"
         />
         <KpiCard
-          label="Najpopularnija usluga"
-          value="Šišanje"
-          icon={<BarChart3 size={18} />}
-          muted="45 termina ove nedelje"
+          label="Aktivne usluge"
+          value={String(serviceKPIs.activeServices)}
+          icon={<CheckCircle2 size={18} />}
+          muted="Status active"
+        />
+        <KpiCard
+          label="Prosečna cena"
+          value={formatMoney(serviceKPIs.averagePrice)}
+          icon={<Euro size={18} />}
+          muted="AVG(price)"
         />
         <KpiCard
           label="Prosečno trajanje"
-          value={`${averageDuration} min`}
+          value={`${serviceKPIs.averageDuration} min`}
           icon={<Clock size={18} />}
-        />
-        <KpiCard
-          label="Ukupan prihod"
-          value="€3.200"
-          icon={<Euro size={18} />}
-          muted="dummy"
+          muted="AVG(duration)"
         />
       </section>
 
@@ -127,6 +130,7 @@ export default function ServicesPage() {
             services={filteredServices}
             selectedCategory={selectedCategory}
             selectedService={selectedService}
+            serviceStatsByServiceId={serviceStatsByServiceId}
             searchValue={searchValue}
             statusFilter={statusFilter}
             sortOption={sortOption}
@@ -146,6 +150,7 @@ export default function ServicesPage() {
         <aside className="services-side">
           <ServiceDetailsPanel
             service={selectedService}
+            stats={selectedServiceStats}
             onEditService={openEditModal}
           />
         </aside>

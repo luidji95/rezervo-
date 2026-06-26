@@ -205,11 +205,13 @@
     78px
     82px
     116px
+    96px
+    116px
     76px
     96px;
   gap: 8px;
   align-items: center;
-  min-width: 860px;
+  min-width: 1080px;
 }
 
 .services-table-head {
@@ -267,6 +269,14 @@
 .services-table-row > span {
   color: #64748b;
   font-size: 13px;
+}
+
+.services-table-row small {
+  display: block;
+  margin-top: 3px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .service-category-pill,

@@ -11,10 +11,12 @@ import {
 import type { Service } from "@/types/service";
 import {
   formatDuration,
+  formatMoney,
   formatPrice,
-  getDummyPopularity,
+  formatServiceDate,
   getServiceCategory,
 } from "./serviceUtils";
+import type { ServiceStats } from "@/services/serviceAnalyticsService";
 import type {
   ServiceSortOption,
   ServiceStatusFilter,
@@ -25,6 +27,7 @@ type ServiceTableProps = {
   services: Service[];
   selectedCategory: string;
   selectedService: Service | null;
+  serviceStatsByServiceId: Record<string, ServiceStats>;
   searchValue: string;
   statusFilter: ServiceStatusFilter;
   sortOption: ServiceSortOption;
@@ -43,6 +46,7 @@ export function ServiceTable({
   services,
   selectedCategory,
   selectedService,
+  serviceStatsByServiceId,
   searchValue,
   statusFilter,
   sortOption,
@@ -130,7 +134,9 @@ export function ServiceTable({
           <span>Kategorija</span>
           <span>Trajanje</span>
           <span>Cena</span>
-          <span>Popularnost</span>
+          <span>Termini</span>
+          <span>Prihod</span>
+          <span>Poslednja rez.</span>
           <span>Status</span>
           <span>Akcije</span>
         </div>
@@ -142,7 +148,7 @@ export function ServiceTable({
         ) : (
           services.map((service) => {
             const isSelected = selectedService?.id === service.id;
-            const popularity = getDummyPopularity(service.id);
+            const stats = serviceStatsByServiceId[service.id];
 
             return (
               <div
@@ -174,7 +180,12 @@ export function ServiceTable({
                 </span>
                 <span>{formatDuration(service.duration_minutes)}</span>
                 <span>{formatPrice(service)}</span>
-                <span>{popularity} ove nedelje</span>
+                <span>
+                  {stats?.totalAppointments ?? 0} / {stats?.completedAppointments ?? 0}
+                  <small>{stats?.popularityPercent ?? 0}% popularnost</small>
+                </span>
+                <span>{formatMoney(stats?.revenue ?? 0)}</span>
+                <span>{formatServiceDate(stats?.lastBookedAt)}</span>
                 <span
                   className={`service-status-pill ${
                     service.is_active ? "active" : "inactive"

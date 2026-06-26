@@ -1,21 +1,24 @@
-import { Clock, Euro, Scissors, Star, TrendingUp } from "lucide-react";
+import { CalendarCheck, Clock, Euro, Scissors, TrendingUp } from "lucide-react";
 
+import type { ServiceStats } from "@/services/serviceAnalyticsService";
 import type { Service } from "@/types/service";
 import {
-  SERVICE_INCLUDED_ITEMS,
   formatDuration,
+  formatMoney,
   formatPrice,
-  getDummyPopularity,
+  formatServiceDate,
   getServiceCategory,
 } from "./serviceUtils";
 
 type ServiceDetailsPanelProps = {
   service: Service | null;
+  stats: ServiceStats;
   onEditService: (service: Service) => void;
 };
 
 export function ServiceDetailsPanel({
   service,
+  stats,
   onEditService,
 }: ServiceDetailsPanelProps) {
   if (!service) {
@@ -62,9 +65,14 @@ export function ServiceDetailsPanel({
           value={getServiceCategory(service)}
         />
         <InfoRow
+          icon={<CalendarCheck size={15} />}
+          label="Poslednji termin"
+          value={formatServiceDate(stats.lastBookedAt)}
+        />
+        <InfoRow
           icon={<TrendingUp size={15} />}
           label="Popularnost"
-          value={`${getDummyPopularity(service.id)} termina ove nedelje`}
+          value={`${stats.popularity} completed (${stats.popularityPercent}%)`}
         />
       </div>
 
@@ -76,20 +84,26 @@ export function ServiceDetailsPanel({
       </div>
 
       <div className="service-section">
-        <h4>Uključuje</h4>
-        <div className="service-included-list">
-          {SERVICE_INCLUDED_ITEMS.map((item) => (
-            <span key={item}>{item}</span>
-          ))}
-        </div>
-      </div>
-
-      <div className="service-section">
         <h4>Statistika</h4>
         <div className="service-stats-grid">
-          <MiniStat label="Ukupno" value="128" />
-          <MiniStat label="Prihod" value="€3.200" />
-          <MiniStat label="Ocena" value="4.9" icon={<Star size={13} />} />
+          <MiniStat label="Broj termina" value={String(stats.totalAppointments)} />
+          <MiniStat
+            label="Completed"
+            value={String(stats.completedAppointments)}
+          />
+          <MiniStat label="Prihod" value={formatMoney(stats.revenue)} />
+          <MiniStat
+            label="Prosek"
+            value={formatMoney(stats.averageAppointmentValue)}
+          />
+          <MiniStat
+            label="Poslednji"
+            value={formatServiceDate(stats.lastBookedAt)}
+          />
+          <MiniStat
+            label="Popularnost"
+            value={`${stats.popularityPercent}%`}
+          />
         </div>
       </div>
 
@@ -125,19 +139,14 @@ function InfoRow({
 function MiniStat({
   label,
   value,
-  icon,
 }: {
   label: string;
   value: string;
-  icon?: React.ReactNode;
 }) {
   return (
     <div className="service-mini-stat">
       <span>{label}</span>
-      <strong>
-        {value}
-        {icon}
-      </strong>
+      <strong>{value}</strong>
     </div>
   );
 }

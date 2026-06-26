@@ -8,6 +8,7 @@ import { AddClientModal } from "./AddClientModal";
 import { ClientDetailsPanel } from "./ClientDetailsPanel";
 import { ClientTable } from "./ClientTable";
 import { KpiCard } from "./KpiCard";
+import { formatMoney } from "./clientUtils";
 import { useClientsPageData } from "./useClientsPageData";
 
 import "./clients.css";
@@ -18,6 +19,8 @@ export default function ClientsPage() {
 
   const {
     clients,
+    clientKpis,
+    clientMetricsByClientId,
     currentSalon,
     filteredClients,
     handleDeleteClient,
@@ -28,15 +31,12 @@ export default function ClientsPage() {
     salonLoading,
     searchValue,
     selectedClient,
+    selectedClientMetrics,
     setSearchValue,
     setSelectedClient,
     setSourceFilter,
-    setStatusFilter,
-    setTagFilter,
     sourceFilter,
     sourceOptions,
-    statusFilter,
-    tagFilter,
   } = useClientsPageData();
 
   function openCreateModal() {
@@ -74,7 +74,7 @@ export default function ClientsPage() {
       <header className="clients-header">
         <div>
           <h1>Klijenti</h1>
-          <p>CRM pregled kontakata, poseta, statusa i vrednosti klijenata.</p>
+          <p>CRM pregled kontakata, poseta i stvarne vrednosti klijenata.</p>
         </div>
 
         <button
@@ -92,31 +92,31 @@ export default function ClientsPage() {
           label="Ukupno klijenata"
           value={String(clients.length)}
           icon={<Users size={18} />}
-          muted="18% vs prosli mesec"
+          muted="Stvarni broj klijenata"
         />
         <KpiCard
           label="Novi klijenti"
           value={String(newClientsThisMonth)}
           icon={<TrendingUp size={18} />}
-          muted="27% dummy"
+          muted="Kreirani ovog meseca"
         />
         <KpiCard
           label="Posete ovog meseca"
-          value="146"
+          value={String(clientKpis.visitsThisMonth)}
           icon={<CalendarCheck size={18} />}
-          muted="dummy"
+          muted="Zavrseni termini"
         />
         <KpiCard
           label="Vraceni klijenti"
-          value="78%"
+          value={`${clientKpis.returningClientsPercent}%`}
           icon={<Users size={18} />}
-          muted="dummy"
+          muted={`${clientKpis.returningClients}/${clientKpis.clientsWithVisits} klijenata`}
         />
         <KpiCard
           label="Prihod od klijenata"
-          value="€8.420"
+          value={formatMoney(clientKpis.revenueThisMonth)}
           icon={<Euro size={18} />}
-          muted="dummy"
+          muted="Zavrseni termini ovog meseca"
         />
       </section>
 
@@ -124,12 +124,11 @@ export default function ClientsPage() {
         <main className="clients-main">
           <ClientTable
             clients={filteredClients}
+            metricsByClientId={clientMetricsByClientId}
             selectedClient={selectedClient}
             searchValue={searchValue}
             sourceFilter={sourceFilter}
             sourceOptions={sourceOptions}
-            statusFilter={statusFilter}
-            tagFilter={tagFilter}
             onDeleteClient={(clientId) => {
               void handleDeleteClient(clientId);
             }}
@@ -137,13 +136,14 @@ export default function ClientsPage() {
             onSearchChange={setSearchValue}
             onSelectClient={setSelectedClient}
             onSourceFilterChange={setSourceFilter}
-            onStatusFilterChange={setStatusFilter}
-            onTagFilterChange={setTagFilter}
           />
         </main>
 
         <aside className="clients-side">
-          <ClientDetailsPanel client={selectedClient} />
+          <ClientDetailsPanel
+            client={selectedClient}
+            metrics={selectedClientMetrics}
+          />
         </aside>
       </div>
 

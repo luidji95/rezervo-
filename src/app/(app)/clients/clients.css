@@ -183,16 +183,13 @@
   grid-template-columns:
     58px
     minmax(170px, 1.4fr)
-    minmax(150px, 1fr)
     70px
-    120px
-    118px
-    84px
-    92px
-    136px;
+    130px
+    110px
+    120px;
   gap: 10px;
   align-items: center;
-  min-width: 1010px;
+  min-width: 680px;
 }
 
 .clients-table-head {
@@ -279,6 +276,16 @@
   color: #dc2626 !important;
 }
 
+.client-source-pill {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .client-actions-cell {
   display: flex;
   align-items: center;
@@ -318,9 +325,18 @@
 
 .clients-pagination {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 6px;
   padding-top: 16px;
+}
+
+.clients-pagination span {
+  margin-right: 8px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .clients-pagination button {
@@ -332,6 +348,11 @@
   color: #334155;
   cursor: pointer;
   font-weight: 800;
+}
+
+.clients-pagination button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .clients-pagination button.active {
@@ -397,6 +418,13 @@
   color: #047857;
   font-size: 12px;
   font-weight: 800;
+}
+
+.client-muted-text {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .client-section h4 {

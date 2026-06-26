@@ -2,24 +2,21 @@
 
 import { CalendarPlus, Mail, Phone, Sparkles } from "lucide-react";
 
+import type { ClientMetrics } from "@/services/clientAnalyticsService";
 import type { Client } from "@/types/client";
 import {
   formatClientDate,
   formatMoney,
   getClientInitials,
-  getClientStatusLabel,
-  getClientStatus,
-  getDummyFavoriteService,
-  getDummySpent,
-  getDummyTag,
-  getDummyVisits,
+  getClientSourceLabel,
 } from "./clientUtils";
 
 type ClientDetailsPanelProps = {
   client: Client | null;
+  metrics: ClientMetrics;
 };
 
-export function ClientDetailsPanel({ client }: ClientDetailsPanelProps) {
+export function ClientDetailsPanel({ client, metrics }: ClientDetailsPanelProps) {
   if (!client) {
     return (
       <section className="clients-card client-details-empty">
@@ -27,10 +24,6 @@ export function ClientDetailsPanel({ client }: ClientDetailsPanelProps) {
       </section>
     );
   }
-
-  const visits = getDummyVisits(client.id);
-  const spent = getDummySpent(client.id);
-  const averageSpend = spent / visits;
 
   return (
     <section className="clients-card client-details">
@@ -41,8 +34,8 @@ export function ClientDetailsPanel({ client }: ClientDetailsPanelProps) {
 
         <div>
           <h3>{client.full_name}</h3>
-          <span className={`client-status-pill ${getClientStatus(client)}`}>
-            {getClientStatusLabel(client)}
+          <span className="client-source-pill">
+            Izvor: {getClientSourceLabel(client.source)}
           </span>
         </div>
       </div>
@@ -67,60 +60,50 @@ export function ClientDetailsPanel({ client }: ClientDetailsPanelProps) {
         </div>
       </div>
 
-      <div className="client-tag-row">
-        <span>{getDummyTag(client.id)}</span>
-        <span>{visits > 8 ? "Veran klijent" : "Novi klijent"}</span>
-      </div>
-
       <div className="client-section">
         <h4>Omiljene usluge</h4>
-        <div className="client-chip-row">
-          <span>{getDummyFavoriteService(client.id)}</span>
-          <span>Brada</span>
-          <span>Pramenovi</span>
-        </div>
-      </div>
-
-      <div className="client-section">
-        <h4>Napomena</h4>
-        <div className="client-note">
-          Preferira popodnevne termine. Alergija na odredjene proizvode.
-        </div>
+        {metrics.favoriteServices.length === 0 ? (
+          <p className="client-muted-text">Nema zavrsenih usluga za ovog klijenta.</p>
+        ) : (
+          <div className="client-chip-row">
+            {metrics.favoriteServices.map((service) => (
+              <span key={service.serviceId}>
+                {service.name} ({service.count})
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="client-section">
         <h4>Istorija poseta</h4>
-        <div className="client-history-list">
-          <div>
-            <span>16.05.2025</span>
-            <strong>Sisanje</strong>
-            <em>€25</em>
+        {metrics.history.length === 0 ? (
+          <p className="client-muted-text">Nema zavrsenih poseta.</p>
+        ) : (
+          <div className="client-history-list">
+            {metrics.history.map((appointment) => (
+              <div key={appointment.id}>
+                <span>{formatClientDate(appointment.startTime)}</span>
+                <strong>{appointment.serviceName}</strong>
+                <em>{formatMoney(appointment.price)}</em>
+              </div>
+            ))}
           </div>
-          <div>
-            <span>02.05.2025</span>
-            <strong>Brada</strong>
-            <em>€15</em>
-          </div>
-          <div>
-            <span>18.04.2025</span>
-            <strong>Pramenovi</strong>
-            <em>€60</em>
-          </div>
-        </div>
+        )}
       </div>
 
       <div className="client-stats-grid">
         <div className="client-mini-stat">
           <span>Ukupno poseta</span>
-          <strong>{visits}</strong>
+          <strong>{metrics.visits}</strong>
         </div>
         <div className="client-mini-stat">
           <span>Ukupno potroseno</span>
-          <strong>{formatMoney(spent)}</strong>
+          <strong>{formatMoney(metrics.totalSpent)}</strong>
         </div>
         <div className="client-mini-stat">
           <span>Prosecno</span>
-          <strong>{formatMoney(Number(averageSpend.toFixed(2)))}</strong>
+          <strong>{formatMoney(metrics.averageSpent)}</strong>
         </div>
       </div>
 

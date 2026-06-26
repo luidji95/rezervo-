@@ -7,11 +7,18 @@ import { useSalon } from "@/context/SalonContext";
 import { getDashboardStats, type DashboardStats } from "@/services/dashboardStatsService";
 import { getTodaySchedule, getUpcomingAppointments } from "@/services/dashboardAppointmentsService";
 import { getPopularServices, getTopClients, type PopularService, type TopClient } from "@/services/dashboardAnalyticsService";
+import { getCalendarEmployees, type CalendarEmployee } from "@/services/employeeQueryService";
 import type { AppointmentListItem } from "@/services/appointmentQueryService";
 
 import "./dashboard.css";
 
 const HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17];
+const MAX_MINI_CALENDAR_COLUMNS = 4;
+
+type EmployeeColumn = {
+  id: string;
+  name: string;
+};
 
 function formatTime(value: string) {
   return new Date(value).toLocaleTimeString("sr-RS", {
@@ -29,28 +36,55 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
-function getEmployeeNames(schedule: AppointmentListItem[]) {
-  const names = [...new Set(
-    schedule
-      .map((appointment) => appointment.employees?.display_name || appointment.employees?.full_name)
-      .filter(Boolean) as string[]
-  )];
+function getEmployeeLabel(employee: {
+  display_name: string | null;
+  full_name: string;
+}) {
+  return employee.display_name || employee.full_name;
+}
 
-  const defaults = ["Marko", "Jelena", "Ana", "Petar"];
+function getEmployeeColumns(
+  schedule: AppointmentListItem[],
+  employees: CalendarEmployee[]
+): EmployeeColumn[] {
+  const columns = new Map<string, EmployeeColumn>();
 
-  return [...names, ...defaults].slice(0, 4);
+  schedule.forEach((appointment) => {
+    const employee = appointment.employees;
+
+    if (!employee) {
+      return;
+    }
+
+    columns.set(employee.id, {
+      id: employee.id,
+      name: getEmployeeLabel(employee),
+    });
+  });
+
+  employees.forEach((employee) => {
+    if (columns.size >= MAX_MINI_CALENDAR_COLUMNS) {
+      return;
+    }
+
+    columns.set(employee.id, {
+      id: employee.id,
+      name: getEmployeeLabel(employee),
+    });
+  });
+
+  return [...columns.values()].slice(0, MAX_MINI_CALENDAR_COLUMNS);
 }
 
 function getCalendarEvents(schedule: AppointmentListItem[]) {
   return schedule.map((appointment) => {
     const start = new Date(appointment.start_time);
     const row = start.getHours();
-    const employeeName = appointment.employees?.display_name || appointment.employees?.full_name || "Neimenovan";
 
     return {
       id: appointment.id,
       row,
-      employeeName,
+      employeeId: appointment.employees?.id ?? null,
       label: `${formatTime(appointment.start_time)} ${appointment.clients?.full_name ?? "Klijent"}`,
     };
   });
@@ -61,13 +95,17 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [todaySchedule, setTodaySchedule] = useState<AppointmentListItem[]>([]);
   const [upcomingAppointments, setUpcomingAppointments] = useState<AppointmentListItem[]>([]);
+  const [employees, setEmployees] = useState<CalendarEmployee[]>([]);
   const [popularServices, setPopularServices] = useState<PopularService[]>([]);
   const [topClients, setTopClients] = useState<TopClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const today = new Date().toISOString().slice(0, 10);
-  const employeeColumns = useMemo(() => getEmployeeNames(todaySchedule), [todaySchedule]);
+  const employeeColumns = useMemo(
+    () => getEmployeeColumns(todaySchedule, employees),
+    [todaySchedule, employees]
+  );
   const calendarEvents = useMemo(() => getCalendarEvents(todaySchedule), [todaySchedule]);
 
   useEffect(() => {
@@ -78,11 +116,12 @@ export default function DashboardPage() {
       setError(null);
 
       try {
-        const [statsData, todayScheduleData, upcomingData, popularData, topClientsData] =
+        const [statsData, todayScheduleData, upcomingData, employeesData, popularData, topClientsData] =
           await Promise.all([
             getDashboardStats(currentSalon.id),
             getTodaySchedule(currentSalon.id, today),
             getUpcomingAppointments(currentSalon.id),
+            getCalendarEmployees(currentSalon.id),
             getPopularServices(currentSalon.id),
             getTopClients(currentSalon.id),
           ]);
@@ -90,6 +129,7 @@ export default function DashboardPage() {
         setStats(statsData);
         setTodaySchedule(todayScheduleData);
         setUpcomingAppointments(upcomingData);
+        setEmployees(employeesData);
         setPopularServices(popularData);
         setTopClients(topClientsData);
       } catch (err) {
@@ -170,29 +210,40 @@ export default function DashboardPage() {
               <Link href="/calendar">Pogledaj ceo kalendar</Link>
             </div>
 
-            <div className="dashboard-calendar-grid">
-              <div className="calendar-time"></div>
-              {employeeColumns.map((name) => (
-                <div key={name} className="calendar-column-name">{name}</div>
-              ))}
+            {employeeColumns.length === 0 ? (
+              <div className="dashboard-calendar-empty">
+                Nema aktivnih zaposlenih ni termina za danas.
+              </div>
+            ) : (
+              <div
+                className="dashboard-calendar-grid"
+                style={{
+                  gridTemplateColumns: `58px repeat(${employeeColumns.length}, minmax(120px, 1fr))`,
+                }}
+              >
+                <div className="calendar-time"></div>
+                {employeeColumns.map((employee) => (
+                  <div key={employee.id} className="calendar-column-name">{employee.name}</div>
+                ))}
 
-              {HOURS.map((hour) => (
-                <React.Fragment key={hour}>
-                  <div className="calendar-time">{hour}:00</div>
-                  {employeeColumns.map((employeeName) => {
-                    const event = calendarEvents.find(
-                      (item) => item.row === hour && item.employeeName === employeeName
-                    );
+                {HOURS.map((hour) => (
+                  <React.Fragment key={hour}>
+                    <div className="calendar-time">{hour}:00</div>
+                    {employeeColumns.map((employee) => {
+                      const event = calendarEvents.find(
+                        (item) => item.row === hour && item.employeeId === employee.id
+                      );
 
-                    return (
-                      <div key={`${hour}-${employeeName}`} className="calendar-cell">
-                        {event ? <div className="dashboard-calendar-event">{event.label}</div> : null}
-                      </div>
-                    );
-                  })}
-                </React.Fragment>
-              ))}
-            </div>
+                      return (
+                        <div key={`${hour}-${employee.id}`} className="calendar-cell">
+                          {event ? <div className="dashboard-calendar-event">{event.label}</div> : null}
+                        </div>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
           </article>
 
           <article className="dashboard-card">

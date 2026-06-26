@@ -1,15 +1,5 @@
 import type { Client, ClientStatus } from "@/types/client";
 
-const FAVORITE_SERVICES = [
-  "Sisanje",
-  "Farbanje",
-  "Brada",
-  "Pramenovi",
-  "Feniranje",
-];
-
-const TAGS = ["VIP", "Veran klijent", "Rizican"];
-
 export function getClientInitials(client: Client) {
   return client.full_name
     .split(" ")
@@ -42,22 +32,6 @@ export function getClientSourceLabel(source: string | null) {
   return labels[source] ?? source;
 }
 
-export function getDummyVisits(clientId: string) {
-  return 6 + (clientId.charCodeAt(0) % 10);
-}
-
-export function getDummySpent(clientId: string) {
-  return 180 + (clientId.charCodeAt(1) % 8) * 45;
-}
-
-export function getDummyFavoriteService(clientId: string) {
-  return FAVORITE_SERVICES[clientId.charCodeAt(2) % FAVORITE_SERVICES.length];
-}
-
-export function getDummyTag(clientId: string) {
-  return TAGS[clientId.charCodeAt(3) % TAGS.length];
-}
-
 export function formatClientDate(value: string | null | undefined) {
   if (!value) return "Nije dostupno";
 
@@ -69,10 +43,10 @@ export function formatClientDate(value: string | null | undefined) {
 }
 
 export function formatMoney(value: number) {
-  return `€${value.toLocaleString("sr-RS")}`;
-}
-
-export function getDummyLastVisit(clientId: string) {
-  const day = 8 + (clientId.charCodeAt(0) % 18);
-  return `${String(day).padStart(2, "0")}.05.2025`;
+  return new Intl.NumberFormat("sr-RS", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value);
 }

@@ -3,26 +3,47 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useSalon } from "@/context/SalonContext";
+import {
+  getClientAnalytics,
+  type ClientAnalytics,
+  type ClientKpis,
+  type ClientMetrics,
+} from "@/services/clientAnalyticsService";
 import { deleteClient, getSalonClients } from "@/services/clientService";
 import type { Client } from "@/types/client";
-import {
-  getClientSourceLabel,
-  getClientStatus,
-  getDummyTag,
-} from "./clientUtils";
+import { getClientSourceLabel } from "./clientUtils";
 
-export type ClientStatusFilter = "all" | "active" | "inactive";
+const emptyClientKpis: ClientKpis = {
+  visitsThisMonth: 0,
+  returningClients: 0,
+  returningClientsPercent: 0,
+  clientsWithVisits: 0,
+  revenueThisMonth: 0,
+};
+
+function getEmptyClientMetrics(): ClientMetrics {
+  return {
+    visits: 0,
+    totalSpent: 0,
+    averageSpent: 0,
+    lastVisitAt: null,
+    favoriteServices: [],
+    history: [],
+  };
+}
 
 export function useClientsPageData() {
   const { currentSalon, salonLoading } = useSalon();
 
   const [clients, setClients] = useState<Client[]>([]);
+  const [analytics, setAnalytics] = useState<ClientAnalytics>({
+    metricsByClientId: {},
+    kpis: emptyClientKpis,
+  });
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchValue, setSearchValue] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
-  const [tagFilter, setTagFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>("all");
 
   const salonId = currentSalon?.id;
 
@@ -32,9 +53,13 @@ export function useClientsPageData() {
     try {
       setLoading(true);
 
-      const clientsData = await getSalonClients(salonId);
+      const [clientsData, analyticsData] = await Promise.all([
+        getSalonClients(salonId),
+        getClientAnalytics(salonId),
+      ]);
 
       setClients(clientsData);
+      setAnalytics(analyticsData);
       setSelectedClient((current) => {
         if (current) {
           return (
@@ -64,7 +89,7 @@ export function useClientsPageData() {
   }, [loadData]);
 
   const sourceOptions = useMemo(() => {
-    const sources = new Set(["Instagram", "Web", "WhatsApp", "Preporuka"]);
+    const sources = new Set<string>();
 
     clients.forEach((client) => {
       sources.add(getClientSourceLabel(client.source));
@@ -86,15 +111,17 @@ export function useClientsPageData() {
         sourceFilter === "all" ||
         getClientSourceLabel(client.source) === sourceFilter;
 
-      const matchesStatus =
-        statusFilter === "all" || getClientStatus(client) === statusFilter;
-
-      const matchesTag =
-        tagFilter === "all" || getDummyTag(client.id) === tagFilter;
-
-      return matchesSearch && matchesSource && matchesStatus && matchesTag;
+      return matchesSearch && matchesSource;
     });
-  }, [clients, searchValue, sourceFilter, statusFilter, tagFilter]);
+  }, [clients, searchValue, sourceFilter]);
+
+  const selectedClientMetrics = useMemo(() => {
+    if (!selectedClient) {
+      return getEmptyClientMetrics();
+    }
+
+    return analytics.metricsByClientId[selectedClient.id] ?? getEmptyClientMetrics();
+  }, [analytics.metricsByClientId, selectedClient]);
 
   const newClientsThisMonth = useMemo(() => {
     const now = new Date();
@@ -126,6 +153,8 @@ export function useClientsPageData() {
 
   return {
     clients,
+    clientKpis: analytics.kpis,
+    clientMetricsByClientId: analytics.metricsByClientId,
     currentSalon,
     filteredClients,
     handleDeleteClient,
@@ -136,14 +165,11 @@ export function useClientsPageData() {
     salonLoading,
     searchValue,
     selectedClient,
+    selectedClientMetrics,
     setSearchValue,
     setSelectedClient,
     setSourceFilter,
-    setStatusFilter,
-    setTagFilter,
     sourceFilter,
     sourceOptions,
-    statusFilter,
-    tagFilter,
   };
 }

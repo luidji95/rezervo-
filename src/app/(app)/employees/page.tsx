@@ -22,7 +22,6 @@ export default function EmployeesPage() {
     employeeStatsByEmployeeId,
     filteredEmployees,
     getServicesForEmployee,
-    handleDeleteEmployee,
     loadData,
     loading,
     salonId,
@@ -32,6 +31,7 @@ export default function EmployeesPage() {
     selectedEmployee,
     selectedEmployeeHours,
     selectedEmployeeStats,
+    serviceCountsByEmployeeId,
     services,
     setSearchValue,
     setSelectedEmployee,
@@ -108,15 +108,12 @@ export default function EmployeesPage() {
             employees={filteredEmployees}
             employeeStatsByEmployeeId={employeeStatsByEmployeeId}
             selectedEmployee={selectedEmployee}
-            salonWorkingHours={salonWorkingHours}
+            serviceCountsByEmployeeId={serviceCountsByEmployeeId}
             searchValue={searchValue}
             statusFilter={statusFilter}
             onSearchChange={setSearchValue}
             onStatusFilterChange={setStatusFilter}
             onSelectEmployee={setSelectedEmployee}
-            onDeleteEmployee={(employeeId) => {
-              void handleDeleteEmployee(employeeId);
-            }}
           />
         </main>
 

@@ -50,22 +50,25 @@ export function EmployeeDetailsPanel({
         </div>
       </div>
 
-      <div className="employee-info-list">
-        <InfoRow
-          icon={<Phone size={15} />}
-          label="Telefon"
-          value={employee.phone || "Nije uneto"}
-        />
-        <InfoRow
-          icon={<Mail size={15} />}
-          label="Email"
-          value={employee.email || "Nije uneto"}
-        />
-        <InfoRow
-          icon={<CalendarDays size={15} />}
-          label="Dodat"
-          value={formatDate(employee.created_at)}
-        />
+      <div className="employee-section">
+        <h4>Kontakt</h4>
+        <div className="employee-info-list">
+          <InfoRow
+            icon={<Phone size={15} />}
+            label="Telefon"
+            value={employee.phone || "Nije uneto"}
+          />
+          <InfoRow
+            icon={<Mail size={15} />}
+            label="Email"
+            value={employee.email || "Nije uneto"}
+          />
+          <InfoRow
+            icon={<CalendarDays size={15} />}
+            label="Dodat"
+            value={formatDate(employee.created_at)}
+          />
+        </div>
       </div>
 
       <div className="employee-section">
@@ -106,7 +109,7 @@ export function EmployeeDetailsPanel({
       </div>
 
       <div className="employee-section">
-        <h4>Statistika</h4>
+        <h4>Učinak</h4>
 
         <div className="employee-stats-grid">
           <MiniStat label="Termini" value={String(stats.totalAppointments)} />
@@ -115,9 +118,23 @@ export function EmployeeDetailsPanel({
             value={String(stats.completedAppointments)}
           />
           <MiniStat label="Prihod" value={formatMoney(stats.revenue)} />
+          <MiniStat label="Popunjenost" value={`${stats.occupancy}%`} />
+        </div>
+      </div>
+
+      <div className="employee-section">
+        <h4>Klijenti</h4>
+
+        <div className="employee-stats-grid">
           <MiniStat label="Novi klijenti" value={String(stats.newClients)} />
           <MiniStat label="Povratni" value={String(stats.returningClients)} />
-          <MiniStat label="Popunjenost" value={`${stats.occupancy}%`} />
+        </div>
+      </div>
+
+      <div className="employee-section">
+        <h4>Statistika</h4>
+
+        <div className="employee-stats-grid">
           <MiniStat
             label="Poslednji termin"
             value={formatEmployeeDate(stats.lastAppointmentAt)}

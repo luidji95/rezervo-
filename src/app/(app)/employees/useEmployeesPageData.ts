@@ -193,6 +193,14 @@ export function useEmployeesPageData() {
     );
   }, [analytics.statsByEmployeeId, selectedEmployee]);
 
+  const serviceCountsByEmployeeId = useMemo(() => {
+    return employeeServices.reduce<Record<string, number>>((acc, relation) => {
+      acc[relation.employee_id] = (acc[relation.employee_id] ?? 0) + 1;
+
+      return acc;
+    }, {});
+  }, [employeeServices]);
+
   const getServicesForEmployee = useCallback(
     (employeeId: string) => {
       const relationServiceIds = employeeServices
@@ -237,6 +245,7 @@ export function useEmployeesPageData() {
     selectedEmployee,
     selectedEmployeeHours,
     selectedEmployeeStats,
+    serviceCountsByEmployeeId,
     services,
     setSearchValue,
     setSelectedEmployee,

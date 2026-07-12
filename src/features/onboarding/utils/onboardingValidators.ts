@@ -13,3 +13,6 @@ export function isOwnerEmployee(employee: Employee) {
   return employee.position?.toLowerCase() === "vlasnik";
 }
 
+export function normalizeServiceName(name: string) {
+  return name.trim().toLocaleLowerCase("sr");
+}

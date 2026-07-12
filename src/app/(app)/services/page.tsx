@@ -11,6 +11,7 @@ import {
 
 import type { Service } from "@/types/service";
 import { AddServiceModal } from "./AddServiceModal";
+import { DeleteServiceModal } from "./DeleteServiceModal";
 import { KpiCard } from "./KpiCard";
 import { ServiceDetailsPanel } from "./ServiceDetailsPanel";
 import { ServiceTable } from "./ServiceTable";
@@ -22,11 +23,15 @@ import "./services.css";
 export default function ServicesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
+  const [deletingService, setDeletingService] = useState<Service | null>(null);
+  const [isDeletingService, setIsDeletingService] = useState(false);
 
   const {
     categories,
     currentSalon,
     filteredServices,
+    handleDeleteService,
+    handleRestoreService,
     loadData,
     loading,
     salonId,
@@ -38,13 +43,13 @@ export default function ServicesPage() {
     serviceKPIs,
     serviceStatsByServiceId,
     services,
+    showInactive,
     setSearchValue,
     setSelectedCategory,
     setSelectedService,
+    setShowInactive,
     setSortOption,
-    setStatusFilter,
     sortOption,
-    statusFilter,
   } = useServicesPageData();
 
   function openCreateModal() {
@@ -55,6 +60,21 @@ export default function ServicesPage() {
   function openEditModal(service: Service) {
     setEditingService(service);
     setIsModalOpen(true);
+  }
+
+  async function confirmDeleteService() {
+    if (!deletingService) return;
+
+    setIsDeletingService(true);
+
+    try {
+      await handleDeleteService(deletingService);
+      setDeletingService(null);
+    } catch (error) {
+      console.error("Greška pri brisanju usluge:", error);
+    } finally {
+      setIsDeletingService(false);
+    }
   }
 
   if (salonLoading || loading) {
@@ -130,15 +150,21 @@ export default function ServicesPage() {
             selectedCategory={selectedCategory}
             selectedService={selectedService}
             serviceStatsByServiceId={serviceStatsByServiceId}
+            showInactive={showInactive}
             searchValue={searchValue}
-            statusFilter={statusFilter}
             sortOption={sortOption}
-            totalServices={services.length}
+            totalServices={
+              showInactive
+                ? services.length
+                : services.filter((service) => service.is_active).length
+            }
             onCategoryChange={setSelectedCategory}
+            onDeleteService={setDeletingService}
+            onRestoreService={handleRestoreService}
             onSearchChange={setSearchValue}
             onSelectService={setSelectedService}
+            onShowInactiveChange={setShowInactive}
             onSortChange={setSortOption}
-            onStatusFilterChange={setStatusFilter}
           />
         </main>
 
@@ -165,6 +191,15 @@ export default function ServicesPage() {
             setEditingService(null);
             await loadData();
           }}
+        />
+      )}
+
+      {deletingService && (
+        <DeleteServiceModal
+          service={deletingService}
+          isDeleting={isDeletingService}
+          onCancel={() => setDeletingService(null)}
+          onConfirm={confirmDeleteService}
         />
       )}
     </div>

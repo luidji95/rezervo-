@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  RotateCcw,
   Scissors,
   Search,
+  Trash2,
 } from "lucide-react";
 
 import type { ServiceStats } from "@/services/serviceAnalyticsService";
@@ -14,7 +16,6 @@ import {
 } from "./serviceUtils";
 import type {
   ServiceSortOption,
-  ServiceStatusFilter,
 } from "./useServicesPageData";
 
 type ServiceTableProps = {
@@ -23,15 +24,17 @@ type ServiceTableProps = {
   selectedCategory: string;
   selectedService: Service | null;
   serviceStatsByServiceId: Record<string, ServiceStats>;
+  showInactive: boolean;
   searchValue: string;
-  statusFilter: ServiceStatusFilter;
   sortOption: ServiceSortOption;
   totalServices: number;
   onCategoryChange: (category: string) => void;
+  onDeleteService: (service: Service) => void;
+  onRestoreService: (service: Service) => void;
   onSearchChange: (value: string) => void;
   onSelectService: (service: Service) => void;
+  onShowInactiveChange: (value: boolean) => void;
   onSortChange: (value: ServiceSortOption) => void;
-  onStatusFilterChange: (value: ServiceStatusFilter) => void;
 };
 
 export function ServiceTable({
@@ -40,15 +43,17 @@ export function ServiceTable({
   selectedCategory,
   selectedService,
   serviceStatsByServiceId,
+  showInactive,
   searchValue,
-  statusFilter,
   sortOption,
   totalServices,
   onCategoryChange,
+  onDeleteService,
+  onRestoreService,
   onSearchChange,
   onSelectService,
+  onShowInactiveChange,
   onSortChange,
-  onStatusFilterChange,
 }: ServiceTableProps) {
   return (
     <section className="services-card">
@@ -93,17 +98,14 @@ export function ServiceTable({
           />
         </div>
 
-        <select
-          className="services-filter"
-          value={statusFilter}
-          onChange={(event) =>
-            onStatusFilterChange(event.target.value as ServiceStatusFilter)
-          }
-        >
-          <option value="all">Svi statusi</option>
-          <option value="active">Aktivne</option>
-          <option value="inactive">Neaktivne</option>
-        </select>
+        <label className="services-toggle-filter">
+          <input
+            checked={showInactive}
+            type="checkbox"
+            onChange={(event) => onShowInactiveChange(event.target.checked)}
+          />
+          <span>Prikaži neaktivne</span>
+        </label>
 
         <select
           className="services-filter"
@@ -127,6 +129,7 @@ export function ServiceTable({
           <span>Termini</span>
           <span>Prihod</span>
           <span>Status</span>
+          <span>Akcije</span>
         </div>
 
         {services.length === 0 ? (
@@ -143,7 +146,9 @@ export function ServiceTable({
                 key={service.id}
                 role="button"
                 tabIndex={0}
-                className={`services-table-row ${isSelected ? "active" : ""}`}
+                className={`services-table-row ${isSelected ? "active" : ""} ${
+                  service.is_active ? "" : "inactive"
+                }`}
                 onClick={() => onSelectService(service)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
@@ -172,8 +177,36 @@ export function ServiceTable({
                     service.is_active ? "active" : "inactive"
                   }`}
                 >
-                  {service.is_active ? "ON" : "OFF"}
+                  {service.is_active ? "ON" : "Neaktivna"}
                 </span>
+
+                <div className="service-actions-cell">
+                  {service.is_active ? (
+                    <button
+                      type="button"
+                      className="service-row-action danger"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDeleteService(service);
+                      }}
+                    >
+                      <Trash2 size={14} />
+                      Obriši
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="service-row-action"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onRestoreService(service);
+                      }}
+                    >
+                      <RotateCcw size={14} />
+                      Vrati
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })

@@ -11,13 +11,13 @@ import {
   type ServiceStats,
 } from "@/services/serviceAnalyticsService";
 import {
-  deleteService,
+  deleteServiceSafely,
   getSalonServices,
+  restoreService,
 } from "@/services/serviceService";
 import type { Service } from "@/types/service";
 import { getServiceCategory } from "./serviceUtils";
 
-export type ServiceStatusFilter = "all" | "active" | "inactive";
 export type ServiceSortOption =
   | "name-asc"
   | "price-desc"
@@ -43,9 +43,8 @@ export function useServicesPageData() {
   const [loading, setLoading] = useState(true);
   const [searchValue, setSearchValue] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [statusFilter, setStatusFilter] =
-    useState<ServiceStatusFilter>("all");
   const [sortOption, setSortOption] = useState<ServiceSortOption>("name-asc");
+  const [showInactive, setShowInactive] = useState(false);
 
   const salonId = currentSalon?.id;
 
@@ -61,22 +60,26 @@ export function useServicesPageData() {
       setServices(servicesData);
       setAnalytics(analyticsData);
       setSelectedService((current) => {
+        const visibleServices = showInactive
+          ? servicesData
+          : servicesData.filter((service) => service.is_active);
+
         if (current) {
           return (
-            servicesData.find((service) => service.id === current.id) ??
-            servicesData[0] ??
+            visibleServices.find((service) => service.id === current.id) ??
+            visibleServices[0] ??
             null
           );
         }
 
-        return servicesData[0] ?? null;
+        return visibleServices[0] ?? null;
       });
     } catch (error) {
       console.error("Greška pri učitavanju usluga:", error);
     } finally {
       setLoading(false);
     }
-  }, [salonId]);
+  }, [salonId, showInactive]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -91,16 +94,18 @@ export function useServicesPageData() {
   const categories = useMemo(() => {
     const counts = new Map<string, number>();
 
-    services.forEach((service) => {
-      const category = getServiceCategory(service);
-      counts.set(category, (counts.get(category) ?? 0) + 1);
-    });
+    services
+      .filter((service) => showInactive || service.is_active)
+      .forEach((service) => {
+        const category = getServiceCategory(service);
+        counts.set(category, (counts.get(category) ?? 0) + 1);
+      });
 
     return Array.from(counts.entries()).map(([name, count]) => ({
       name,
       count,
     }));
-  }, [services]);
+  }, [services, showInactive]);
 
   const filteredServices = useMemo(() => {
     const search = searchValue.toLowerCase();
@@ -115,10 +120,7 @@ export function useServicesPageData() {
           selectedCategory === "all" ||
           getServiceCategory(service) === selectedCategory;
 
-        const matchesStatus =
-          statusFilter === "all" ||
-          (statusFilter === "active" && service.is_active) ||
-          (statusFilter === "inactive" && !service.is_active);
+        const matchesStatus = showInactive || service.is_active;
 
         return matchesSearch && matchesCategory && matchesStatus;
       })
@@ -147,8 +149,8 @@ export function useServicesPageData() {
     searchValue,
     selectedCategory,
     services,
+    showInactive,
     sortOption,
-    statusFilter,
   ]);
 
   const selectedServiceStats = useMemo((): ServiceStats => {
@@ -159,19 +161,24 @@ export function useServicesPageData() {
     return analytics.statsByServiceId[selectedService.id] ?? createEmptyServiceStats();
   }, [analytics.statsByServiceId, selectedService]);
 
-  async function handleDeleteService(serviceId: string) {
-    const confirmed = window.confirm(
-      "Da li sigurno želiš da obrišeš ovu uslugu?"
-    );
+  async function handleDeleteService(service: Service) {
+    if (!salonId) return;
 
-    if (!confirmed) return;
+    await deleteServiceSafely({
+      serviceId: service.id,
+      salonId,
+    });
+    await loadData();
+  }
 
-    try {
-      await deleteService(serviceId);
-      await loadData();
-    } catch (error) {
-      console.error("Greška pri brisanju usluge:", error);
-    }
+  async function handleRestoreService(service: Service) {
+    if (!salonId) return;
+
+    await restoreService({
+      serviceId: service.id,
+      salonId,
+    });
+    await loadData();
   }
 
   return {
@@ -179,6 +186,7 @@ export function useServicesPageData() {
     currentSalon,
     filteredServices,
     handleDeleteService,
+    handleRestoreService,
     loadData,
     loading,
     salonId,
@@ -190,12 +198,12 @@ export function useServicesPageData() {
     serviceKPIs: analytics.kpis,
     serviceStatsByServiceId: analytics.statsByServiceId,
     services,
+    showInactive,
     setSearchValue,
     setSelectedCategory,
+    setShowInactive,
     setSelectedService,
     setSortOption,
-    setStatusFilter,
     sortOption,
-    statusFilter,
   };
 }

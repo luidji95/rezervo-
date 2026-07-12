@@ -161,3 +161,105 @@ export async function deleteService(serviceId: string): Promise<void> {
     throw error;
   }
 }
+
+export type DeleteServiceSafelyResult = {
+  mode: "hard" | "soft";
+};
+
+export async function serviceHasAppointmentHistory(
+  serviceId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("appointment_services")
+    .select("id")
+    .eq("service_id", serviceId)
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  return Boolean(data?.length);
+}
+
+export async function deleteServiceSafely({
+  serviceId,
+  salonId,
+}: {
+  serviceId: string;
+  salonId: string;
+}): Promise<DeleteServiceSafelyResult> {
+  const hasHistory = await serviceHasAppointmentHistory(serviceId);
+
+  if (hasHistory) {
+    const payload = {
+      is_active: false,
+      is_public: false,
+    };
+
+    const { error } = await supabase
+      .from("services")
+      .update(payload)
+      .eq("id", serviceId)
+      .eq("salon_id", salonId);
+
+    if (error) {
+      logServiceOperationError({
+        operation: "update",
+        serviceId,
+        payload,
+        error,
+      });
+      throw error;
+    }
+
+    return { mode: "soft" };
+  }
+
+  const { error } = await supabase
+    .from("services")
+    .delete()
+    .eq("id", serviceId)
+    .eq("salon_id", salonId);
+
+  if (error) {
+    logServiceOperationError({
+      operation: "delete",
+      serviceId,
+      payload: { id: serviceId, salon_id: salonId },
+      error,
+    });
+    throw error;
+  }
+
+  return { mode: "hard" };
+}
+
+export async function restoreService({
+  serviceId,
+  salonId,
+}: {
+  serviceId: string;
+  salonId: string;
+}): Promise<void> {
+  const payload = {
+    is_active: true,
+    is_public: true,
+  };
+
+  const { error } = await supabase
+    .from("services")
+    .update(payload)
+    .eq("id", serviceId)
+    .eq("salon_id", salonId);
+
+  if (error) {
+    logServiceOperationError({
+      operation: "update",
+      serviceId,
+      payload,
+      error,
+    });
+    throw error;
+  }
+}

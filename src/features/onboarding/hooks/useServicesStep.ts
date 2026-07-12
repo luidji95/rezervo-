@@ -13,6 +13,8 @@ import {
   buildServiceItems,
   createServiceRow,
 } from "../utils/onboardingMappers";
+import { normalizeServiceName } from "../utils/onboardingValidators";
+import type { Service } from "@/types/service";
 
 type UseServicesStepParams = {
   existingSalonId: string | null;
@@ -20,6 +22,18 @@ type UseServicesStepParams = {
   setCurrentStep: (step: number) => void;
   setSubmitError: (error: string | null) => void;
 };
+
+function findExistingServiceByName(services: Service[], name: string) {
+  const normalizedName = normalizeServiceName(name);
+  const matches = services.filter(
+    (service) => normalizeServiceName(service.name) === normalizedName
+  );
+
+  return (
+    matches.find((service) => service.is_active && service.is_public) ??
+    matches[0]
+  );
+}
 
 export function useServicesStep({
   existingSalonId,
@@ -64,11 +78,39 @@ export function useServicesStep({
     );
   }
 
-  function applyServiceTemplate() {
+  async function applyServiceTemplate() {
     const template =
       SERVICE_TEMPLATES[salonBusinessType] ?? SERVICE_TEMPLATES.other;
 
-    setServiceItems(template.map(createServiceRow));
+    if (!existingSalonId) {
+      setServiceItems(template.map(createServiceRow));
+      setServiceValidationError(null);
+      return;
+    }
+
+    try {
+      const existingServices = await getSalonServices(existingSalonId);
+
+      setServiceItems(
+        template.map((service) => {
+          const existingService = findExistingServiceByName(
+            existingServices,
+            service.name
+          );
+
+          return createServiceRow({
+            id: existingService?.id,
+            name: service.name,
+            durationMinutes: service.durationMinutes,
+            priceAmount: service.priceAmount,
+          });
+        })
+      );
+    } catch (error) {
+      console.error("Failed to apply service template:", error);
+      setSubmitError("Something went wrong while loading services template.");
+    }
+
     setServiceValidationError(null);
   }
 
@@ -92,6 +134,18 @@ export function useServicesStep({
       if (!Number.isFinite(service.priceAmount) || service.priceAmount < 0) {
         return "Cena mora biti broj i ne može biti negativna.";
       }
+    }
+
+    const serviceNames = new Set<string>();
+
+    for (const service of serviceItems) {
+      const normalizedName = normalizeServiceName(service.name);
+
+      if (serviceNames.has(normalizedName)) {
+        return "Usluga sa ovim nazivom već postoji.";
+      }
+
+      serviceNames.add(normalizedName);
     }
 
     return null;
@@ -118,16 +172,30 @@ export function useServicesStep({
 
     try {
       const existingServices = await getSalonServices(existingSalonId);
-      const submittedIds = new Set(
-        serviceItems
-          .map((service) => service.id)
-          .filter((serviceId): serviceId is string => Boolean(serviceId))
+      const existingServicesById = new Map(
+        existingServices.map((service) => [service.id, service])
       );
+      const submittedIds = new Set<string>();
+
+      for (const service of serviceItems) {
+        if (service.id) {
+          submittedIds.add(service.id);
+          continue;
+        }
+
+        const existingService = findExistingServiceByName(
+          existingServices,
+          service.name
+        );
+
+        if (existingService) {
+          submittedIds.add(existingService.id);
+        }
+      }
+
       const servicesToDeactivate = existingServices.filter(
         (service) => !submittedIds.has(service.id)
       );
-      const servicesToUpdate = serviceItems.filter((service) => service.id);
-      const servicesToCreate = serviceItems.filter((service) => !service.id);
 
       for (const service of servicesToDeactivate) {
         await updateService({
@@ -142,32 +210,34 @@ export function useServicesStep({
         });
       }
 
-      for (const service of servicesToUpdate) {
-        if (!service.id) continue;
+      for (const service of serviceItems) {
+        const existingService = service.id
+          ? existingServicesById.get(service.id)
+          : findExistingServiceByName(existingServices, service.name);
 
-        await updateService({
-          serviceId: service.id,
-          name: service.name.trim(),
-          description: null,
-          categoryName: null,
-          durationMinutes: service.durationMinutes,
-          priceAmount: service.priceAmount,
-          isActive: true,
-          isPublic: true,
-        });
-      }
-
-      for (const service of servicesToCreate) {
-        await createService({
-          salonId: existingSalonId,
-          name: service.name.trim(),
-          description: null,
-          categoryName: null,
-          durationMinutes: service.durationMinutes,
-          priceAmount: service.priceAmount,
-          isActive: true,
-          isPublic: true,
-        });
+        if (existingService) {
+          await updateService({
+            serviceId: existingService.id,
+            name: service.name.trim(),
+            description: null,
+            categoryName: null,
+            durationMinutes: service.durationMinutes,
+            priceAmount: service.priceAmount,
+            isActive: true,
+            isPublic: true,
+          });
+        } else {
+          await createService({
+            salonId: existingSalonId,
+            name: service.name.trim(),
+            description: null,
+            categoryName: null,
+            durationMinutes: service.durationMinutes,
+            priceAmount: service.priceAmount,
+            isActive: true,
+            isPublic: true,
+          });
+        }
       }
 
       const savedServices = await getSalonServices(existingSalonId);
@@ -202,4 +272,3 @@ export function useServicesStep({
     validateServices,
   };
 }
-

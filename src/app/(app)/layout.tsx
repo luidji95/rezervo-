@@ -33,7 +33,7 @@ export default function AppLayout({
       try {
         const salon = await getMySalon(user.id);
 
-        if (!salon) {
+        if (!salon || !salon.onboarding_completed) {
           router.replace("/onboarding");
           return;
         }

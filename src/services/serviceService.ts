@@ -24,6 +24,34 @@ const SERVICE_SELECT = `
   updated_at
 `;
 
+function logServiceOperationError({
+  operation,
+  serviceId,
+  payload,
+  error,
+}: {
+  operation: "create" | "update" | "delete";
+  serviceId?: string;
+  payload: unknown;
+  error: {
+    message?: string;
+    details?: string;
+    hint?: string;
+    code?: string;
+  } | null;
+}) {
+  console.error("Service operation failed", {
+    operation,
+    serviceId,
+    payload,
+    message: error?.message,
+    details: error?.details,
+    hint: error?.hint,
+    code: error?.code,
+    full: JSON.stringify(error, null, 2),
+  });
+}
+
 export async function createService({
   salonId,
   name,
@@ -34,22 +62,29 @@ export async function createService({
   isActive = true,
   isPublic = true,
 }: CreateServiceInput): Promise<Service> {
+  const payload = {
+    salon_id: salonId,
+    name,
+    description: description || null,
+    category_name: categoryName || null,
+    duration_minutes: durationMinutes,
+    price: priceAmount,
+    is_active: isActive,
+    is_public: isPublic,
+  };
+
   const { data, error } = await supabase
     .from("services")
-    .insert({
-      salon_id: salonId,
-      name,
-      description: description || null,
-      category_name: categoryName || null,
-      duration_minutes: durationMinutes,
-      price: priceAmount,
-      is_active: isActive,
-      is_public: isPublic,
-    })
+    .insert(payload)
     .select(SERVICE_SELECT)
     .single();
 
   if (error) {
+    logServiceOperationError({
+      operation: "create",
+      payload,
+      error,
+    });
     throw error;
   }
 
@@ -80,22 +115,30 @@ export async function updateService({
   isActive,
   isPublic,
 }: UpdateServiceInput): Promise<Service> {
+  const payload = {
+    name,
+    description: description || null,
+    category_name: categoryName || null,
+    duration_minutes: durationMinutes,
+    price: priceAmount,
+    ...(typeof isActive === "boolean" ? { is_active: isActive } : {}),
+    ...(typeof isPublic === "boolean" ? { is_public: isPublic } : {}),
+  };
+
   const { data, error } = await supabase
     .from("services")
-    .update({
-      name,
-      description: description || null,
-      category_name: categoryName || null,
-      duration_minutes: durationMinutes,
-      price: priceAmount,
-      ...(typeof isActive === "boolean" ? { is_active: isActive } : {}),
-      ...(typeof isPublic === "boolean" ? { is_public: isPublic } : {}),
-    })
+    .update(payload)
     .eq("id", serviceId)
     .select(SERVICE_SELECT)
     .single();
 
   if (error) {
+    logServiceOperationError({
+      operation: "update",
+      serviceId,
+      payload,
+      error,
+    });
     throw error;
   }
 
@@ -109,6 +152,12 @@ export async function deleteService(serviceId: string): Promise<void> {
     .eq("id", serviceId);
 
   if (error) {
+    logServiceOperationError({
+      operation: "delete",
+      serviceId,
+      payload: { id: serviceId },
+      error,
+    });
     throw error;
   }
 }

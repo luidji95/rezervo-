@@ -1,13 +1,14 @@
 import { z } from "zod";
+import { optionalEmailSchema, optionalInstagramSchema, optionalPhoneSchema, optionalTrimmedStringSchema, optionalUrlSchema, requiredStringSchema } from "@/lib/validation/commonSchemas";
 
 export const generalSchema = z.object({
-  name: z.string().min(2, "Naziv salona je obavezan"),
-  email: z.string().email("Email nije validan").or(z.literal("")),
-  phone: z.string().min(3, "Telefon je obavezan").or(z.literal("")),
-  address_line: z.string().min(3, "Adresa je obavezna").or(z.literal("")),
-  website_url: z.string().optional(),
-  instagram_url: z.string().optional(),
-  description: z.string().optional(),
+  name: requiredStringSchema("Naziv salona", 2, 120),
+  email: optionalEmailSchema,
+  phone: optionalPhoneSchema,
+  address_line: z.union([requiredStringSchema("Adresa", 3, 200), z.literal("")]),
+  website_url: optionalUrlSchema,
+  instagram_url: optionalInstagramSchema,
+  description: optionalTrimmedStringSchema(1000),
 });
 
 export type GeneralFormData = z.infer<typeof generalSchema>;

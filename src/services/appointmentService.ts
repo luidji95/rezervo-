@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { validateAppointmentSlot } from "@/services/appointmentValidationService";
+import { findOrCreateSalonClient } from "@/services/clientService";
 import {
   createNotification,
   formatNotificationAppointmentTime,
@@ -10,6 +11,32 @@ import type {
 } from "@/types/appointment";
 
 type SupabaseClientLike = typeof supabase;
+
+type CreatePublicBookingAtomicInput = {
+  salonId: string;
+  salonSlug: string;
+  serviceId: string;
+  employeeId: string;
+  startTime: string;
+  customer: {
+    fullName: string;
+    phone?: string;
+    email?: string;
+  };
+  idempotencyKey: string;
+};
+
+type CreatePublicBookingAtomicResult = {
+  id: string;
+  wasCreated: boolean;
+};
+
+type PublicBookingRpcRow = {
+  appointment_id: string;
+  was_created: boolean;
+  booked_service_name: string;
+  appointment_start: string;
+};
 
 function addMinutes(date: Date, minutes: number) {
   return new Date(date.getTime() + minutes * 60 * 1000);
@@ -110,64 +137,16 @@ export async function createAppointment(
     supabaseClient
   );
 
-  let clientId: string;
-
-  const normalizedPhone = client.phone?.trim() || null;
-  const normalizedEmail = client.email?.trim() || null;
-
-  let existingClient = null;
-
-  if (normalizedPhone) {
-    const { data, error } = await supabaseClient
-      .from("clients")
-      .select("id")
-      .eq("salon_id", salonId)
-      .eq("phone", normalizedPhone)
-      .maybeSingle();
-
-  if (error) {
-      throw new Error("Failed to check existing client by phone.");
-    }
-
-    existingClient = data;
-  }
-
-  if (!existingClient && normalizedEmail) {
-    const { data, error } = await supabaseClient
-      .from("clients")
-      .select("id")
-      .eq("salon_id", salonId)
-      .eq("email", normalizedEmail)
-      .maybeSingle();
-
-    if (error) {
-      throw new Error("Failed to check existing client by email.");
-    }
-
-    existingClient = data;
-  }
-
-  if (existingClient) {
-    clientId = existingClient.id;
-  } else {
-    const { data: createdClient, error: clientError } = await supabaseClient
-      .from("clients")
-      .insert({
-        salon_id: salonId,
-        full_name: client.fullName.trim(),
-        phone: normalizedPhone,
-        email: normalizedEmail,
-        source: bookingSource,
-      })
-      .select("id")
-      .single();
-
-    if (clientError || !createdClient) {
-      throw new Error("Failed to create client.");
-    }
-
-    clientId = createdClient.id;
-  }
+  const clientId = await findOrCreateSalonClient(
+    {
+      salonId,
+      fullName: client.fullName,
+      phone: client.phone,
+      email: client.email,
+      source: bookingSource,
+    },
+    supabaseClient
+  );
 
   const { data: appointment, error: appointmentError } = await supabaseClient
     .from("appointments")
@@ -279,6 +258,54 @@ export async function rescheduleAppointment(
   );
 
   return appointment;
+}
+
+export async function createPublicBookingAtomic(
+  input: CreatePublicBookingAtomicInput,
+  supabaseClient: SupabaseClientLike = supabase
+): Promise<CreatePublicBookingAtomicResult> {
+  const { data, error } = await supabaseClient.rpc(
+    "create_public_booking_atomic",
+    {
+      p_salon_slug: input.salonSlug,
+      p_service_id: input.serviceId,
+      p_employee_id: input.employeeId,
+      p_start_time: input.startTime,
+      p_customer_full_name: input.customer.fullName,
+      p_customer_phone: input.customer.phone || "",
+      p_customer_email: input.customer.email || "",
+      p_idempotency_key: input.idempotencyKey,
+    }
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  const result = (data as PublicBookingRpcRow[] | null)?.[0];
+
+  if (!result) {
+    throw new Error("Public booking RPC returned no result.");
+  }
+
+  if (result.was_created) {
+    await createNotification(
+      {
+        salonId: input.salonId,
+        type: "appointment_created",
+        title: "Novi termin",
+        message: `${input.customer.fullName.trim()} je rezervisao/la ${result.booked_service_name} za ${formatNotificationAppointmentTime(result.appointment_start)}`,
+        entityType: "appointment",
+        entityId: result.appointment_id,
+      },
+      supabaseClient
+    );
+  }
+
+  return {
+    id: result.appointment_id,
+    wasCreated: result.was_created,
+  };
 }
 
 // =========================================================

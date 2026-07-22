@@ -1,16 +1,23 @@
 import { z } from "zod";
+import { emailSchema } from "@/lib/validation/commonSchemas";
 
 export const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address."),
-  password: z.string().min(1, "Password is required."),
+  email: emailSchema,
+  password: z.string().min(1, "Lozinka je obavezna."),
 });
 
-export const registerSchema = z.object({
-  email: z.string().email("Please enter a valid email address."),
-  password: z
-    .string()
-    .min(8, "Password must be at least 8 characters long."),
-});
+export const registerSchema = z
+  .object({
+    email: emailSchema,
+    password: z
+      .string()
+      .min(8, "Lozinka mora imati najmanje 8 karaktera."),
+    confirmPassword: z.string().min(1, "Potvrdite lozinku."),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    message: "Lozinke se ne podudaraju.",
+    path: ["confirmPassword"],
+  });
 
 export type LoginFormValues = z.infer<typeof loginSchema>;
 export type RegisterFormValues = z.infer<typeof registerSchema>;

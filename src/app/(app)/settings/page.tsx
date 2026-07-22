@@ -11,10 +11,11 @@ import {
   Users,
 } from "lucide-react";
 
-import GeneralManager from "@/features/settings/general/GeneralManager";
-import WorkingHoursManager from "@/features/settings/working-hours/WorkingHoursManager";
+import { BillingPreview } from "@/features/billing/components/BillingPreview";
 import ClosuresManager from "@/features/settings/closures/ClosureManager";
+import GeneralManager from "@/features/settings/general/GeneralManager";
 import TeamManager from "@/features/settings/team/TeamManager";
+import WorkingHoursManager from "@/features/settings/working-hours/WorkingHoursManager";
 
 import "./settings.css";
 
@@ -56,13 +57,11 @@ export default function SettingsPage() {
       <nav className="settings-tabs">
         {SETTINGS_TABS.map((tab) => {
           const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-
           return (
             <button
               key={tab.id}
               type="button"
-              className={`settings-tab-btn ${isActive ? "active" : ""}`}
+              className={`settings-tab-btn ${activeTab === tab.id ? "active" : ""}`}
               onClick={() => setActiveTab(tab.id)}
             >
               <Icon size={17} />
@@ -73,47 +72,23 @@ export default function SettingsPage() {
       </nav>
 
       <main className="settings-content">
-        {activeTab === "general" && (
-          <GeneralManager onChangeTab={setActiveTab} />
-        )}
-
+        {activeTab === "general" && <GeneralManager onChangeTab={setActiveTab} />}
         {activeTab === "working-hours" && <WorkingHoursManager />}
         {activeTab === "closures" && <ClosuresManager />}
-
         {activeTab === "services" && (
-          <SettingsPlaceholder
-            title="Usluge i cene"
-            description="Ovde ćemo kasnije ubaciti ServicesManager."
-          />
+          <SettingsPlaceholder title="Usluge i cene" description="Ovde ćemo kasnije ubaciti ServicesManager." />
         )}
-
         {activeTab === "team" && <TeamManager />}
-
         {activeTab === "ai" && (
-          <SettingsPlaceholder
-            title="AI Receptionist"
-            description="Podešavanja AI recepcionera dolaze kasnije."
-          />
+          <SettingsPlaceholder title="AI Receptionist" description="Podešavanja AI recepcionera dolaze kasnije." />
         )}
-
-        {activeTab === "billing" && (
-          <SettingsPlaceholder
-            title="Plaćanje i plan"
-            description="Billing sistem još nije implementiran."
-          />
-        )}
+        {activeTab === "billing" && <BillingPreview />}
       </main>
     </div>
   );
 }
 
-function SettingsPlaceholder({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+function SettingsPlaceholder({ title, description }: { title: string; description: string }) {
   return (
     <div className="settings-card">
       <h3>{title}</h3>

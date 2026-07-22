@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import type { CalendarAppointment } from "@/services/calendarQueryService";
+import { appointmentClientSchema } from "@/types/appointment";
 
 type EditAppointmentModalProps = {
   isOpen: boolean;
@@ -30,19 +31,26 @@ export default function EditAppointmentModal({
   const [internalNote, setInternalNote] = useState(appointment.internal_note || "");
   const [customerNote, setCustomerNote] = useState(appointment.customer_note || "");
   const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<{ fullName?: string; phone?: string; email?: string }>({});
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const parsed = appointmentClientSchema.safeParse({ fullName, phone, email });
+    if (!parsed.success) {
+      const fields = parsed.error.flatten().fieldErrors;
+      setErrors({ fullName: fields.fullName?.[0], phone: fields.phone?.[0], email: fields.email?.[0] });
+      return;
+    }
+
+    setErrors({});
     try {
       setSubmitting(true);
       await onUpdateConfirm({
-        fullName,
-        phone,
-        email,
-        internalNote,
-        customerNote,
+        ...parsed.data,
+        internalNote: internalNote.trim(),
+        customerNote: customerNote.trim(),
       });
       onClose();
     } catch (err) {
@@ -90,6 +98,7 @@ export default function EditAppointmentModal({
               onChange={(e) => setFullName(e.target.value)}
               style={{ width: "100%", padding: "10px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "14px", color: "#0f172a" }}
             />
+            {errors.fullName && <small style={{ color: "#dc2626" }}>{errors.fullName}</small>}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -103,6 +112,7 @@ export default function EditAppointmentModal({
                 onChange={(e) => setPhone(e.target.value)}
                 style={{ width: "100%", padding: "10px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "14px", color: "#0f172a" }}
               />
+              {errors.phone && <small style={{ color: "#dc2626" }}>{errors.phone}</small>}
             </div>
             <div>
               <label style={{ display: "block", fontSize: "13px", fontWeight: 500, color: "#334155", marginBottom: "4px" }}>
@@ -114,6 +124,7 @@ export default function EditAppointmentModal({
                 onChange={(e) => setEmail(e.target.value)}
                 style={{ width: "100%", padding: "10px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "14px", color: "#0f172a" }}
               />
+              {errors.email && <small style={{ color: "#dc2626" }}>{errors.email}</small>}
             </div>
           </div>
 

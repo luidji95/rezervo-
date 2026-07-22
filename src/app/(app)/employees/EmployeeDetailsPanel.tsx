@@ -1,4 +1,11 @@
-import { CalendarDays, Mail, Phone } from "lucide-react";
+import {
+  CalendarDays,
+  Mail,
+  Pencil,
+  Phone,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 
 import type { EmployeeStats } from "@/services/employeeAnalyticsService";
 import type { Employee } from "@/types/employee";
@@ -20,6 +27,10 @@ type EmployeeDetailsPanelProps = {
   salonWorkingHours: WorkingHour[];
   employeeWorkingHours: WorkingHour[];
   stats: EmployeeStats;
+  isRestoring: boolean;
+  onDelete: (employee: Employee) => void;
+  onEdit: (employee: Employee) => void;
+  onRestore: (employee: Employee) => Promise<void>;
 };
 
 export function EmployeeDetailsPanel({
@@ -28,6 +39,10 @@ export function EmployeeDetailsPanel({
   salonWorkingHours,
   employeeWorkingHours,
   stats,
+  isRestoring,
+  onDelete,
+  onEdit,
+  onRestore,
 }: EmployeeDetailsPanelProps) {
   if (!employee) {
     return (
@@ -47,7 +62,40 @@ export function EmployeeDetailsPanel({
         <div>
           <h3>{employee.display_name || employee.full_name}</h3>
           <p>{employee.position || "Zaposleni"}</p>
+          {!employee.is_active && (
+            <span className="employee-status inactive">Neaktivan</span>
+          )}
         </div>
+      </div>
+
+      <div className="employee-details-actions">
+        <button
+          type="button"
+          className="employees-secondary-btn"
+          onClick={() => onEdit(employee)}
+        >
+          <Pencil size={15} /> Izmeni
+        </button>
+
+        {employee.is_active ? (
+          <button
+            type="button"
+            className="employees-danger-btn"
+            onClick={() => onDelete(employee)}
+          >
+            <Trash2 size={15} /> Obriši zaposlenog
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="employees-primary-btn"
+            onClick={() => void onRestore(employee)}
+            disabled={isRestoring}
+          >
+            <RotateCcw size={15} />
+            {isRestoring ? "Aktiviram..." : "Aktiviraj"}
+          </button>
+        )}
       </div>
 
       <div className="employee-section">

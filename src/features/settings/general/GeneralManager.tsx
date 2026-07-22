@@ -214,15 +214,15 @@ useEffect(() => {
                   <input {...register("address_line")} />
                 </FormField>
 
-                <FormField label="Web sajt">
+                  <FormField label="Web sajt" error={errors.website_url?.message}>
                   <input {...register("website_url")} />
                 </FormField>
 
-                <FormField label="Instagram">
+                  <FormField label="Instagram" error={errors.instagram_url?.message}>
                   <input {...register("instagram_url")} placeholder="@salon" />
                 </FormField>
 
-                <FormField label="Opis salona" full>
+                  <FormField label="Opis salona" error={errors.description?.message} full>
                   <textarea rows={4} {...register("description")} />
                 </FormField>
 

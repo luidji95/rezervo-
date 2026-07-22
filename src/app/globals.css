@@ -358,8 +358,9 @@ a {
   outline: none;
 }
 
-.form-field input:focus {
+.form-field input:focus-visible {
   border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.12);
 }
 
 .form-error {
@@ -576,6 +577,17 @@ a {
   position: relative;
   cursor: pointer;
   transition: all 0.2s;
+}
+
+.auth-button:focus-visible {
+  outline: 3px solid rgba(17, 24, 39, 0.22);
+  outline-offset: 3px;
+}
+
+.auth-footer a:focus-visible {
+  border-radius: 4px;
+  outline: 3px solid rgba(17, 24, 39, 0.22);
+  outline-offset: 3px;
 }
 
 .topbar-icon-btn:hover {

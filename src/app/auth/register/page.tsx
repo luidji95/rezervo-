@@ -28,7 +28,7 @@ export default function RegisterPage() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace("/dashboard");
+      router.replace("/onboarding");
     }
   }, [loading, user, router]);
 
@@ -42,6 +42,7 @@ export default function RegisterPage() {
     defaultValues: {
       email: "",
       password: "",
+      confirmPassword: "",
     },
   });
 
@@ -50,23 +51,34 @@ export default function RegisterPage() {
       setFormError("");
       setSuccessMessage("");
 
-      await registerUser(values);
+      const result = await registerUser({
+        email: values.email,
+        password: values.password,
+      });
+
+      if (result.session && result.user) {
+        router.replace("/onboarding");
+        return;
+      }
 
       setSuccessMessage(
-        "Account created successfully. Please check your email to confirm your account."
+        "Nalog je kreiran. Proverite email i potvrdite registraciju."
       );
 
       reset();
     } catch (error) {
+      console.error("Registration submission failed:", error);
       const message =
-        error instanceof Error ? error.message : "Something went wrong.";
+        error instanceof Error
+          ? error.message
+          : "Registracija trenutno nije moguća. Pokušajte ponovo.";
 
       setFormError(message);
     }
   }
 
   if (loading) {
-    return <p>Loading...</p>;
+    return <p>Učitavanje...</p>;
   }
 
   if (user) {
@@ -77,11 +89,11 @@ export default function RegisterPage() {
     <main className="auth-page">
       <section className="auth-card">
         <div className="auth-header">
-          <p className="auth-eyebrow">Create account</p>
+          <p className="auth-eyebrow">Novi nalog</p>
 
-          <h1>Start using Rezervo</h1>
+          <h1>Kreirajte nalog</h1>
 
-          <p>Create your salon management account.</p>
+          <p>Napravite nalog i podesite svoj salon.</p>
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit(onSubmit)}>
@@ -92,33 +104,72 @@ export default function RegisterPage() {
               id="email"
               type="email"
               placeholder="you@example.com"
+              aria-invalid={Boolean(errors.email)}
+              aria-describedby={
+                errors.email ? "register-email-error" : undefined
+              }
               {...register("email")}
             />
 
             {errors.email && (
-              <p className="form-error">{errors.email.message}</p>
+              <p className="form-error" id="register-email-error">
+                {errors.email.message}
+              </p>
             )}
           </div>
 
           <div className="form-field">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">Lozinka</label>
 
             <input
               id="password"
               type="password"
-              placeholder="Create a password"
+              placeholder="Kreirajte lozinku"
+              aria-invalid={Boolean(errors.password)}
+              aria-describedby={
+                errors.password ? "register-password-error" : undefined
+              }
               {...register("password")}
             />
 
             {errors.password && (
-              <p className="form-error">{errors.password.message}</p>
+              <p className="form-error" id="register-password-error">
+                {errors.password.message}
+              </p>
             )}
           </div>
 
-          {formError && <p className="form-error">{formError}</p>}
+          <div className="form-field">
+            <label htmlFor="confirmPassword">Potvrdite lozinku</label>
+
+            <input
+              id="confirmPassword"
+              type="password"
+              placeholder="Ponovite lozinku"
+              aria-invalid={Boolean(errors.confirmPassword)}
+              aria-describedby={
+                errors.confirmPassword ? "confirm-password-error" : undefined
+              }
+              {...register("confirmPassword")}
+            />
+
+            {errors.confirmPassword && (
+              <p className="form-error" id="confirm-password-error">
+                {errors.confirmPassword.message}
+              </p>
+            )}
+          </div>
+
+          {formError && (
+            <p className="form-error" role="alert">
+              {formError}
+            </p>
+          )}
 
           {successMessage && (
-            <p className="form-success">{successMessage}</p>
+            <p className="form-success" role="status">
+              {successMessage}
+            </p>
           )}
 
           <button
@@ -126,13 +177,13 @@ export default function RegisterPage() {
             type="submit"
             disabled={isSubmitting}
           >
-            {isSubmitting ? "Creating account..." : "Create account"}
+            {isSubmitting ? "Kreiranje naloga..." : "Registrujte se"}
           </button>
         </form>
 
         <div className="auth-footer">
           <p>
-            Already have an account? <Link href="/auth/login">Login</Link>
+            Već imate nalog? <Link href="/auth/login">Prijavite se</Link>
           </p>
         </div>
       </section>

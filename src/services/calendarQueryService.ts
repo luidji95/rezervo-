@@ -150,14 +150,63 @@ export async function getClientAppointmentHistory(
  * @param appointmentId ID rezervacije koju menjamo
  * @param status Nova vrednost statusa ('confirmed', 'completed', 'cancelled', 'pending', 'no_show')
  */
-export async function updateAppointmentStatus(
-  appointmentId: string,
-  status: "confirmed" | "completed" | "cancelled" | "pending" | "no_show"
-) {
+export type AppointmentStatus =
+  | "pending"
+  | "confirmed"
+  | "completed"
+  | "cancelled"
+  | "no_show";
+
+const allowedStatusTransitions: Record<AppointmentStatus, AppointmentStatus[]> = {
+  pending: ["confirmed", "completed", "cancelled"],
+  confirmed: ["completed", "cancelled", "no_show"],
+  completed: [],
+  cancelled: [],
+  no_show: [],
+};
+
+export async function updateAppointmentStatus({
+  appointmentId,
+  salonId,
+  nextStatus,
+}: {
+  appointmentId: string;
+  salonId: string;
+  nextStatus: AppointmentStatus;
+}) {
+  const { data: currentAppointment, error: currentError } = await supabase
+    .from("appointments")
+    .select("id, status")
+    .eq("id", appointmentId)
+    .eq("salon_id", salonId)
+    .maybeSingle();
+
+  if (currentError) {
+    throw new Error(currentError.message);
+  }
+
+  if (!currentAppointment) {
+    throw new Error("Appointment not found in the current salon.");
+  }
+
+  const currentStatus = currentAppointment.status as AppointmentStatus;
+
+  if (currentStatus === nextStatus) {
+    return currentAppointment;
+  }
+
+  if (!allowedStatusTransitions[currentStatus]?.includes(nextStatus)) {
+    throw new Error(
+      `Invalid appointment status transition: ${currentStatus} -> ${nextStatus}.`
+    );
+  }
+
   const { data, error } = await supabase
     .from("appointments")
-    .update({ status })
+    .update({ status: nextStatus })
     .eq("id", appointmentId)
+    .eq("salon_id", salonId)
+    .eq("status", currentStatus)
     .select(`
       id,
       salon_id,
@@ -181,7 +230,7 @@ export async function updateAppointmentStatus(
 
   const notificationByStatus: Partial<
     Record<
-      typeof status,
+      AppointmentStatus,
       { type: NotificationType; title: string; action: string }
     >
   > = {
@@ -207,7 +256,7 @@ export async function updateAppointmentStatus(
     },
   };
 
-  const notification = notificationByStatus[status];
+  const notification = notificationByStatus[nextStatus];
 
   if (notification) {
     await createNotification({
@@ -218,6 +267,14 @@ export async function updateAppointmentStatus(
       entityType: "appointment",
       entityId: appointment.id,
     });
+  }
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("rezervo:appointment-status-changed"));
+    window.localStorage.setItem(
+      "rezervo:appointments-version",
+      Date.now().toString()
+    );
   }
 
   return appointment;

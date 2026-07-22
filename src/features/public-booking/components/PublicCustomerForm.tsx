@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
+import { optionalEmailSchema, optionalPhoneSchema, requiredStringSchema } from "@/lib/validation/commonSchemas";
 
 import type {
   PublicAvailabilitySlot,
@@ -14,12 +15,9 @@ import { PublicBookingSummary } from "./PublicBookingSummary";
 
 const publicCustomerSchema = z
   .object({
-    fullName: z.string().trim().min(2, "Unesite ime i prezime."),
-    phone: z.string().trim(),
-    email: z.union([
-      z.string().trim().email("Unesite validan email."),
-      z.literal(""),
-    ]),
+    fullName: requiredStringSchema("Ime i prezime", 2, 120),
+    phone: optionalPhoneSchema,
+    email: optionalEmailSchema,
   })
   .superRefine((customer, context) => {
     if (!customer.phone && !customer.email) {

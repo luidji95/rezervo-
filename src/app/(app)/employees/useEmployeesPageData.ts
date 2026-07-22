@@ -10,10 +10,7 @@ import {
   type EmployeeKPIs,
   type EmployeeStats,
 } from "@/services/employeeAnalyticsService";
-import {
-  deleteEmployee,
-  getSalonEmployees,
-} from "@/services/employeeService";
+import { getSalonEmployees } from "@/services/employeeService";
 import { getSalonEmployeeServices } from "@/services/employeeServiceRelationService";
 import { getSalonServices } from "@/services/serviceService";
 import {
@@ -214,28 +211,12 @@ export function useEmployeesPageData() {
     [employeeServices, services]
   );
 
-  async function handleDeleteEmployee(employeeId: string) {
-    const confirmed = window.confirm(
-      "Da li sigurno želiš da obrišeš zaposlenog?"
-    );
-
-    if (!confirmed) return;
-
-    try {
-      await deleteEmployee(employeeId);
-      await loadData();
-    } catch (error) {
-      console.error("Greška pri brisanju zaposlenog:", error);
-    }
-  }
-
   return {
     currentSalon,
     employeeKPIs: analytics.kpis,
     employeeStatsByEmployeeId: analytics.statsByEmployeeId,
     filteredEmployees,
     getServicesForEmployee,
-    handleDeleteEmployee,
     loadData,
     loading,
     salonId,

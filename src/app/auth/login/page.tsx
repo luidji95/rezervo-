@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { useForm } from "react-hook-form";
@@ -39,7 +40,7 @@ export default function LoginPage() {
     if (!loading && user) {
       redirectAfterLogin(user.id).catch((error) => {
         console.error("Failed to determine post-login redirect:", error);
-        setFormError("Could not verify your salon setup.");
+        setFormError("Nije moguće proveriti podešavanje salona.");
       });
     }
   }, [loading, redirectAfterLogin, user]);
@@ -64,15 +65,18 @@ export default function LoginPage() {
 
       await redirectAfterLogin(loggedInUser.id);
     } catch (error) {
+      console.error("Login submission failed:", error);
       const message =
-        error instanceof Error ? error.message : "Something went wrong.";
+        error instanceof Error
+          ? error.message
+          : "Prijava trenutno nije moguća. Pokušajte ponovo.";
 
       setFormError(message);
     }
   }
 
   if (loading) {
-    return <p>Loading...</p>;
+    return <p>Učitavanje...</p>;
   }
 
   if (user) {
@@ -83,11 +87,11 @@ export default function LoginPage() {
     <main className="auth-page">
       <section className="auth-card">
         <div className="auth-header">
-          <p className="auth-eyebrow">Welcome back</p>
+          <p className="auth-eyebrow">Dobro došli nazad</p>
 
-          <h1>Login to Rezervo</h1>
+          <h1>Prijavite se</h1>
 
-          <p>Access your salon dashboard and manage your bookings.</p>
+          <p>Pristupite svom salonu i nastavite sa radom.</p>
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit(onSubmit)}>
@@ -98,39 +102,60 @@ export default function LoginPage() {
               id="email"
               type="email"
               placeholder="you@example.com"
+              aria-invalid={Boolean(errors.email)}
+              aria-describedby={errors.email ? "email-error" : undefined}
               {...register("email")}
             />
 
             {errors.email && (
-              <p className="form-error">{errors.email.message}</p>
+              <p className="form-error" id="email-error">
+                {errors.email.message}
+              </p>
             )}
           </div>
 
           <div className="form-field">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">Lozinka</label>
 
             <input
               id="password"
               type="password"
-              placeholder="Enter your password"
+              placeholder="Unesite lozinku"
+              aria-invalid={Boolean(errors.password)}
+              aria-describedby={
+                errors.password ? "password-error" : undefined
+              }
               {...register("password")}
             />
 
             {errors.password && (
-              <p className="form-error">{errors.password.message}</p>
+              <p className="form-error" id="password-error">
+                {errors.password.message}
+              </p>
             )}
           </div>
 
-          {formError && <p className="form-error">{formError}</p>}
+          {formError && (
+            <p className="form-error" role="alert">
+              {formError}
+            </p>
+          )}
 
           <button
             className="auth-button"
             type="submit"
             disabled={isSubmitting}
           >
-            {isSubmitting ? "Logging in..." : "Login"}
+            {isSubmitting ? "Prijavljivanje..." : "Prijavi se"}
           </button>
         </form>
+
+        <div className="auth-footer">
+          <p>
+            Nemate nalog?{" "}
+            <Link href="/auth/register">Registrujte se</Link>
+          </p>
+        </div>
       </section>
     </main>
   );

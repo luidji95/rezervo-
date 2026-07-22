@@ -141,6 +141,9 @@ export function AddServiceModal({
                 id="service-duration"
                 name="durationMinutes"
                 type="number"
+                min={5}
+                max={1440}
+                step={1}
                 defaultValue={editingService?.duration_minutes ?? 30}
               />
             </FormField>
@@ -150,6 +153,8 @@ export function AddServiceModal({
                 id="service-price"
                 name="priceAmount"
                 type="number"
+                min={0}
+                max={1000000}
                 step="0.01"
                 defaultValue={Number(editingService?.price ?? 0)}
               />

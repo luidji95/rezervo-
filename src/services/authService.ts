@@ -10,6 +10,27 @@ type LoginPayload = {
   password: string;
 };
 
+function getAuthErrorMessage(
+  error: { code?: string; message: string },
+  action: "login" | "register"
+) {
+  if (error.code === "invalid_credentials") {
+    return "Pogrešan email ili lozinka.";
+  }
+
+  if (
+    error.code === "email_exists" ||
+    error.code === "user_already_exists" ||
+    error.message.toLowerCase().includes("already registered")
+  ) {
+    return "Nalog sa ovim emailom već postoji.";
+  }
+
+  return action === "login"
+    ? "Prijava trenutno nije moguća. Pokušajte ponovo."
+    : "Registracija trenutno nije moguća. Pokušajte ponovo.";
+}
+
 export async function registerUser({ email, password }: RegisterPayload) {
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -20,7 +41,8 @@ export async function registerUser({ email, password }: RegisterPayload) {
   });
 
   if (error) {
-    throw new Error(error.message);
+    console.error("Registration failed:", error);
+    throw new Error(getAuthErrorMessage(error, "register"));
   }
 
   return data;
@@ -33,7 +55,8 @@ export async function loginUser({ email, password }: LoginPayload) {
   });
 
   if (error) {
-    throw new Error(error.message);
+    console.error("Login failed:", error);
+    throw new Error(getAuthErrorMessage(error, "login"));
   }
 
   return data;

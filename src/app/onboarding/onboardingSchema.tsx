@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { emailSchema, optionalInstagramSchema, optionalUrlSchema, phoneSchema, requiredStringSchema } from "@/lib/validation/commonSchemas";
 
 export const SALON_BUSINESS_TYPE_OPTIONS = [
   { label: "Barber", value: "barbershop" },
@@ -17,37 +18,17 @@ export const SALON_BUSINESS_TYPE_VALUES = [
   "other",
 ] as const;
 
-const optionalUrl = z
-  .string()
-  .trim()
-  .refine((value) => value === "" || URL.canParse(value), {
-    message: "Enter a valid URL.",
-  });
-
-const optionalInstagram = z
-  .string()
-  .trim()
-  .refine(
-    (value) =>
-      value === "" ||
-      URL.canParse(value) ||
-      /^@?[a-zA-Z0-9._]{1,30}$/.test(value),
-    {
-      message: "Enter an Instagram username or URL.",
-    }
-  );
-
 export const onboardingSchema = z.object({
-  name: z.string().trim().min(1, "Salon name is required."),
+  name: requiredStringSchema("Naziv salona", 1, 120),
   businessType: z.enum(SALON_BUSINESS_TYPE_VALUES, {
     error: "Business type is required.",
   }),
-  phone: z.string().trim().min(1, "Phone is required."),
-  email: z.string().trim().min(1, "Email is required.").email("Enter a valid email."),
-  addressLine: z.string().trim().min(1, "Address is required."),
-  websiteUrl: optionalUrl,
-  instagramUrl: optionalInstagram,
-  description: z.string().trim(),
+  phone: phoneSchema,
+  email: emailSchema,
+  addressLine: requiredStringSchema("Adresa", 1, 200),
+  websiteUrl: optionalUrlSchema,
+  instagramUrl: optionalInstagramSchema,
+  description: z.string().trim().max(1000, "Opis je predugačak."),
 });
 
 export type OnboardingFormData = z.infer<typeof onboardingSchema>;

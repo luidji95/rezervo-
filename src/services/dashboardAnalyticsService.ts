@@ -1,5 +1,4 @@
 import { supabase } from "@/lib/supabase/client";
-import type { AppointmentListItem } from "@/services/appointmentQueryService";
 
 export type PopularService = {
   serviceId: string;

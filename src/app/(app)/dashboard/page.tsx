@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { useSalon } from "@/context/SalonContext";
@@ -108,39 +108,55 @@ export default function DashboardPage() {
   );
   const calendarEvents = useMemo(() => getCalendarEvents(todaySchedule), [todaySchedule]);
 
-  useEffect(() => {
-    async function loadDashboardData() {
-      if (!currentSalon) return;
+  const loadDashboardData = useCallback(async () => {
+    if (!currentSalon) return;
 
-      setLoading(true);
-      setError(null);
+    setLoading(true);
+    setError(null);
 
-      try {
-        const [statsData, todayScheduleData, upcomingData, employeesData, popularData, topClientsData] =
-          await Promise.all([
-            getDashboardStats(currentSalon.id),
-            getTodaySchedule(currentSalon.id, today),
-            getUpcomingAppointments(currentSalon.id),
-            getCalendarEmployees(currentSalon.id),
-            getPopularServices(currentSalon.id),
-            getTopClients(currentSalon.id),
-          ]);
+    try {
+      const [statsData, todayScheduleData, upcomingData, employeesData, popularData, topClientsData] =
+        await Promise.all([
+          getDashboardStats(currentSalon.id),
+          getTodaySchedule(currentSalon.id, today),
+          getUpcomingAppointments(currentSalon.id),
+          getCalendarEmployees(currentSalon.id),
+          getPopularServices(currentSalon.id),
+          getTopClients(currentSalon.id),
+        ]);
 
-        setStats(statsData);
-        setTodaySchedule(todayScheduleData);
-        setUpcomingAppointments(upcomingData);
-        setEmployees(employeesData);
-        setPopularServices(popularData);
-        setTopClients(topClientsData);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Error loading dashboard data.");
-      } finally {
-        setLoading(false);
-      }
+      setStats(statsData);
+      setTodaySchedule(todayScheduleData);
+      setUpcomingAppointments(upcomingData);
+      setEmployees(employeesData);
+      setPopularServices(popularData);
+      setTopClients(topClientsData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error loading dashboard data.");
+    } finally {
+      setLoading(false);
     }
-
-    void loadDashboardData();
   }, [currentSalon, today]);
+
+  useEffect(() => {
+    const refreshDashboard = () => {
+      void loadDashboardData();
+    };
+
+    refreshDashboard();
+    window.addEventListener("rezervo:appointment-status-changed", refreshDashboard);
+    window.addEventListener("storage", refreshDashboard);
+    window.addEventListener("focus", refreshDashboard);
+
+    return () => {
+      window.removeEventListener(
+        "rezervo:appointment-status-changed",
+        refreshDashboard
+      );
+      window.removeEventListener("storage", refreshDashboard);
+      window.removeEventListener("focus", refreshDashboard);
+    };
+  }, [loadDashboardData]);
 
   if (salonLoading || loading) {
     return <p>Loading dashboard...</p>;
@@ -313,7 +329,7 @@ export default function DashboardPage() {
               <strong>{formatCurrency(stats?.monthlyRevenue ?? 0)}</strong>
             </div>
             <div className="dashboard-stat-row">
-              <span>Ukupno termina</span>
+              <span>Realizovani termini</span>
               <strong>{stats?.monthlyAppointments ?? 0}</strong>
             </div>
             <div className="dashboard-stat-row">
@@ -360,7 +376,7 @@ export default function DashboardPage() {
               topClients.map((client) => (
                 <li key={client.clientId} className="dashboard-list-item">
                   <strong>{client.fullName}</strong>
-                  <p>{client.appointmentCount} termina</p>
+                  <p>{client.appointmentCount} realizovanih poseta</p>
                   <p>{formatCurrency(client.totalPrice)}</p>
                 </li>
               ))

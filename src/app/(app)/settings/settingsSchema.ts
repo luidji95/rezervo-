@@ -1,27 +1,18 @@
 import { z } from "zod";
+import { optionalEmailSchema, optionalPhoneSchema, optionalUrlSchema, requiredStringSchema } from "@/lib/validation/commonSchemas";
 
 export const settingsSchema = z.object({
-  name: z
-    .string()
-    .min(2, "Salon name must be at least 2 characters long"),
+  name: requiredStringSchema("Naziv salona", 2, 120),
 
-  phone: z.string().nullable(),
+  phone: optionalPhoneSchema.nullable(),
 
-  email: z
-    .string()
-    .email("Please enter a valid email")
-    .or(z.literal(""))
-    .nullable(),
+  email: optionalEmailSchema.nullable(),
 
-  websiteUrl: z
-    .string()
-    .url("Please enter a valid URL")
-    .or(z.literal(""))
-    .nullable(),
+  websiteUrl: optionalUrlSchema.nullable(),
 
-  city: z.string().nullable(),
+  city: z.string().trim().max(120, "Naziv grada je predugačak").nullable(),
 
-  addressLine: z.string().nullable(),
+  addressLine: z.string().trim().max(200, "Adresa je predugačka").nullable(),
 });
 
 export type SettingsFormData = z.infer<typeof settingsSchema>;

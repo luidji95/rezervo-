@@ -190,7 +190,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
         services:primary_service_id ( id, name, duration_minutes )
       `)
       .eq("salon_id", salonId)
-      .neq("status", "cancelled")
+      .in("status", ["pending", "confirmed"])
       .gte("start_time", nowIso)
       .order("start_time", { ascending: true })
       .limit(1),

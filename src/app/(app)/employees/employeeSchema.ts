@@ -1,21 +1,21 @@
 import { z } from "zod";
+import { optionalEmailSchema, optionalPhoneSchema, optionalTrimmedStringSchema, requiredStringSchema } from "@/lib/validation/commonSchemas";
 
 export const employeeSchema = z.object({
-  fullName: z.string().min(2, "Full name is required"),
+  fullName: requiredStringSchema("Ime i prezime", 2, 120),
 
-  displayName: z.string().optional(),
+  displayName: optionalTrimmedStringSchema(120),
 
-  position: z.string().optional(),
+  position: optionalTrimmedStringSchema(120),
 
-  phone: z.string().optional(),
+  phone: optionalPhoneSchema,
 
-  email: z
-    .string()
-    .email("Invalid email address")
-    .optional()
-    .or(z.literal("")),
+  email: optionalEmailSchema,
 
-  bio: z.string().optional(),
+  bio: optionalTrimmedStringSchema(1000),
+  isActive: z.boolean().default(true),
+  isBookable: z.boolean().default(true),
+  isPublic: z.boolean().default(true),
 });
 
 export type EmployeeFormInput = z.input<typeof employeeSchema>;

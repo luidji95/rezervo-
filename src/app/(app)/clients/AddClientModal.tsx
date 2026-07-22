@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 
 import { createClient, updateClient } from "@/services/clientService";
 import type { Client } from "@/types/client";
+import { clientSchema } from "./clientSchema";
 
 type AddClientModalProps = {
   salonId: string;
@@ -15,6 +16,7 @@ type AddClientModalProps = {
 
 type ClientFormErrors = {
   fullName?: string;
+  phone?: string;
   email?: string;
 };
 
@@ -31,25 +33,20 @@ export function AddClientModal({
     event.preventDefault();
 
     const formData = new FormData(event.currentTarget);
-    const fullName = String(formData.get("fullName") ?? "").trim();
-    const phone = String(formData.get("phone") ?? "").trim();
-    const email = String(formData.get("email") ?? "").trim();
-    const source = String(formData.get("source") ?? "manual").trim();
+    const parsed = clientSchema.safeParse({
+      fullName: String(formData.get("fullName") ?? ""),
+      phone: String(formData.get("phone") ?? ""),
+      email: String(formData.get("email") ?? ""),
+      source: String(formData.get("source") ?? "manual"),
+    });
 
-    const nextErrors: ClientFormErrors = {};
-
-    if (fullName.length < 2) {
-      nextErrors.fullName = "Ime i prezime je obavezno";
-    }
-
-    if (email && !email.includes("@")) {
-      nextErrors.email = "Email nije validan";
-    }
-
-    if (Object.keys(nextErrors).length > 0) {
-      setErrors(nextErrors);
+    if (!parsed.success) {
+      const fields = parsed.error.flatten().fieldErrors;
+      setErrors({ fullName: fields.fullName?.[0], phone: fields.phone?.[0], email: fields.email?.[0] });
       return;
     }
+
+    const { fullName, phone, email, source } = parsed.data;
 
     setErrors({});
     setIsSubmitting(true);
@@ -104,7 +101,7 @@ export function AddClientModal({
               />
             </FormField>
 
-            <FormField label="Telefon">
+            <FormField label="Telefon" error={errors.phone}>
               <input
                 name="phone"
                 type="tel"

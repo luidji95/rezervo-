@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { createAppointment } from "@/services/appointmentService";
-import { AppointmentSlotUnavailableError } from "@/services/appointmentValidationService";
+import { createPublicBookingAtomic } from "@/services/appointmentService";
+import { generateAvailableSlots } from "@/services/availabilityService";
+import {
+  normalizeClientEmail,
+  normalizeClientPhone,
+} from "@/services/clientService";
+
+const SALON_TIMEZONE = "Europe/Belgrade";
 
 const publicCreateBookingSchema = z.object({
   salonSlug: z.string().trim().min(1),
   serviceId: z.string().uuid(),
   employeeId: z.string().uuid(),
+  idempotencyKey: z.string().uuid(),
   startTime: z.string().datetime(),
   customer: z
     .object({
@@ -26,6 +33,33 @@ const publicCreateBookingSchema = z.object({
     }),
 });
 
+function getDateInTimeZone(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  if (!year || !month || !day) {
+    throw new Error("Failed to format booking date.");
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+function getPostgresErrorCode(error: unknown) {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return null;
+  }
+
+  return typeof error.code === "string" ? error.code : null;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
@@ -38,8 +72,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const { salonSlug, serviceId, employeeId, startTime, customer } =
-      parsed.data;
+    const {
+      salonSlug,
+      serviceId,
+      employeeId,
+      startTime,
+      customer,
+      idempotencyKey,
+    } = parsed.data;
 
     const { data: salon, error: salonError } = await supabaseServer
       .from("salons")
@@ -101,23 +141,83 @@ export async function POST(req: Request) {
       );
     }
 
-    const appointment = await createAppointment(
+    const { data: existingAppointment, error: idempotencyLookupError } =
+      await supabaseServer
+        .from("appointments")
+        .select(
+          "id, salon_id, primary_service_id, employee_id, start_time"
+        )
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle();
+
+    if (idempotencyLookupError) {
+      throw idempotencyLookupError;
+    }
+
+    if (existingAppointment) {
+      const matchesOriginalRequest =
+        existingAppointment.salon_id === salon.id &&
+        existingAppointment.primary_service_id === serviceId &&
+        existingAppointment.employee_id === employeeId &&
+        new Date(existingAppointment.start_time).getTime() ===
+          new Date(startTime).getTime();
+
+      if (!matchesOriginalRequest) {
+        return NextResponse.json(
+          { error: "Invalid idempotency key." },
+          { status: 400 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        appointmentId: existingAppointment.id,
+      });
+    }
+
+    const appointmentStart = new Date(startTime);
+    const bookingDate = getDateInTimeZone(appointmentStart, SALON_TIMEZONE);
+    const availability = await generateAvailableSlots(
       {
         salonId: salon.id,
         serviceId,
         employeeId,
-        startTime,
-        client: {
-          fullName: customer.fullName,
-          phone: customer.phone,
-          email: customer.email,
-        },
-        bookingSource: "public",
+        date: bookingDate,
       },
-      supabaseServer,
+      supabaseServer
+    );
+
+    const isAvailable = availability.slots.some(
+      (slot) =>
+        slot.employeeId === employeeId &&
+        new Date(slot.startTime).getTime() === appointmentStart.getTime()
+    );
+
+    if (!isAvailable) {
+      return NextResponse.json(
+        {
+          error: "Selected time is no longer available.",
+          code: "SLOT_UNAVAILABLE",
+        },
+        { status: 409 }
+      );
+    }
+
+    const appointment = await createPublicBookingAtomic(
       {
-        enforceGeneratedSlot: true,
-      }
+        salonId: salon.id,
+        salonSlug,
+        serviceId,
+        employeeId,
+        startTime,
+        customer: {
+          fullName: customer.fullName.trim(),
+          phone: normalizeClientPhone(customer.phone) ?? "",
+          email: normalizeClientEmail(customer.email) ?? "",
+        },
+        idempotencyKey,
+      },
+      supabaseServer
     );
 
     return NextResponse.json(
@@ -125,16 +225,23 @@ export async function POST(req: Request) {
         success: true,
         appointmentId: appointment.id,
       },
-      { status: 201 }
+      { status: appointment.wasCreated ? 201 : 200 }
     );
   } catch (error) {
-    if (error instanceof AppointmentSlotUnavailableError) {
+    if (getPostgresErrorCode(error) === "23P01") {
       return NextResponse.json(
         {
           error: "Selected time is no longer available.",
           code: "SLOT_UNAVAILABLE",
         },
         { status: 409 }
+      );
+    }
+
+    if (getPostgresErrorCode(error) === "22023") {
+      return NextResponse.json(
+        { error: "Invalid booking data." },
+        { status: 400 }
       );
     }
 

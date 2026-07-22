@@ -1,20 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Briefcase, CalendarDays, Plus, UserRound } from "lucide-react";
 
 import { AddEmployeeModal } from "./AddEmployeeModal";
+import { EmployeeDeleteModal } from "./EmployeeDeleteModal";
 import { EmployeeDetailsPanel } from "./EmployeeDetailsPanel";
+import { EmployeeEditModal } from "./EmployeeEditModal";
 import { EmployeeTable } from "./EmployeeTable";
 import { KpiCard } from "./KpiCard";
 import { formatMoney } from "./employeeUtils";
 import { useEmployeesPageData } from "./useEmployeesPageData";
+import {
+  deleteEmployeeSafely,
+  EmployeeHasFutureAppointmentsError,
+  restoreEmployee,
+} from "@/services/employeeService";
+import type { Employee } from "@/types/employee";
 
 import "./employees.css";
 
 export default function EmployeesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null);
+  const [deleteError, setDeleteError] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [restoringEmployeeId, setRestoringEmployeeId] = useState<string | null>(
+    null
+  );
+  const detailsPanelRef = useRef<HTMLElement | null>(null);
 
   const {
     currentSalon,
@@ -38,6 +54,61 @@ export default function EmployeesPage() {
     setStatusFilter,
     statusFilter,
   } = useEmployeesPageData();
+
+  function handleSelectEmployee(employee: Employee) {
+    setSelectedEmployee(employee);
+
+    if (window.matchMedia("(max-width: 1200px)").matches) {
+      window.requestAnimationFrame(() => {
+        detailsPanelRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    }
+  }
+
+  async function handleDeleteEmployee() {
+    if (!deletingEmployee || !salonId || isDeleting) return;
+
+    try {
+      setIsDeleting(true);
+      setDeleteError("");
+      const result = await deleteEmployeeSafely({
+        employeeId: deletingEmployee.id,
+        salonId,
+      });
+      setDeletingEmployee(null);
+      await loadData();
+
+      if (result.mode === "hard") {
+        setSelectedEmployee(null);
+      }
+    } catch (error) {
+      console.error("Failed to remove employee:", error);
+      setDeleteError(
+        error instanceof EmployeeHasFutureAppointmentsError
+          ? "Zaposleni ima buduće pending ili confirmed termine. Prvo ih premestite ili otkažite."
+          : "Zaposlenog trenutno nije moguće ukloniti. Pokušajte ponovo."
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  async function handleRestoreEmployee(employee: Employee) {
+    if (!salonId || restoringEmployeeId) return;
+
+    try {
+      setRestoringEmployeeId(employee.id);
+      await restoreEmployee({ employeeId: employee.id, salonId });
+      await loadData();
+    } catch (error) {
+      console.error("Failed to restore employee:", error);
+    } finally {
+      setRestoringEmployeeId(null);
+    }
+  }
 
   if (salonLoading || loading) {
     return (
@@ -113,11 +184,15 @@ export default function EmployeesPage() {
             statusFilter={statusFilter}
             onSearchChange={setSearchValue}
             onStatusFilterChange={setStatusFilter}
-            onSelectEmployee={setSelectedEmployee}
+            onSelectEmployee={handleSelectEmployee}
           />
         </main>
 
-        <aside className="employees-side">
+        <aside
+          ref={detailsPanelRef}
+          className="employees-side"
+          tabIndex={-1}
+        >
           <EmployeeDetailsPanel
             employee={selectedEmployee}
             services={
@@ -126,6 +201,13 @@ export default function EmployeesPage() {
             salonWorkingHours={salonWorkingHours}
             employeeWorkingHours={selectedEmployeeHours}
             stats={selectedEmployeeStats}
+            isRestoring={restoringEmployeeId === selectedEmployee?.id}
+            onEdit={setEditingEmployee}
+            onDelete={(employee) => {
+              setDeleteError("");
+              setDeletingEmployee(employee);
+            }}
+            onRestore={handleRestoreEmployee}
           />
         </aside>
       </div>
@@ -133,7 +215,7 @@ export default function EmployeesPage() {
       {isModalOpen && (
         <AddEmployeeModal
           salonId={salonId}
-          services={services}
+          services={services.filter((service) => service.is_active)}
           selectedServiceIds={selectedServiceIds}
           setSelectedServiceIds={setSelectedServiceIds}
           onClose={() => {
@@ -145,6 +227,37 @@ export default function EmployeesPage() {
             setSelectedServiceIds([]);
             await loadData();
           }}
+        />
+      )}
+
+      {editingEmployee && (
+        <EmployeeEditModal
+          employee={editingEmployee}
+          salonId={salonId}
+          services={services.filter((service) => service.is_active)}
+          initialServiceIds={getServicesForEmployee(editingEmployee.id)
+            .filter((service) => service.is_active)
+            .map((service) => service.id)}
+          onClose={() => setEditingEmployee(null)}
+          onSaved={async () => {
+            setEditingEmployee(null);
+            await loadData();
+          }}
+        />
+      )}
+
+      {deletingEmployee && (
+        <EmployeeDeleteModal
+          employee={deletingEmployee}
+          error={deleteError}
+          isDeleting={isDeleting}
+          onCancel={() => {
+            if (!isDeleting) {
+              setDeletingEmployee(null);
+              setDeleteError("");
+            }
+          }}
+          onConfirm={handleDeleteEmployee}
         />
       )}
     </div>

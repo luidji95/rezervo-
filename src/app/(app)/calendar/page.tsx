@@ -240,7 +240,11 @@ function CalendarPageContent() {
   ) => {
     if (!currentSalon) return;
     try {
-      await updateAppointmentStatus(appointmentId, status);
+      await updateAppointmentStatus({
+        appointmentId,
+        salonId: currentSalon.id,
+        nextStatus: status,
+      });
       
       const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate);
       setAppointments(freshAppointments);

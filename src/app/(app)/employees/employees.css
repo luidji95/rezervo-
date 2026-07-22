@@ -114,6 +114,11 @@
   min-width: 0;
 }
 
+.employees-side {
+  position: sticky;
+  top: 20px;
+}
+
 .employees-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -394,7 +399,7 @@
 .employee-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 500;
   background: rgba(15, 23, 42, 0.45);
   display: flex;
   align-items: center;
@@ -526,6 +531,11 @@
   .employees-layout {
     grid-template-columns: 1fr;
   }
+
+  .employees-side {
+    position: static;
+    order: -1;
+  }
 }
 
 @media (max-width: 700px) {
@@ -594,4 +604,101 @@
   gap: 10px;
   align-items: center;
   min-width: 0;
+}
+
+.employees-danger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  padding: 11px 16px;
+  background: #ffffff;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.employees-danger-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.employees-table-row.inactive {
+  opacity: 0.62;
+}
+
+.employee-details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.employee-form-field > span {
+  color: #172554;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.employee-service-checkboxes label > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.employee-service-checkboxes label strong {
+  color: #172554;
+  font-size: 13px;
+}
+
+.employee-service-checkboxes label small {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.employee-service-warning {
+  margin: 12px 0 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 12px;
+}
+
+.employee-visibility-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.employee-visibility-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 9px 11px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.employee-confirm-modal {
+  width: min(520px, 100%);
+}
+
+.employee-confirm-text {
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.employees-error {
+  color: #dc2626;
+  font-size: 13px;
 }

@@ -56,6 +56,7 @@ export type CreatePublicBookingInput = {
   salonSlug: string;
   serviceId: string;
   employeeId: string;
+  idempotencyKey: string;
   startTime: string;
   customer: PublicCustomerData;
 };

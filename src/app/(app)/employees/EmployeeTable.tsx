@@ -83,7 +83,7 @@ export function EmployeeTable({
               <button
                 key={employee.id}
                 type="button"
-                className={`employees-table-row ${isSelected ? "active" : ""}`}
+                className={`employees-table-row ${isSelected ? "active" : ""} ${!employee.is_active ? "inactive" : ""}`}
                 onClick={() => onSelectEmployee(employee)}
               >
                 <div className="employee-name-cell">
@@ -95,6 +95,9 @@ export function EmployeeTable({
                     <strong>
                       {employee.display_name || employee.full_name}
                     </strong>
+                    {!employee.is_active && (
+                      <span className="employee-status inactive">Neaktivan</span>
+                    )}
                     <span>
                       {employee.phone || employee.email || "Nema kontakta"}
                     </span>

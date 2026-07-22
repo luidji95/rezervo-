@@ -37,6 +37,13 @@ export type CreateAppointmentResult = {
 };
 
 import { z } from "zod";
+import { optionalEmailSchema, optionalPhoneSchema, optionalTrimmedStringSchema, requiredStringSchema } from "@/lib/validation/commonSchemas";
+
+export const appointmentClientSchema = z.object({
+  fullName: requiredStringSchema("Ime i prezime klijenta", 2, 120),
+  phone: optionalPhoneSchema,
+  email: optionalEmailSchema,
+});
 
 // Šema za validaciju forme novog termina
 export const createAppointmentSchema = z.object({
@@ -51,14 +58,10 @@ export const createAppointmentSchema = z.object({
   "whatsapp",
   "instagram",
 ]),
-  customerNote: z.string().optional(),
+  customerNote: optionalTrimmedStringSchema(1000),
   
   // Ugniježdeni objekat za klijenta
-  client: z.object({
-    fullName: z.string().min(2, "Ime i prezime klijenta je obavezno"),
-    phone: z.string().optional().or(z.literal("")), // Fleksibilnije za manuelni unos ako telefon nije obavezan
-    email: z.string().email("Nevažeći format email-a").optional().or(z.literal("")),
-  }),
+  client: appointmentClientSchema,
 });
 
 // Izvedeni TypeScript tip na osnovu Zod šeme

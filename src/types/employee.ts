@@ -40,6 +40,7 @@ export type CreateEmployeeInput = {
 
 export type UpdateEmployeeInput = {
   employeeId: string;
+  salonId?: string;
 
   fullName: string;
   displayName: string | null;
@@ -50,4 +51,8 @@ export type UpdateEmployeeInput = {
   email: string | null;
 
   bio: string | null;
+
+  isActive?: boolean;
+  isBookable?: boolean;
+  isPublic?: boolean;
 };

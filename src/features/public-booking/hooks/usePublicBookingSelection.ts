@@ -48,6 +48,7 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string) {
   const slotAbortControllerRef = useRef<AbortController | null>(null);
   const lastSlotRequestKeyRef = useRef<string | null>(null);
   const creatingBookingRef = useRef(false);
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   const resetAvailability = useCallback(() => {
     slotRequestIdRef.current += 1;
@@ -60,6 +61,7 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string) {
     setIsLoadingSlots(false);
     setSlotsError(false);
     setBookingError(null);
+    idempotencyKeyRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -78,6 +80,7 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string) {
       setEmployees([]);
       setEmployeesError(false);
       setBookingError(null);
+      idempotencyKeyRef.current = null;
       resetAvailability();
 
       if (!serviceId) {
@@ -115,6 +118,7 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string) {
     (employeeId: PublicEmployeeSelection) => {
       setSelectedEmployeeId(employeeId);
       setBookingError(null);
+      idempotencyKeyRef.current = null;
       resetAvailability();
     },
     [resetAvailability]
@@ -143,6 +147,7 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string) {
       setSelectedSlot(null);
       setSlotsError(false);
       setBookingError(null);
+      idempotencyKeyRef.current = null;
 
       slotRequestIdRef.current += 1;
       const requestId = slotRequestIdRef.current;
@@ -220,10 +225,15 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string) {
       setBookingError(null);
 
       try {
+        const idempotencyKey =
+          idempotencyKeyRef.current ?? crypto.randomUUID();
+        idempotencyKeyRef.current = idempotencyKey;
+
         const result = await createPublicBooking({
           salonSlug,
           serviceId: selectedServiceId,
           employeeId: selectedEmployeeId,
+          idempotencyKey,
           startTime: selectedSlot.startTime,
           customer,
         });
@@ -235,6 +245,7 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string) {
             "Izabrani termin više nije dostupan. Izaberite drugi termin.";
           setBookingError(conflictMessage);
           setSelectedSlot(null);
+          idempotencyKeyRef.current = null;
           lastSlotRequestKeyRef.current = null;
           await selectDate(selectedDate);
           setBookingError(conflictMessage);
@@ -261,12 +272,19 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string) {
 
   const resetBookingFlow = useCallback(() => {
     creatingBookingRef.current = false;
+    idempotencyKeyRef.current = null;
     setBookingResult(null);
     setBookingError(null);
     setCustomerForm(EMPTY_CUSTOMER);
     setIsCreatingBooking(false);
     void selectService(null);
   }, [selectService]);
+
+  const selectSlot = useCallback((slot: PublicAvailabilitySlot | null) => {
+    idempotencyKeyRef.current = null;
+    setBookingError(null);
+    setSelectedSlot(slot);
+  }, []);
 
   return {
     bookingError,
@@ -286,7 +304,7 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string) {
     selectDate,
     selectEmployee,
     selectService,
-    selectSlot: setSelectedSlot,
+    selectSlot,
     slots,
     slotsError,
   };

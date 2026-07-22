@@ -2,17 +2,12 @@
 
 import {
   createContext,
-  useCallback,
   useContext,
-  useEffect,
-  useState,
   type ReactNode,
 } from "react";
 
-import { useAuth } from "@/context/AuthContext";
-import { getCurrentSalon } from "@/services/salonService";
-
-type CurrentSalon = Awaited<ReturnType<typeof getCurrentSalon>>;
+import { useAuthorization } from "@/context/AuthorizationContext";
+import type { CurrentSalon } from "@/services/salonService";
 
 type SalonContextValue = {
   currentSalon: CurrentSalon;
@@ -23,73 +18,11 @@ type SalonContextValue = {
 const SalonContext = createContext<SalonContextValue | null>(null);
 
 export function SalonProvider({ children }: { children: ReactNode }) {
-  const { user, loading: authLoading } = useAuth();
-
-  const [currentSalon, setCurrentSalon] = useState<CurrentSalon>(null);
-  const [salonLoading, setSalonLoading] = useState(true);
-
-  const refetchSalon = useCallback(async () => {
-    if (!user) {
-      setCurrentSalon(null);
-      setSalonLoading(false);
-      return;
-    }
-
-    setSalonLoading(true);
-
-    try {
-      const salon = await getCurrentSalon(user.id);
-      setCurrentSalon(salon);
-    } catch (error) {
-      console.error("Failed to fetch current salon:", error);
-      setCurrentSalon(null);
-    } finally {
-      setSalonLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (authLoading) return;
-
-    let ignore = false;
-
-    async function loadCurrentSalon() {
-      if (!user) {
-        if (!ignore) {
-          setCurrentSalon(null);
-          setSalonLoading(false);
-        }
-
-        return;
-      }
-
-      setSalonLoading(true);
-
-      try {
-        const salon = await getCurrentSalon(user.id);
-
-        if (!ignore) {
-          setCurrentSalon(salon);
-        }
-      } catch (error) {
-        console.error("Failed to fetch current salon:", error);
-
-        if (!ignore) {
-          setCurrentSalon(null);
-        }
-      } finally {
-        if (!ignore) {
-          setSalonLoading(false);
-        }
-      }
-    }
-
-    loadCurrentSalon();
-
-    return () => {
-      ignore = true;
-    };
-  }, [user, authLoading]);
+  const {
+    currentSalon,
+    loading: salonLoading,
+    refetchAuthorization: refetchSalon,
+  } = useAuthorization();
 
   return (
     <SalonContext.Provider

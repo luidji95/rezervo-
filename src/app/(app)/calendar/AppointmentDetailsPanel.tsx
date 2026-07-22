@@ -30,6 +30,7 @@ type AppointmentDetailsPanelProps = {
   ) => Promise<void>;
   onRescheduleClick: () => void; // Prop za otvaranje reschedule modala
   onEditClick: () => void;       // <-- DODATO: Novi prop za otvaranje Edit modala
+  readOnly?: boolean;
 };
 
 function formatAppointmentDuration(start: string, end: string): string {
@@ -81,6 +82,7 @@ export default function AppointmentDetailsPanel({
   onStatusChange,
   onRescheduleClick,
   onEditClick, // <-- Destrukturiran novi prop
+  readOnly = false,
 }: AppointmentDetailsPanelProps) {
   const [localLoading, setLocalLoading] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -239,6 +241,11 @@ export default function AppointmentDetailsPanel({
 
         <hr className="details-divider" />
 
+        {readOnly ? (
+          <p className="calendar-readonly-notice">
+            Izmene termina za zaposlene biće omogućene u sledećoj fazi.
+          </p>
+        ) : <>
         {/* BRZE STATUSNE AKCIJE */}
         <div className="status-quick-actions-section" style={{ marginBottom: "20px" }}>
           <h3 style={{ fontSize: "12px", textTransform: "uppercase", color: "#64748b", letterSpacing: "0.05em", marginBottom: "10px" }}>
@@ -351,6 +358,7 @@ export default function AppointmentDetailsPanel({
             Otkaži termin
           </button>
         </div>
+        </>}
 
       </div>
 

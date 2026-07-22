@@ -12,6 +12,7 @@ export type PublicSalon = {
   email: string | null;
   websiteUrl: string | null;
   instagramUrl: string | null;
+  timezone: string;
 };
 
 export type PublicService = {

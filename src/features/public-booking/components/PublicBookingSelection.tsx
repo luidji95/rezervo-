@@ -8,11 +8,13 @@ import { PublicCustomerForm } from "./PublicCustomerForm";
 import { PublicEmployeeList } from "./PublicEmployeeList";
 import { PublicServiceList } from "./PublicServiceList";
 import { PublicSlotList } from "./PublicSlotList";
+import { getTodayDateKey } from "@/lib/salonDateTime";
 
 type PublicBookingSelectionProps = {
   salonId: string;
   salonName: string;
   salonSlug: string;
+  salonTimeZone: string;
   services: PublicService[];
 };
 
@@ -20,15 +22,11 @@ export function PublicBookingSelection({
   salonId,
   salonName,
   salonSlug,
+  salonTimeZone,
   services,
 }: PublicBookingSelectionProps) {
   const selection = usePublicBookingSelection(salonId, salonSlug);
-  const minimumDate = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Belgrade",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  const minimumDate = getTodayDateKey(salonTimeZone);
   const selectedService = services.find(
     (service) => service.id === selection.selectedServiceId
   );

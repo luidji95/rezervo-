@@ -10,6 +10,7 @@ import { CalendarEmployee } from '@/services/employeeQueryService';
 
 import { generateAvailableSlots } from '@/services/availabilityService';
 import { AvailableSlot } from '@/types/availability';
+import { DEFAULT_SALON_TIME_ZONE, getTodayDateKey } from '@/lib/salonDateTime';
 
 interface CreateAppointmentModalProps {
   isOpen: boolean;
@@ -67,7 +68,9 @@ export const CreateAppointmentModal: React.FC<CreateAppointmentModalProps> = ({
   const watchedEmployeeId = useWatch({ control, name: 'employeeId' });
   
   // Lokalni state samo za HTML date picker
-  const [localDate, setLocalDate] = useState(selectedDate || new Date().toISOString().split('T')[0]);
+  const [localDate, setLocalDate] = useState(
+    selectedDate || getTodayDateKey(DEFAULT_SALON_TIME_ZONE),
+  );
 
   // useEffect koji osluškuje promenu Usluge, Zaposlenog ili Datuma i vuče slotove sa beka
   useEffect(() => {

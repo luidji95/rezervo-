@@ -1,6 +1,12 @@
 import { supabase } from "@/lib/supabase/client";
+import { getEmployeeAppointmentClients } from "@/services/employeeClientReadService";
+import {
+  DEFAULT_SALON_TIME_ZONE,
+  getDayRangeUtc,
+} from "@/lib/salonDateTime";
 export type AppointmentListItem = {
   id: string;
+  client_id?: string;
   start_time: string;
   end_time: string;
   status: string;
@@ -35,16 +41,17 @@ export type AppointmentListItem = {
 
 export async function getSalonAppointmentsByDate(
   salonId: string,
-  date: string
+  date: string,
+  timeZone = DEFAULT_SALON_TIME_ZONE,
 ): Promise<AppointmentListItem[]> {
-  const startOfDay = new Date(`${date}T00:00:00`);
-  const endOfDay = new Date(`${date}T23:59:59`);
+  const { startUtc, endUtc } = getDayRangeUtc(date, timeZone);
 
   const { data, error } = await supabase
     .from("appointments")
     .select(
       `
       id,
+      client_id,
       start_time,
       end_time,
       status,
@@ -73,13 +80,31 @@ export async function getSalonAppointmentsByDate(
     `
     )
     .eq("salon_id", salonId)
-    .gte("start_time", startOfDay.toISOString())
-    .lte("start_time", endOfDay.toISOString())
+    .gte("start_time", startUtc.toISOString())
+    .lt("start_time", endUtc.toISOString())
     .order("start_time", { ascending: true });
 
   if (error) {
     throw new Error(error.message);
   }
-  return (data ?? []) as unknown as AppointmentListItem[];
+  const appointments = (data ?? []) as unknown as AppointmentListItem[];
+
+  if (!appointments.some((appointment) => !appointment.clients)) {
+    return appointments;
+  }
+
+  const employeeClients = await getEmployeeAppointmentClients(salonId);
+  const clientsById = new Map(
+    employeeClients.map((client) => [client.id, client]),
+  );
+
+  return appointments.map((appointment) => ({
+    ...appointment,
+    clients:
+      appointment.clients ??
+      (appointment.client_id
+        ? clientsById.get(appointment.client_id) ?? null
+        : null),
+  }));
   
 }

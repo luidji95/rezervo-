@@ -2,6 +2,11 @@ import { supabase } from "@/lib/supabase/client";
 import { getAllWorkingHoursForSalon } from "@/services/workingService";
 import { getSalonEmployees } from "@/services/employeeService";
 import type { AppointmentListItem } from "@/services/appointmentQueryService";
+import {
+  DEFAULT_SALON_TIME_ZONE,
+  getDayRangeUtc,
+  getTodayDateKey,
+} from "@/lib/salonDateTime";
 
 export type DashboardStats = {
   todayAppointments: number;
@@ -48,18 +53,6 @@ type RawAppointment = {
   employees: RelationValue<AppointmentRelationEmployee>;
   services: RelationValue<AppointmentRelationService>;
 };
-
-function getStartOfDay(date: Date) {
-  const clone = new Date(date);
-  clone.setHours(0, 0, 0, 0);
-  return clone;
-}
-
-function getEndOfDay(date: Date) {
-  const clone = new Date(date);
-  clone.setHours(23, 59, 59, 999);
-  return clone;
-}
 
 function getMonthBounds(date: Date) {
   const start = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
@@ -141,11 +134,17 @@ function normalizeAppointment(appointment: RawAppointment): AppointmentListItem 
   };
 }
 
-export async function getDashboardStats(salonId: string): Promise<DashboardStats> {
+export async function getDashboardStats(
+  salonId: string,
+  timeZone = DEFAULT_SALON_TIME_ZONE,
+): Promise<DashboardStats> {
   const today = new Date();
 
-  const todayStart = getStartOfDay(today);
-  const todayEnd = getEndOfDay(today);
+  const todayDateKey = getTodayDateKey(timeZone, today);
+  const { startUtc: todayStart, endUtc: todayEnd } = getDayRangeUtc(
+    todayDateKey,
+    timeZone,
+  );
   const { start: monthStart, end: monthEnd } = getMonthBounds(today);
   const nowIso = new Date().toISOString();
 
@@ -162,7 +161,7 @@ export async function getDashboardStats(salonId: string): Promise<DashboardStats
       .select("duration_minutes, start_time, end_time", { count: "exact" })
       .eq("salon_id", salonId)
       .gte("start_time", todayStart.toISOString())
-      .lte("start_time", todayEnd.toISOString()),
+      .lt("start_time", todayEnd.toISOString()),
 
     supabase
       .from("appointments")

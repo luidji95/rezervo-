@@ -4,15 +4,22 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { useSalon } from "@/context/SalonContext";
+import { useAuthorization } from "@/context/AuthorizationContext";
+import { EmployeeDashboardPlaceholder } from "@/features/dashboard/components/EmployeeDashboardPlaceholder";
 import { getDashboardStats, type DashboardStats } from "@/services/dashboardStatsService";
 import { getTodaySchedule, getUpcomingAppointments } from "@/services/dashboardAppointmentsService";
 import { getPopularServices, getTopClients, type PopularService, type TopClient } from "@/services/dashboardAnalyticsService";
 import { getCalendarEmployees, type CalendarEmployee } from "@/services/employeeQueryService";
 import type { AppointmentListItem } from "@/services/appointmentQueryService";
+import {
+  DEFAULT_SALON_TIME_ZONE,
+  getHourInTimeZone,
+  getTodayDateKey,
+} from "@/lib/salonDateTime";
 
 import "./dashboard.css";
 
-const HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17];
+const DEFAULT_DASHBOARD_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17];
 const MAX_MINI_CALENDAR_COLUMNS = 4;
 
 type EmployeeColumn = {
@@ -20,10 +27,11 @@ type EmployeeColumn = {
   name: string;
 };
 
-function formatTime(value: string) {
+function formatTime(value: string, timeZone = DEFAULT_SALON_TIME_ZONE) {
   return new Date(value).toLocaleTimeString("sr-RS", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone,
   });
 }
 
@@ -76,21 +84,21 @@ function getEmployeeColumns(
   return [...columns.values()].slice(0, MAX_MINI_CALENDAR_COLUMNS);
 }
 
-function getCalendarEvents(schedule: AppointmentListItem[]) {
+function getCalendarEvents(schedule: AppointmentListItem[], timeZone: string) {
   return schedule.map((appointment) => {
     const start = new Date(appointment.start_time);
-    const row = start.getHours();
+    const row = getHourInTimeZone(start, timeZone);
 
     return {
       id: appointment.id,
       row,
       employeeId: appointment.employees?.id ?? null,
-      label: `${formatTime(appointment.start_time)} ${appointment.clients?.full_name ?? "Klijent"}`,
+      label: `${formatTime(appointment.start_time, timeZone)} ${appointment.clients?.full_name ?? "Klijent nije dostupan"}`,
     };
   });
 }
 
-export default function DashboardPage() {
+function OwnerDashboard() {
   const { currentSalon, salonLoading } = useSalon();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [todaySchedule, setTodaySchedule] = useState<AppointmentListItem[]>([]);
@@ -101,12 +109,30 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const salonTimeZone = currentSalon?.timezone || DEFAULT_SALON_TIME_ZONE;
+  const today = getTodayDateKey(salonTimeZone);
   const employeeColumns = useMemo(
     () => getEmployeeColumns(todaySchedule, employees),
     [todaySchedule, employees]
   );
-  const calendarEvents = useMemo(() => getCalendarEvents(todaySchedule), [todaySchedule]);
+  const calendarEvents = useMemo(
+    () => getCalendarEvents(todaySchedule, salonTimeZone),
+    [salonTimeZone, todaySchedule],
+  );
+  const displayHours = useMemo(
+    () =>
+      [...new Set([
+        ...DEFAULT_DASHBOARD_HOURS,
+        ...calendarEvents.map((event) => event.row),
+      ])].sort((first, second) => first - second),
+    [calendarEvents],
+  );
+  const todayLabel = new Intl.DateTimeFormat("sr-RS", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: salonTimeZone,
+  }).format(new Date());
 
   const loadDashboardData = useCallback(async () => {
     if (!currentSalon) return;
@@ -117,8 +143,8 @@ export default function DashboardPage() {
     try {
       const [statsData, todayScheduleData, upcomingData, employeesData, popularData, topClientsData] =
         await Promise.all([
-          getDashboardStats(currentSalon.id),
-          getTodaySchedule(currentSalon.id, today),
+          getDashboardStats(currentSalon.id, salonTimeZone),
+          getTodaySchedule(currentSalon.id, today, salonTimeZone),
           getUpcomingAppointments(currentSalon.id),
           getCalendarEmployees(currentSalon.id),
           getPopularServices(currentSalon.id),
@@ -136,7 +162,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentSalon, today]);
+  }, [currentSalon, salonTimeZone, today]);
 
   useEffect(() => {
     const refreshDashboard = () => {
@@ -221,7 +247,7 @@ export default function DashboardPage() {
             <div className="dashboard-card-header">
               <div>
                 <h2>Kalendar danas</h2>
-                <p>Mini pregled termina za danas</p>
+                <p>Mini pregled termina za {todayLabel}</p>
               </div>
               <Link href="/calendar">Pogledaj ceo kalendar</Link>
             </div>
@@ -242,17 +268,21 @@ export default function DashboardPage() {
                   <div key={employee.id} className="calendar-column-name">{employee.name}</div>
                 ))}
 
-                {HOURS.map((hour) => (
+                {displayHours.map((hour) => (
                   <React.Fragment key={hour}>
                     <div className="calendar-time">{hour}:00</div>
                     {employeeColumns.map((employee) => {
-                      const event = calendarEvents.find(
+                      const cellEvents = calendarEvents.filter(
                         (item) => item.row === hour && item.employeeId === employee.id
                       );
 
                       return (
                         <div key={`${hour}-${employee.id}`} className="calendar-cell">
-                          {event ? <div className="dashboard-calendar-event">{event.label}</div> : null}
+                          {cellEvents.map((event) => (
+                            <div className="dashboard-calendar-event" key={event.id}>
+                              {event.label}
+                            </div>
+                          ))}
                         </div>
                       );
                     })}
@@ -386,4 +416,19 @@ export default function DashboardPage() {
       </section>
     </main>
   );
+}
+
+export default function DashboardPage() {
+  const { currentRole, currentEmployee, currentSalon } = useAuthorization();
+
+  if (currentRole === "employee" && currentEmployee && currentSalon) {
+    return (
+      <EmployeeDashboardPlaceholder
+        employee={currentEmployee}
+        salonName={currentSalon.name}
+      />
+    );
+  }
+
+  return <OwnerDashboard />;
 }

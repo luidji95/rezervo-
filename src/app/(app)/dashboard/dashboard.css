@@ -176,6 +176,9 @@
 }
 
 .calendar-cell {
+  display: grid;
+  align-content: start;
+  gap: 6px;
   padding: 6px;
   min-width: 120px;
 }

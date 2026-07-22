@@ -44,7 +44,8 @@ const PUBLIC_SALON_FIELDS = `
   phone,
   email,
   website_url,
-  instagram_url
+  instagram_url,
+  timezone
 `;
 
 const PUBLIC_SERVICE_FIELDS = `
@@ -70,6 +71,7 @@ type PublicSalonRow = {
   email: string | null;
   website_url: string | null;
   instagram_url: string | null;
+  timezone: string | null;
 };
 
 type PublicServiceRow = {
@@ -105,6 +107,7 @@ function mapSalon(row: PublicSalonRow): PublicSalon {
     email: row.email,
     websiteUrl: row.website_url,
     instagramUrl: row.instagram_url,
+    timezone: row.timezone || "Europe/Belgrade",
   };
 }
 

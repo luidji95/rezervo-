@@ -469,6 +469,16 @@
   color: #344054;
 }
 
+.calendar-readonly-notice {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  color: #1e40af;
+  background: #eff6ff;
+  font-size: 14px;
+}
+
 .history-date {
   width: 100px;
   font-weight: 500;

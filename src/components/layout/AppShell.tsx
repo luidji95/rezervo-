@@ -2,52 +2,111 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { logoutUser } from "@/services/authService";
-import NotificationBell from "@/components/layout/NotificationBell";
-
-// Svi importi ikonica spakovani na jedno mesto bez dupliranja
-import { 
-  LayoutDashboard, 
-  Calendar as CalendarIcon, 
-  Users, 
-  Scissors, 
-  UserSquare2, 
-  Settings, 
+import {
+  Calendar as CalendarIcon,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
+  LayoutDashboard,
+  Scissors,
+  Settings,
   User,
+  Users,
+  UserSquare2,
 } from "lucide-react";
+
+import NotificationBell from "@/components/layout/NotificationBell";
+import { useAuthorization } from "@/context/AuthorizationContext";
+import {
+  hasPermission,
+  type Permission,
+} from "@/features/authorization/permissions";
+import { logoutUser } from "@/services/authService";
 
 type AppShellProps = {
   children: React.ReactNode;
 };
 
-// Mapirane ikonice uz linkove za sidebar
-const navLinks = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/calendar", label: "Kalendar", icon: CalendarIcon },
-  { href: "/clients", label: "Klijenti", icon: Users },
-  { href: "/services", label: "Usluge", icon: Scissors },
-  { href: "/employees", label: "Zaposleni", icon: UserSquare2 },
-  { href: "/settings", label: "Podešavanja", icon: Settings },
+const navLinks: Array<{
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  permission: Permission;
+  employeeOnly?: boolean;
+}> = [
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    permission: "canViewDashboard",
+  },
+  {
+    href: "/calendar",
+    label: "Kalendar",
+    icon: CalendarIcon,
+    permission: "canViewCalendar",
+  },
+  {
+    href: "/appointmets",
+    label: "Termini",
+    icon: CalendarClock,
+    permission: "canViewAppointments",
+    employeeOnly: true,
+  },
+  {
+    href: "/clients",
+    label: "Klijenti",
+    icon: Users,
+    permission: "canViewClients",
+  },
+  {
+    href: "/services",
+    label: "Usluge",
+    icon: Scissors,
+    permission: "canManageServices",
+  },
+  {
+    href: "/employees",
+    label: "Zaposleni",
+    icon: UserSquare2,
+    permission: "canManageEmployees",
+  },
+  {
+    href: "/settings",
+    label: "Podešavanja",
+    icon: Settings,
+    permission: "canManageSettings",
+  },
 ];
+
+function getPageName(path: string) {
+  if (path.includes("/calendar")) return "Kalendar";
+  if (path.includes("/appointmets")) return "Termini";
+  if (path.includes("/clients")) return "Klijenti";
+  if (path.includes("/services")) return "Usluge";
+  if (path.includes("/employees")) return "Zaposleni";
+  if (path.includes("/settings")) return "Podešavanja";
+  return "Dashboard";
+}
 
 export default function AppShell({ children }: AppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const {
+    currentProfile,
+    currentRole,
+    currentSalon,
+    permissions,
+  } = useAuthorization();
 
-  // Dinamičko mapiranje trenutne stranice za breadcrumb na osnovu rute
-  const getPageName = (path: string) => {
-    if (path.includes("/calendar")) return "Kalendar";
-    if (path.includes("/clients")) return "Klijenti";
-    if (path.includes("/services")) return "Usluge";
-    if (path.includes("/employees")) return "Zaposleni";
-    if (path.includes("/settings")) return "Podešavanja";
-    if (path.includes("/dashboard")) return "Dashboard";
-    return "Dashboard";
-  };
-
-  const currentPage = getPageName(pathname);
+  const visibleNavLinks = navLinks.filter(
+    (link) =>
+      hasPermission(permissions, link.permission) &&
+      (!link.employeeOnly || currentRole === "employee"),
+  );
+  const profileName =
+    currentProfile?.full_name?.trim() || currentProfile?.email || "Korisnik";
+  const roleLabel = currentRole === "employee" ? "Zaposleni" : "Vlasnik";
 
   async function handleLogout() {
     try {
@@ -61,9 +120,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="app-shell">
-      {/* SIDEBAR */}
       <aside className="sidebar">
-        {/* Gornji deo: Logo i strelica */}
         <div className="sidebar__top">
           <div className="sidebar__logo">
             <span className="logo-icon">R</span>
@@ -74,17 +131,21 @@ export default function AppShell({ children }: AppShellProps) {
           </button>
         </div>
 
-        {/* Srednji deo: Navigacija */}
         <nav className="sidebar__nav">
-          {navLinks.map((link) => {
-            const isActive = pathname === link.href;
+          {visibleNavLinks.map((link) => {
+            const isActive =
+              pathname === link.href || pathname.startsWith(`${link.href}/`);
             const Icon = link.icon;
 
             return (
               <Link
                 key={link.href}
                 href={link.href}
-                className={isActive ? "sidebar__link sidebar__link--active" : "sidebar__link"}
+                className={
+                  isActive
+                    ? "sidebar__link sidebar__link--active"
+                    : "sidebar__link"
+                }
               >
                 <Icon size={20} className="nav-icon" />
                 <span>{link.label}</span>
@@ -93,50 +154,46 @@ export default function AppShell({ children }: AppShellProps) {
           })}
         </nav>
 
-        {/* Donji deo: Baner i Profil */}
         <div className="sidebar__footer">
-          {/* Ljubičasti baner */}
-          <div className="promo-banner">
-            <h4>Preporuči i zaradi!</h4>
-            <p>Pozovi druge salone i osvoji 1 mesec besplatno.</p>
-            <button type="button" className="promo-banner__btn">Pozovi salon</button>
-          </div>
+          {currentRole === "owner" && (
+            <div className="promo-banner">
+              <h4>Preporuči i zaradi!</h4>
+              <p>Pozovi druge salone i osvoji 1 mesec besplatno.</p>
+              <button type="button" className="promo-banner__btn">
+                Pozovi salon
+              </button>
+            </div>
+          )}
 
-          {/* Profilna kartica */}
           <div className="sidebar__profile-card">
             <div className="profile-avatar">
               <UserSquare2 size={20} />
             </div>
             <div className="profile-info">
-              <span className="profile-salon">Salon Harmony</span>
-              <span className="profile-user">Marko Petrović</span>
+              <span className="profile-salon">
+                {currentSalon?.name ?? "Salon"}
+              </span>
+              <span className="profile-user">
+                {profileName} · {roleLabel}
+              </span>
             </div>
           </div>
         </div>
       </aside>
 
-      {/* GLAVNI KONTEJNER SA DESNE STRANE */}
       <div className="app-shell__content">
-        {/* TOPBAR */}
         <header className="topbar">
-          {/* Leva strana: Dinamička Breadcrumb navigacija */}
           <div className="topbar__breadcrumb">
             <span className="breadcrumb-parent">Aplikacija</span>
             <ChevronRight size={14} className="breadcrumb-separator" />
-            <span className="breadcrumb-current">{currentPage}</span>
+            <span className="breadcrumb-current">{getPageName(pathname)}</span>
           </div>
 
-          {/* Desna strana: Novi termin, Notifikacije i profil */}
           <div className="topbar__actions">
-            {/* Ubačeno premium dugme za kreiranje novog termina direktno iz topbar-a */}
-            
-
-            <NotificationBell />
-            
-            {/* Avatar - Logout okidač */}
-            <button 
-              type="button" 
-              className="topbar-avatar-btn" 
+            {currentRole === "owner" && <NotificationBell />}
+            <button
+              type="button"
+              className="topbar-avatar-btn"
               onClick={handleLogout}
               title="Odjavi se"
             >
@@ -145,7 +202,6 @@ export default function AppShell({ children }: AppShellProps) {
           </div>
         </header>
 
-        {/* Dinamički sadržaj stranica */}
         <main className="page-content">{children}</main>
       </div>
     </div>

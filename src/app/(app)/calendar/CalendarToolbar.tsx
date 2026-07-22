@@ -8,7 +8,8 @@ type CalendarToolbarProps = {
   onPreviousDay: () => void;
   onNextDay: () => void;
   onToday: () => void;
-  onCreateClick: () => void; // <-- DODATO: Novi prop za otvaranje Create modala
+  onCreateClick: () => void;
+  canCreateAppointment?: boolean;
 };
 
 export default function CalendarToolbar({
@@ -17,7 +18,8 @@ export default function CalendarToolbar({
   onPreviousDay,
   onNextDay,
   onToday,
-  onCreateClick, // <-- Destrukturiran novi prop
+  onCreateClick,
+  canCreateAppointment = true,
 }: CalendarToolbarProps) {
   return (
     <section className="calendar-toolbar">
@@ -69,7 +71,7 @@ export default function CalendarToolbar({
       </div>
 
       {/* DESNA STRANA: Primarna akcija */}
-      <div className="calendar-toolbar__right">
+      {canCreateAppointment && <div className="calendar-toolbar__right">
         {/* GLAVNA AKCIJA: Povezana na klik menadžera */}
         <button 
           type="button" 
@@ -79,7 +81,7 @@ export default function CalendarToolbar({
           <Plus size={16} />
           <span>Novi termin</span>
         </button>
-      </div>
+      </div>}
     </section>
   );
 }

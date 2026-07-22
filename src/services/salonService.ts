@@ -25,6 +25,36 @@ type SaveOnboardingSalonInput = {
 const ONBOARDING_SALON_SELECT =
   "id, name, slug, onboarding_completed, onboarding_step";
 
+const CURRENT_SALON_SELECT = `
+  id,
+  owner_id,
+  name,
+  slug,
+  description,
+  short_description,
+  logo_url,
+  cover_image_url,
+  phone,
+  email,
+  website_url,
+  address_line,
+  city,
+  country,
+  business_type,
+  status,
+  timezone,
+  default_currency,
+  booking_enabled,
+  online_booking_enabled,
+  public_booking_url,
+  onboarding_completed,
+  onboarding_step,
+  instagram_url,
+  facebook_url,
+  tiktok_url,
+  created_at
+`;
+
 function generateSlug(name: string) {
   const slug = name
     .toLowerCase()
@@ -258,35 +288,7 @@ export async function getMySalon(profileId: string) {
 export async function getCurrentSalon(profileId: string) {
   const { data, error } = await supabase
     .from("salons")
-    .select(`
-      id,
-      owner_id,
-      name,
-      slug,
-      description,
-      short_description,
-      logo_url,
-      cover_image_url,
-      phone,
-      email,
-      website_url,
-      address_line,
-      city,
-      country,
-      business_type,
-      status,
-      timezone,
-      default_currency,
-      booking_enabled,
-      online_booking_enabled,
-      public_booking_url,
-      onboarding_completed,
-      onboarding_step,
-      instagram_url,
-      facebook_url,
-      tiktok_url,
-      created_at
-    `)
+    .select(CURRENT_SALON_SELECT)
     .eq("owner_id", profileId)
     .maybeSingle();
 
@@ -296,6 +298,22 @@ export async function getCurrentSalon(profileId: string) {
 
   return data;
 }
+
+export async function getSalonById(salonId: string) {
+  const { data, error } = await supabase
+    .from("salons")
+    .select(CURRENT_SALON_SELECT)
+    .eq("id", salonId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+export type CurrentSalon = Awaited<ReturnType<typeof getCurrentSalon>>;
 
 export async function updateCurrentSalon({
   salonId,

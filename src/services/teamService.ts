@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
-import type { SalonMember } from "@/types/team";
+import type { SalonMember, TeamProfile } from "@/types/team";
 
 const salonMemberSelect = `
   id,
@@ -24,4 +24,20 @@ export async function getSalonMembers(
   }
 
   return (data ?? []) as SalonMember[];
+}
+
+export async function getTeamProfiles(
+  profileIds: string[],
+): Promise<TeamProfile[]> {
+  const uniqueProfileIds = [...new Set(profileIds.filter(Boolean))];
+
+  if (uniqueProfileIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name, email, avatar_url")
+    .in("id", uniqueProfileIds);
+
+  if (error) throw error;
+  return (data ?? []) as TeamProfile[];
 }

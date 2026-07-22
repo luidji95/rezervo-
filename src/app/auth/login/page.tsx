@@ -11,7 +11,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "@/context/AuthContext";
 
 import { loginUser } from "@/services/authService";
-import { getCurrentSalon } from "@/services/salonService";
+import { getPostLoginPath } from "@/features/authorization/services/authorizationService";
 
 import {
   loginSchema,
@@ -27,11 +27,7 @@ export default function LoginPage() {
 
   const redirectAfterLogin = useCallback(
     async (userId: string) => {
-      const salon = await getCurrentSalon(userId);
-
-      router.replace(
-        salon?.onboarding_completed ? "/dashboard" : "/onboarding"
-      );
+      router.replace(await getPostLoginPath(userId));
     },
     [router]
   );

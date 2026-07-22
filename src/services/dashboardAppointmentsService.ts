@@ -6,15 +6,18 @@ import {
 
 export async function getTodaySchedule(
   salonId: string,
-  date: string
+  date: string,
+  timeZone: string,
 ): Promise<AppointmentListItem[]> {
-  return getSalonAppointmentsByDate(salonId, date);
+  return getSalonAppointmentsByDate(salonId, date, timeZone);
 }
 
 export async function getUpcomingAppointments(
   salonId: string,
   limit = 5
 ): Promise<AppointmentListItem[]> {
+  // This is an absolute-instant comparison, so ISO/UTC is correct here. Unlike
+  // a calendar date key, "now" does not need conversion to the salon timezone.
   const nowIso = new Date().toISOString();
 
   const { data, error } = await supabase
@@ -37,7 +40,7 @@ export async function getUpcomingAppointments(
     `
     )
     .eq("salon_id", salonId)
-    .in("status", ["pending", "confirmed"])
+    .neq("status", "cancelled")
     .gte("start_time", nowIso)
     .order("start_time", { ascending: true })
     .limit(limit);

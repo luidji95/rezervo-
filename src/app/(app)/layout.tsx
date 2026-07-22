@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 
 import { useAuth } from "@/context/AuthContext";
+import { useAuthorization } from "@/context/AuthorizationContext";
 import AppShell from "@/components/layout/AppShell";
-import { getMySalon } from "@/services/salonService";
+import { hasPermission } from "@/features/authorization/permissions";
+import { getRoutePermission } from "@/features/authorization/routePermissions";
 
 import { SalonProvider } from "@/context/SalonContext";
 
@@ -17,42 +19,81 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { user, loading } = useAuth();
-
-  const [checkingSalon, setCheckingSalon] = useState(true);
+  const pathname = usePathname();
+  const { user, loading: authLoading } = useAuth();
+  const {
+    currentSalon,
+    currentRole,
+    currentEmployee,
+    permissions,
+    loading: authorizationLoading,
+    error: authorizationError,
+  } = useAuthorization();
+  const hasRouteAccess = hasPermission(
+    permissions,
+    getRoutePermission(pathname),
+  );
 
   useEffect(() => {
-    const checkAccess = async () => {
-      if (loading) return;
+    if (authLoading || authorizationLoading || authorizationError) return;
 
-      if (!user) {
-        router.replace("/auth/login");
-        return;
-      }
+    if (!user) {
+      router.replace("/auth/login");
+      return;
+    }
 
-      try {
-        const salon = await getMySalon(user.id);
+    if (!currentSalon) {
+      router.replace("/onboarding");
+      return;
+    }
 
-        if (!salon || !salon.onboarding_completed) {
-          router.replace("/onboarding");
-          return;
-        }
+    if (currentRole === "owner" && !currentSalon.onboarding_completed) {
+      router.replace("/onboarding");
+      return;
+    }
 
-        setCheckingSalon(false);
-      } catch (error) {
-        console.error("Failed to check salon:", error);
-        router.replace("/onboarding");
-      }
-    };
+    if (currentRole === "employee" && !currentEmployee) {
+      return;
+    }
 
-    checkAccess();
-  }, [user, loading, router]);
+    if (!hasRouteAccess) {
+      router.replace("/dashboard");
+    }
+  }, [
+    authLoading,
+    authorizationError,
+    authorizationLoading,
+    currentRole,
+    currentEmployee,
+    currentSalon,
+    hasRouteAccess,
+    router,
+    user,
+  ]);
 
-  if (loading || checkingSalon) {
+  if (authLoading || authorizationLoading) {
     return <p>Loading...</p>;
   }
 
-  if (!user) {
+  if (authorizationError) {
+    return <p role="alert">{authorizationError}</p>;
+  }
+
+  if (currentRole === "employee" && !currentEmployee) {
+    return (
+      <p role="alert">
+        Vaš nalog nije pravilno povezan sa zaposlenim. Obratite se vlasniku
+        salona.
+      </p>
+    );
+  }
+
+  if (
+    !user ||
+    !currentSalon ||
+    (currentRole === "owner" && !currentSalon.onboarding_completed) ||
+    !hasRouteAccess
+  ) {
     return null;
   }
 
@@ -60,5 +101,5 @@ export default function AppLayout({
     <SalonProvider>
       <AppShell>{children}</AppShell>
     </SalonProvider>
-);
+  );
 }

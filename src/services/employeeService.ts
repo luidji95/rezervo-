@@ -208,3 +208,71 @@ export async function restoreEmployee({
 
   if (error) throw error;
 }
+
+export class OwnerEmployeeAlreadyLinkedError extends Error {
+  constructor() {
+    super("Owner is already linked to another employee in this salon.");
+    this.name = "OwnerEmployeeAlreadyLinkedError";
+  }
+}
+
+export async function linkEmployeeToCurrentOwner({
+  employeeId,
+  salonId,
+}: {
+  employeeId: string;
+  salonId: string;
+}): Promise<Employee> {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Prijava je potrebna za povezivanje zaposlenog.");
+  }
+
+  const { data: salon, error: salonError } = await supabase
+    .from("salons")
+    .select("id, owner_id")
+    .eq("id", salonId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+
+  if (salonError) throw salonError;
+  if (!salon) {
+    throw new Error("Samo vlasnik salona može povezati svoj nalog.");
+  }
+
+  const { data: existingLink, error: existingLinkError } = await supabase
+    .from("employees")
+    .select("id")
+    .eq("salon_id", salonId)
+    .eq("profile_id", user.id)
+    .maybeSingle();
+
+  if (existingLinkError) throw existingLinkError;
+  if (existingLink && existingLink.id !== employeeId) {
+    throw new OwnerEmployeeAlreadyLinkedError();
+  }
+
+  const { data, error } = await supabase
+    .from("employees")
+    .update({ profile_id: user.id })
+    .eq("id", employeeId)
+    .eq("salon_id", salonId)
+    .is("profile_id", null)
+    .select(employeeSelect)
+    .maybeSingle();
+
+  if (error?.code === "23505") {
+    throw new OwnerEmployeeAlreadyLinkedError();
+  }
+
+  if (error) throw error;
+  if (!data) {
+    throw new Error("Zaposleni je već povezan sa drugim nalogom.");
+  }
+
+  return data as Employee;
+}

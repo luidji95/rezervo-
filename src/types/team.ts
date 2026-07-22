@@ -8,3 +8,10 @@ export type SalonMember = {
   status: string;
   joined_at: string | null;
 };
+
+export type TeamProfile = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+};

@@ -2,27 +2,33 @@
 
 import { useEffect, useState } from "react";
 import { useSalon } from "@/context/SalonContext";
+import { useAuthorization } from "@/context/AuthorizationContext";
 import { getSalonAppointmentsByDate } from "@/services/appointmentQueryService";
 
 import type { AppointmentListItem } from "@/services/appointmentQueryService";
+import {
+  DEFAULT_SALON_TIME_ZONE,
+  getTodayDateKey,
+} from "@/lib/salonDateTime";
 
 
 
-function getTodayDateInputValue() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function formatTime(value: string) {
+function formatTime(value: string, timeZone: string) {
   return new Date(value).toLocaleTimeString("sr-RS", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone,
   });
 }
 
 export default function AppointmentsPage() {
   const { currentSalon, salonLoading } = useSalon();
+  const { currentRole } = useAuthorization();
+  const salonTimeZone = currentSalon?.timezone || DEFAULT_SALON_TIME_ZONE;
 
-  const [selectedDate, setSelectedDate] = useState(getTodayDateInputValue());
+  const [selectedDate, setSelectedDate] = useState(() =>
+    getTodayDateKey(currentSalon?.timezone || DEFAULT_SALON_TIME_ZONE),
+  );
   const [appointments, setAppointments] = useState<AppointmentListItem[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
   const [error, setError] = useState("");
@@ -37,7 +43,8 @@ export default function AppointmentsPage() {
 
         const data = await getSalonAppointmentsByDate(
           currentSalon.id,
-          selectedDate
+          selectedDate,
+          salonTimeZone,
         );
 
         setAppointments(data);
@@ -53,7 +60,7 @@ export default function AppointmentsPage() {
     }
 
     loadAppointments();
-  }, [currentSalon, selectedDate]);
+  }, [currentSalon, salonTimeZone, selectedDate]);
 
   if (salonLoading) {
     return <p>Loading salon...</p>;
@@ -69,6 +76,12 @@ export default function AppointmentsPage() {
         <h1>Appointments</h1>
         <p>Manage daily appointments for {currentSalon.name}.</p>
       </header>
+
+      {currentRole === "employee" && (
+        <p>
+          Izmene termina za zaposlene biće omogućene u sledećoj fazi.
+        </p>
+      )}
 
       <section>
         <label htmlFor="appointment-date">Select date</label>
@@ -97,8 +110,8 @@ export default function AppointmentsPage() {
               <li key={appointment.id}>
                 <article>
                   <h3>
-                    {formatTime(appointment.start_time)} -{" "}
-                    {formatTime(appointment.end_time)}
+                    {formatTime(appointment.start_time, salonTimeZone)} -{" "}
+                    {formatTime(appointment.end_time, salonTimeZone)}
                   </h3>
 
                   <p>

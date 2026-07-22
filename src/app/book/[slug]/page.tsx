@@ -43,6 +43,7 @@ async function PublicSalonContent({ params }: PublicSalonPageProps) {
         salonId={result.data.salon.id}
         salonName={result.data.salon.name}
         salonSlug={result.data.salon.slug}
+        salonTimeZone={result.data.salon.timezone}
         services={result.data.services}
       />
     </div>

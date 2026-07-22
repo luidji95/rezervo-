@@ -1232,6 +1232,143 @@
   align-items: start;
 }
 
+.team-concepts-layout {
+  display: grid;
+  gap: 20px;
+}
+
+.team-concept-section {
+  min-width: 0;
+}
+
+.team-owner-card,
+.team-member-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.team-person-avatar {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.team-person-avatar--fallback {
+  display: grid;
+  place-items: center;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+.team-person-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.team-person-main > strong {
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.team-person-main > span {
+  overflow-wrap: anywhere;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.team-inline-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 5px;
+}
+
+.team-access-badge,
+.team-section-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  padding: 5px 9px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  color: #475569;
+  background: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.team-access-badge--active {
+  color: #166534;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.team-section-count {
+  justify-content: center;
+  min-width: 30px;
+}
+
+.team-employee-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.team-employee-card,
+.team-member-card {
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.team-access-message,
+.team-link-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.team-access-message--active {
+  color: #166534;
+}
+
+.team-link-warning {
+  color: #9a3412;
+}
+
+.team-member-list {
+  display: grid;
+  gap: 10px;
+}
+
+.team-owner-link-btn {
+  width: fit-content;
+  margin-top: 8px;
+}
+
+@media (max-width: 760px) {
+  .team-employee-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .team-owner-card,
+  .team-member-card {
+    align-items: flex-start;
+  }
+}
+
 .team-left-column,
 .team-right-column {
   display: flex;

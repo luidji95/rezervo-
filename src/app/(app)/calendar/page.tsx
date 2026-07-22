@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSalon } from "@/context/SalonContext";
+import { useAuthorization } from "@/context/AuthorizationContext";
 
 import {
   getCalendarEmployees,
@@ -27,6 +28,11 @@ import { getSalonServices } from "@/services/serviceService";
 // DODATO: Uvoz servisa za kreiranje novog termina i tipa forme
 import { rescheduleAppointment, updateAppointmentDetails, createAppointment } from "@/services/appointmentService";
 import { CreateAppointmentFormInput } from "@/types/appointment";
+import {
+  DEFAULT_SALON_TIME_ZONE,
+  addDaysToDateKey,
+  getTodayDateKey,
+} from "@/lib/salonDateTime";
 
 import AppointmentDetailsPanel from "./AppointmentDetailsPanel";
 import CalendarAppointmentCard from "./CalendarAppointmentCard";
@@ -47,10 +53,6 @@ const HOURS = [
   "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00",
   "15:00", "16:00", "17:00", "18:00", "19:00", "20:00",
 ];
-
-function getTodayDateInputValue() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function getEmployeeDisplayName(employee: CalendarEmployee) {
   return employee.display_name || employee.full_name;
@@ -101,11 +103,16 @@ function getAppointmentDateInputValue(dateString: string) {
 
 function CalendarPageContent() {
   const { currentSalon, salonLoading } = useSalon();
+  const { currentRole, currentEmployee } = useAuthorization();
+  const isEmployeeReadOnly = currentRole === "employee";
+  const salonTimeZone = currentSalon?.timezone || DEFAULT_SALON_TIME_ZONE;
   const searchParams = useSearchParams();
   const linkedAppointmentId = searchParams.get("appointment");
 
   // State menadžment
-  const [selectedDate, setSelectedDate] = useState(getTodayDateInputValue());
+  const [selectedDate, setSelectedDate] = useState(() =>
+    getTodayDateKey(currentSalon?.timezone || DEFAULT_SALON_TIME_ZONE),
+  );
   const [employees, setEmployees] = useState<CalendarEmployee[]>([]);
   const [services, setServices] = useState<Service[]>([]); // DODATO: Držanje usluga salona u state-u
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
@@ -166,7 +173,14 @@ function CalendarPageContent() {
       try {
         setEmployeesLoading(true);
         setError("");
-        const data = await getCalendarEmployees(currentSalon.id);
+        const data = isEmployeeReadOnly && currentEmployee
+          ? [{
+              id: currentEmployee.id,
+              full_name: currentEmployee.full_name,
+              display_name: currentEmployee.display_name,
+              position: currentEmployee.position,
+            }]
+          : await getCalendarEmployees(currentSalon.id);
         setEmployees(data);
       } catch (err) {
         if (err instanceof Error) {
@@ -180,12 +194,12 @@ function CalendarPageContent() {
     }
 
     loadEmployees();
-  }, [currentSalon]);
+  }, [currentEmployee, currentSalon, isEmployeeReadOnly]);
 
   // DODATO: useEffect za učitavanje usluga salona
   useEffect(() => {
     async function loadServices() {
-      if (!currentSalon) return;
+      if (!currentSalon || isEmployeeReadOnly) return;
 
       try {
         setServicesLoading(true);
@@ -200,7 +214,7 @@ function CalendarPageContent() {
     }
 
     loadServices();
-  }, [currentSalon]);
+  }, [currentSalon, isEmployeeReadOnly]);
 
   // useEffect: Učitavanje termina pri promeni salona ili datuma
   useEffect(() => {
@@ -211,7 +225,11 @@ function CalendarPageContent() {
 
       try {
         setAppointmentsLoading(true);
-        const data = await getCalendarAppointments(currentSalon.id, selectedDate);
+        const data = await getCalendarAppointments(
+          currentSalon.id,
+          selectedDate,
+          salonTimeZone,
+        );
         if (isMounted) {
           setAppointments(data);
         }
@@ -231,14 +249,14 @@ function CalendarPageContent() {
     return () => {
       isMounted = false;
     };
-  }, [currentSalon, selectedDate]);
+  }, [currentSalon, salonTimeZone, selectedDate]);
 
   // Operativni handler za promenu statusa na klik kružića
   const handleStatusChange = async (
     appointmentId: string,
     status: "confirmed" | "completed" | "cancelled" | "no_show"
   ) => {
-    if (!currentSalon) return;
+    if (!currentSalon || isEmployeeReadOnly) return;
     try {
       await updateAppointmentStatus({
         appointmentId,
@@ -246,7 +264,7 @@ function CalendarPageContent() {
         nextStatus: status,
       });
       
-      const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate);
+      const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate, salonTimeZone);
       setAppointments(freshAppointments);
       
       const updated = freshAppointments.find((a) => a.id === appointmentId);
@@ -266,12 +284,12 @@ function CalendarPageContent() {
     newEnd: string,
     newEmployeeId: string
   ) => {
-    if (!currentSalon) return;
+    if (!currentSalon || isEmployeeReadOnly) return;
 
     try {
       await rescheduleAppointment(appointmentId, newStart, newEnd, newEmployeeId);
 
-      const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate);
+      const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate, salonTimeZone);
       setAppointments(freshAppointments);
 
       if (freshAppointments) {
@@ -296,7 +314,7 @@ function CalendarPageContent() {
     internalNote: string;
     customerNote: string;
   }) => {
-    if (!currentSalon || !selectedAppointment) return;
+    if (!currentSalon || !selectedAppointment || isEmployeeReadOnly) return;
     const clientId = selectedAppointment.clients?.id;
 
     if (!clientId) {
@@ -307,7 +325,7 @@ function CalendarPageContent() {
     try {
       await updateAppointmentDetails(selectedAppointment.id, clientId, formData);
 
-      const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate);
+      const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate, salonTimeZone);
       setAppointments(freshAppointments);
       
       const updated = freshAppointments.find((a) => a.id === selectedAppointment.id);
@@ -324,14 +342,14 @@ function CalendarPageContent() {
 
   // DODATO: Operativni handler za upis NOVOG termina u bazu podataka (Supabase)
   const handleCreateAppointmentConfirm = async (formData: CreateAppointmentFormInput) => {
-    if (!currentSalon) return;
+    if (!currentSalon || isEmployeeReadOnly) return;
 
     try {
       // Pozivamo tvoj kreirani servis iz appointmentService.ts koji odrađuje insert
       await createAppointment(formData);
 
       // Ponovo povlačimo termine sa baze za trenutni dan da bi se novi termin odmah iscrtao
-      const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate);
+      const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate, salonTimeZone);
       setAppointments(freshAppointments);
 
       setIsCreateAppointmentModalOpen(false);
@@ -402,19 +420,15 @@ function CalendarPageContent() {
   });
 
   const handlePreviousDay = () => {
-    const current = new Date(selectedDate);
-    current.setDate(current.getDate() - 1);
-    setSelectedDate(current.toISOString().split('T')[0]);
+    setSelectedDate(addDaysToDateKey(selectedDate, -1));
   };
 
   const handleNextDay = () => {
-    const current = new Date(selectedDate);
-    current.setDate(current.getDate() + 1);
-    setSelectedDate(current.toISOString().split('T')[0]);
+    setSelectedDate(addDaysToDateKey(selectedDate, 1));
   };
 
   const handleToday = () => {
-    setSelectedDate(getTodayDateInputValue());
+    setSelectedDate(getTodayDateKey(salonTimeZone));
   };
 
   return (
@@ -426,7 +440,14 @@ function CalendarPageContent() {
         onNextDay={handleNextDay}
         onToday={handleToday}
         onCreateClick={() => setIsCreateAppointmentModalOpen(true)}
+        canCreateAppointment={!isEmployeeReadOnly}
       />
+
+      {isEmployeeReadOnly && (
+        <p className="calendar-readonly-notice">
+          Izmene termina za zaposlene biće omogućene u sledećoj fazi.
+        </p>
+      )}
 
       {appointmentsLoading && <p>Loading appointments...</p>}
       {employeesLoading && <p>Loading employees...</p>}
@@ -528,11 +549,12 @@ function CalendarPageContent() {
             onStatusChange={handleStatusChange}
             onRescheduleClick={() => setIsRescheduleModalOpen(true)}
             onEditClick={() => setIsEditModalOpen(true)}
+            readOnly={isEmployeeReadOnly}
           />
         </div>
       )}
 
-      {selectedAppointment && (
+      {!isEmployeeReadOnly && selectedAppointment && (
         <RescheduleAppointmentModal
           isOpen={isRescheduleModalOpen}
           onClose={() => setIsRescheduleModalOpen(false)}
@@ -542,7 +564,7 @@ function CalendarPageContent() {
         />
       )}
 
-      {selectedAppointment && (
+      {!isEmployeeReadOnly && selectedAppointment && (
         <EditAppointmentModal
           key={selectedAppointment.id}
           isOpen={isEditModalOpen}
@@ -553,7 +575,7 @@ function CalendarPageContent() {
       )}
 
       {/* DODATO: Renderovanje CreateAppointmentModal komponente sa prosleđenim podacima */}
-      <CreateAppointmentModal
+      {!isEmployeeReadOnly && <CreateAppointmentModal
         isOpen={isCreateAppointmentModalOpen}
         onClose={() => setIsCreateAppointmentModalOpen(false)}
         salonId={currentSalon.id}
@@ -561,7 +583,7 @@ function CalendarPageContent() {
         services={services}
         selectedDate={selectedDate} // Podrazumevano prosleđuje trenutno otvoren datum na kalendaru
         onSuccess={handleCreateAppointmentConfirm}
-      />
+      />}
     </main>
   );
 }

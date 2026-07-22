@@ -3,14 +3,20 @@ import type {
   GenerateAvailableSlotsInput,
   GenerateAvailableSlotsResult,
 } from "@/types/availability";
+import {
+  DEFAULT_SALON_TIME_ZONE,
+  getDayOfWeekFromDateKey,
+  getDayRangeUtc,
+  getTodayDateKey,
+  zonedDateTimeToUtc,
+} from "@/lib/salonDateTime";
 
 type SupabaseClientLike = typeof supabase;
 
-const SALON_TIMEZONE = "Europe/Belgrade";
 const MIN_NOTICE_MINUTES = 30;
 
-function combineDateAndTime(date: string, time: string): Date {
-  return new Date(`${date}T${time}`);
+function combineDateAndTime(date: string, time: string, timeZone: string): Date {
+  return zonedDateTimeToUtc(date, time, timeZone);
 }
 
 function addMinutes(date: Date, minutes: number): Date {
@@ -26,28 +32,13 @@ function overlaps(
   return startA < endB && endA > startB;
 }
 
-function getDateInTimeZone(date: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-
-  const year = parts.find((part) => part.type === "year")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  const day = parts.find((part) => part.type === "day")?.value;
-
-  if (!year || !month || !day) {
-    throw new Error("Failed to format current date.");
-  }
-
-  return `${year}-${month}-${day}`;
-}
-
-function shouldSkipPastSlot(slotStart: Date, selectedDate: string): boolean {
+function shouldSkipPastSlot(
+  slotStart: Date,
+  selectedDate: string,
+  timeZone: string,
+): boolean {
   const now = new Date();
-  const today = getDateInTimeZone(now, SALON_TIMEZONE);
+  const today = getTodayDateKey(timeZone, now);
 
   if (selectedDate < today) {
     return true;
@@ -71,13 +62,12 @@ export async function generateAvailableSlots(
 ): Promise<GenerateAvailableSlotsResult> {
   const { salonId, serviceId, employeeId, date, excludeAppointmentId } = input;
 
-  const today = getDateInTimeZone(new Date(), SALON_TIMEZONE);
-
-  if (date < today) {
-    return { slots: [] };
-  }
-
-  const [serviceRes, employeesRes] = await Promise.all([
+  const [salonRes, serviceRes, employeesRes] = await Promise.all([
+    supabaseClient
+      .from("salons")
+      .select("id, timezone")
+      .eq("id", salonId)
+      .single(),
     supabaseClient
       .from("services")
       .select("id, duration_minutes, buffer_minutes")
@@ -103,6 +93,14 @@ export async function generateAvailableSlots(
       .match(employeeId ? { id: employeeId } : {}),
   ]);
 
+  if (salonRes.error) throw new Error("Failed to fetch salon timezone.");
+  const salonTimeZone = salonRes.data.timezone || DEFAULT_SALON_TIME_ZONE;
+  const today = getTodayDateKey(salonTimeZone);
+
+  if (date < today) {
+    return { slots: [] };
+  }
+
   if (serviceRes.error) {
     throw new Error(`Service query failed: ${serviceRes.error.message}`);
   }
@@ -122,13 +120,14 @@ export async function generateAvailableSlots(
     return { slots: [] };
   }
 
-  const targetDate = new Date(`${date}T00:00:00`);
-  const dayOfWeek = targetDate.getDay();
+  const dayOfWeek = getDayOfWeekFromDateKey(date);
 
   const compatibleEmployeeIds = compatibleEmployees.map((employee) => employee.id);
 
-  const dayStart = combineDateAndTime(date, "00:00:00");
-  const dayEnd = combineDateAndTime(date, "23:59:59");
+  const { startUtc: dayStart, endUtc: dayEnd } = getDayRangeUtc(
+    date,
+    salonTimeZone,
+  );
 
   // Priprema dinamičkog upita za termine
   let appointmentsQuery = supabaseClient
@@ -203,15 +202,15 @@ export async function generateAvailableSlots(
       (appointment) => appointment.employee_id === employee.id
     );
 
-    const workStart = combineDateAndTime(date, schedule.opens_at);
-    const workEnd = combineDateAndTime(date, schedule.closes_at);
+    const workStart = combineDateAndTime(date, schedule.opens_at, salonTimeZone);
+    const workEnd = combineDateAndTime(date, schedule.closes_at, salonTimeZone);
 
     const breakStart = schedule.break_starts_at
-      ? combineDateAndTime(date, schedule.break_starts_at)
+      ? combineDateAndTime(date, schedule.break_starts_at, salonTimeZone)
       : null;
 
     const breakEnd = schedule.break_ends_at
-      ? combineDateAndTime(date, schedule.break_ends_at)
+      ? combineDateAndTime(date, schedule.break_ends_at, salonTimeZone)
       : null;
 
     const appointmentDuration = service.duration_minutes + (service.buffer_minutes ?? 0);
@@ -225,7 +224,7 @@ export async function generateAvailableSlots(
         break;
       }
 
-      if (shouldSkipPastSlot(currentSlotStart, date)) {
+      if (shouldSkipPastSlot(currentSlotStart, date, salonTimeZone)) {
         currentSlotStart = addMinutes(currentSlotStart, appointmentDuration);
         continue;
       }

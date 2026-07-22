@@ -1,4 +1,9 @@
 import { supabase } from "@/lib/supabase/client";
+import { getEmployeeAppointmentClients } from "@/services/employeeClientReadService";
+import {
+  DEFAULT_SALON_TIME_ZONE,
+  getDayRangeUtc,
+} from "@/lib/salonDateTime";
 import {
   createNotification,
   formatNotificationAppointmentTime,
@@ -7,6 +12,7 @@ import {
 
 const CALENDAR_APPOINTMENT_SELECT = `
   id,
+  client_id,
   salon_id,
   start_time,
   end_time,
@@ -32,6 +38,7 @@ const CALENDAR_APPOINTMENT_SELECT = `
 
 export type CalendarAppointment = {
   id: string;
+  client_id: string;
   salon_id: string; // <-- DODATO: Tipiziran salon_id za lakši dohvat u modalima
   start_time: string;
   end_time: string;
@@ -76,24 +83,27 @@ export type ClientHistoryAppointment = {
  */
 export async function getCalendarAppointments(
   salonId: string,
-  date: string
+  date: string,
+  timeZone = DEFAULT_SALON_TIME_ZONE,
 ): Promise<CalendarAppointment[]> {
-  const startOfDay = new Date(`${date}T00:00:00`);
-  const endOfDay = new Date(`${date}T23:59:59`);
+  const { startUtc, endUtc } = getDayRangeUtc(date, timeZone);
 
   const { data, error } = await supabase
     .from("appointments")
     .select(CALENDAR_APPOINTMENT_SELECT)
     .eq("salon_id", salonId)
-    .gte("start_time", startOfDay.toISOString())
-    .lte("start_time", endOfDay.toISOString())
+    .gte("start_time", startUtc.toISOString())
+    .lt("start_time", endUtc.toISOString())
     .order("start_time", { ascending: true });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return (data ?? []) as unknown as CalendarAppointment[];
+  return hydrateEmployeeAppointmentClients(
+    (data ?? []) as unknown as CalendarAppointment[],
+    salonId,
+  );
 }
 
 export async function getCalendarAppointmentById(
@@ -109,7 +119,31 @@ export async function getCalendarAppointmentById(
 
   if (error) throw new Error(error.message);
 
-  return data as unknown as CalendarAppointment;
+  const [appointment] = await hydrateEmployeeAppointmentClients(
+    [data as unknown as CalendarAppointment],
+    salonId,
+  );
+
+  return appointment;
+}
+
+async function hydrateEmployeeAppointmentClients(
+  appointments: CalendarAppointment[],
+  salonId: string,
+) {
+  if (!appointments.some((appointment) => !appointment.clients)) {
+    return appointments;
+  }
+
+  const employeeClients = await getEmployeeAppointmentClients(salonId);
+  const clientsById = new Map(
+    employeeClients.map((client) => [client.id, client]),
+  );
+
+  return appointments.map((appointment) => ({
+    ...appointment,
+    clients: appointment.clients ?? clientsById.get(appointment.client_id) ?? null,
+  }));
 }
 
 /**

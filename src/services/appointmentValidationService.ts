@@ -14,6 +14,15 @@ type ValidateAppointmentSlotInput = {
 
 const SALON_TIMEZONE = "Europe/Belgrade";
 
+export class AppointmentSlotUnavailableError extends Error {
+  readonly code = "APPOINTMENT_SLOT_UNAVAILABLE";
+
+  constructor() {
+    super("Selected appointment slot is no longer available.");
+    this.name = "AppointmentSlotUnavailableError";
+  }
+}
+
 function getDateInTimeZone(date: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -83,7 +92,7 @@ export async function validateAppointmentSlot(
     });
 
     if (!isValidGeneratedSlot) {
-      throw new Error("Selected time is not a valid booking slot.");
+      throw new AppointmentSlotUnavailableError();
     }
 
     return true;
@@ -103,7 +112,7 @@ export async function validateAppointmentSlot(
   }
 
   if (conflicts && conflicts.length > 0) {
-    throw new Error("This slot is no longer available.");
+    throw new AppointmentSlotUnavailableError();
   }
 
   return true;

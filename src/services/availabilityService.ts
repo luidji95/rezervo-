@@ -103,23 +103,11 @@ export async function generateAvailableSlots(
       .match(employeeId ? { id: employeeId } : {}),
   ]);
 
-  console.log("SERVICE RES:", serviceRes);
-  console.log("EMPLOYEES RES:", employeesRes);
-  console.log("INPUT VALUES:", {
-    salonId,
-    serviceId,
-    employeeId,
-    date,
-    excludeAppointmentId,
-  });
-
   if (serviceRes.error) {
-    console.error("SERVICE QUERY ERROR:", serviceRes.error);
     throw new Error(`Service query failed: ${serviceRes.error.message}`);
   }
 
   if (!serviceRes.data) {
-    console.error("SERVICE NOT FOUND:", { salonId, serviceId });
     throw new Error("Service not found or inactive.");
   }
 

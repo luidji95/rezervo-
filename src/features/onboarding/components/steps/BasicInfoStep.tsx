@@ -55,6 +55,10 @@ export function BasicInfoStep({ form, onSubmit }: BasicInfoStepProps) {
         <label htmlFor="phone">Phone</label>
 
         <input id="phone" type="text" {...register("phone")} />
+
+        {errors.phone && (
+          <p className="onboarding-field-error">{errors.phone.message}</p>
+        )}
       </div>
 
       <div className="onboarding-field">
@@ -71,10 +75,16 @@ export function BasicInfoStep({ form, onSubmit }: BasicInfoStepProps) {
         <label htmlFor="addressLine">Address</label>
 
         <input id="addressLine" type="text" {...register("addressLine")} />
+
+        {errors.addressLine && (
+          <p className="onboarding-field-error">
+            {errors.addressLine.message}
+          </p>
+        )}
       </div>
 
       <div className="onboarding-field">
-        <label htmlFor="websiteUrl">Website</label>
+        <label htmlFor="websiteUrl">Website (optional)</label>
 
         <input id="websiteUrl" type="text" {...register("websiteUrl")} />
 
@@ -84,7 +94,7 @@ export function BasicInfoStep({ form, onSubmit }: BasicInfoStepProps) {
       </div>
 
       <div className="onboarding-field">
-        <label htmlFor="instagramUrl">Instagram</label>
+        <label htmlFor="instagramUrl">Instagram (optional)</label>
 
         <input
           id="instagramUrl"
@@ -101,7 +111,7 @@ export function BasicInfoStep({ form, onSubmit }: BasicInfoStepProps) {
       </div>
 
       <div className="onboarding-field onboarding-field-full">
-        <label htmlFor="description">Description</label>
+        <label htmlFor="description">Description (optional)</label>
 
         <textarea id="description" rows={4} {...register("description")} />
       </div>
@@ -112,10 +122,9 @@ export function BasicInfoStep({ form, onSubmit }: BasicInfoStepProps) {
           type="submit"
           disabled={isSubmitting}
         >
-          {isSubmitting ? "Saving..." : "Save and continue"}
+          {isSubmitting ? "Čuvanje..." : "Sačuvaj salon"}
         </button>
       </div>
     </form>
   );
 }
-

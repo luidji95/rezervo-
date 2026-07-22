@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useRouter } from "next/navigation";
 
@@ -10,6 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuth } from "@/context/AuthContext";
 
 import { loginUser } from "@/services/authService";
+import { getCurrentSalon } from "@/services/salonService";
 
 import {
   loginSchema,
@@ -23,11 +24,25 @@ export default function LoginPage() {
 
   const [formError, setFormError] = useState("");
 
+  const redirectAfterLogin = useCallback(
+    async (userId: string) => {
+      const salon = await getCurrentSalon(userId);
+
+      router.replace(
+        salon?.onboarding_completed ? "/dashboard" : "/onboarding"
+      );
+    },
+    [router]
+  );
+
   useEffect(() => {
     if (!loading && user) {
-      router.replace("/dashboard");
+      redirectAfterLogin(user.id).catch((error) => {
+        console.error("Failed to determine post-login redirect:", error);
+        setFormError("Could not verify your salon setup.");
+      });
     }
-  }, [loading, user, router]);
+  }, [loading, redirectAfterLogin, user]);
 
   const {
     register,
@@ -45,10 +60,9 @@ export default function LoginPage() {
     try {
       setFormError("");
 
-      await loginUser(values);
+      const { user: loggedInUser } = await loginUser(values);
 
-      router.push("/dashboard");
-      router.refresh();
+      await redirectAfterLogin(loggedInUser.id);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Something went wrong.";

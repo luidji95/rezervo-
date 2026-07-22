@@ -42,12 +42,9 @@ export const onboardingSchema = z.object({
   businessType: z.enum(SALON_BUSINESS_TYPE_VALUES, {
     error: "Business type is required.",
   }),
-  phone: z.string().trim(),
-  email: z.union([
-    z.string().trim().email("Enter a valid email."),
-    z.literal(""),
-  ]),
-  addressLine: z.string().trim(),
+  phone: z.string().trim().min(1, "Phone is required."),
+  email: z.string().trim().min(1, "Email is required.").email("Enter a valid email."),
+  addressLine: z.string().trim().min(1, "Address is required."),
   websiteUrl: optionalUrl,
   instagramUrl: optionalInstagram,
   description: z.string().trim(),

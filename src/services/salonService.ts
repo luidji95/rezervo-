@@ -139,8 +139,8 @@ export async function saveOnboardingSalon({
     website_url: websiteUrl || null,
     instagram_url: instagramUrl || null,
     description: description || null,
-    onboarding_completed: false,
-    onboarding_step: 2,
+    onboarding_completed: true,
+    onboarding_step: 1,
   };
 
   console.log("Salon payload:", payload);

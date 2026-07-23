@@ -181,7 +181,7 @@ export async function POST(request: Request) {
   if (!result) return errorResponse("CREATE_FAILED", "Termin trenutno nije moguće kreirati.", 500);
 
   if (result.was_created) {
-    await createNotification(
+    const notification = await createNotification(
       {
         salonId: result.salon_id,
         type: "appointment_created",
@@ -191,7 +191,15 @@ export async function POST(request: Request) {
         entityId: result.appointment_id,
       },
       supabaseServer,
-    ).catch(() => null);
+    );
+
+    if (!notification && process.env.NODE_ENV === "development") {
+      console.error("EMPLOYEE_APPOINTMENT_NOTIFICATION_MISSING", {
+        appointmentCreated: true,
+        notificationInsertAttempted: true,
+        appointmentIdPresent: Boolean(result.appointment_id),
+      });
+    }
   }
 
   return NextResponse.json(

@@ -33,7 +33,7 @@ type CreateNotificationInput = {
 
 export async function createNotification(
   input: CreateNotificationInput,
-  supabaseClient: SupabaseClientLike = supabase
+  supabaseClient: SupabaseClientLike
 ) {
   const { data, error } = await supabaseClient
     .from("notifications")
@@ -49,11 +49,35 @@ export async function createNotification(
     .single();
 
   if (error) {
-    console.error("Failed to create notification:", error.message);
+    if (process.env.NODE_ENV === "development") {
+      console.error("NOTIFICATION_INSERT_RESULT", {
+        appointmentCreated: Boolean(input.entityType === "appointment" && input.entityId),
+        notificationInsertAttempted: true,
+        notificationInserted: false,
+        notificationErrorCode: error.code ?? null,
+        notificationErrorMessage: error.message,
+        notificationType: input.type,
+        entityType: input.entityType ?? null,
+        entityIdPresent: Boolean(input.entityId),
+      });
+    }
     return null;
   }
 
   const notification = { ...data, is_read: false } as AppNotification;
+
+  if (process.env.NODE_ENV === "development") {
+    console.info("NOTIFICATION_INSERT_RESULT", {
+      appointmentCreated: Boolean(input.entityType === "appointment" && input.entityId),
+      notificationInsertAttempted: true,
+      notificationInserted: true,
+      notificationErrorCode: null,
+      notificationErrorMessage: null,
+      notificationType: input.type,
+      entityType: input.entityType ?? null,
+      entityIdPresent: Boolean(input.entityId),
+    });
+  }
 
   if (typeof window !== "undefined") {
     window.dispatchEvent(
@@ -82,7 +106,7 @@ export async function getNotifications(salonId: string, limit = 30) {
         )
       `)
       .eq("notifications.salon_id", salonId)
-      .order("created_at", { referencedTable: "notifications", ascending: false })
+      .order("created_at", { ascending: false })
       .limit(limit),
     supabase
       .from("notification_recipients")
@@ -94,13 +118,20 @@ export async function getNotifications(salonId: string, limit = 30) {
   if (error) throw new Error(error.message);
   if (countError) throw new Error(countError.message);
 
-  const notifications = (data ?? []).map((recipient) => {
-    const notification = recipient.notifications as unknown as Omit<
-      AppNotification,
-      "is_read"
-    >;
-    return { ...notification, is_read: recipient.is_read };
-  });
+  const notifications = (data ?? [])
+    .map((recipient) => {
+      const notification = recipient.notifications as unknown as Omit<
+        AppNotification,
+        "is_read"
+      >;
+      return { ...notification, is_read: recipient.is_read };
+    })
+    .toSorted(
+      (left, right) =>
+        new Date(right.created_at).getTime() -
+        new Date(left.created_at).getTime(),
+    )
+    .slice(0, limit);
 
   return {
     notifications,

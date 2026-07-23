@@ -21,6 +21,7 @@ const publicCreateBookingSchema = z.object({
       fullName: z.string().trim().min(2),
       phone: z.string().trim().optional(),
       email: z.union([z.string().trim().email(), z.literal("")]).optional(),
+      note: z.string().trim().max(1000).optional(),
     })
     .superRefine((customer, context) => {
       if (!customer.phone && !customer.email) {
@@ -219,6 +220,21 @@ export async function POST(req: Request) {
       },
       supabaseServer
     );
+
+    if (appointment.wasCreated && customer.note?.trim()) {
+      const { error: noteError } = await supabaseServer
+        .from("appointments")
+        .update({ customer_note: customer.note.trim() })
+        .eq("id", appointment.id)
+        .eq("salon_id", salon.id);
+
+      if (noteError) {
+        console.error("PUBLIC_BOOKING_NOTE_ERROR", {
+          code: noteError.code,
+          appointmentIdPresent: Boolean(appointment.id),
+        });
+      }
+    }
 
     return NextResponse.json(
       {

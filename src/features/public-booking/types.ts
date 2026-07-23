@@ -51,6 +51,7 @@ export type PublicCustomerData = {
   fullName: string;
   phone: string;
   email: string;
+  note: string;
 };
 
 export type CreatePublicBookingInput = {

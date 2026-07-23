@@ -1,75 +1,54 @@
-import { Suspense } from "react";
-
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { cache } from "react";
 import { PublicSalonHeader } from "@/features/public-booking/components/PublicSalonHeader";
 import { PublicBookingSelection } from "@/features/public-booking/components/PublicBookingSelection";
 import { getPublicSalonPageData } from "@/features/public-booking/services/publicBookingService";
-
 import "./public-booking.css";
 
-type PublicSalonPageProps = {
-  params: Promise<{ slug: string }>;
-};
+type Props = { params: Promise<{ slug: string }> };
+const loadSalon = cache((slug: string) => getPublicSalonPageData(slug));
 
-function PublicBookingState({ message }: { message: string }) {
-  return (
-    <div className="public-booking-state" role="status">
-      <div className="public-booking-mark" aria-hidden="true">R</div>
-      <h1>Online rezervacije</h1>
-      <p>{message}</p>
-    </div>
-  );
-}
-
-async function PublicSalonContent({ params }: PublicSalonPageProps) {
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const result = await loadPublicSalonPageData(slug);
-
-  if (result.status === "error") {
-    return (
-      <PublicBookingState message="Trenutno ne možemo da učitamo salon. Pokušajte ponovo malo kasnije." />
-    );
-  }
-
-  if (!result.data) {
-    return (
-      <PublicBookingState message="Salon nije pronađen ili online rezervacije trenutno nisu dostupne." />
-    );
-  }
-
-  return (
-    <div className="public-booking-container">
-      <PublicSalonHeader salon={result.data.salon} />
-      <PublicBookingSelection
-        salonId={result.data.salon.id}
-        salonName={result.data.salon.name}
-        salonSlug={result.data.salon.slug}
-        salonTimeZone={result.data.salon.timezone}
-        services={result.data.services}
-      />
-    </div>
-  );
-}
-
-async function loadPublicSalonPageData(slug: string) {
   try {
+    const data = await loadSalon(slug);
+    if (!data) return { title: "Salon nije pronađen | Rezervo", robots: { index: false } };
+    const description = data.salon.shortDescription || data.salon.description || "Book your appointment online.";
     return {
-      status: "success" as const,
-      data: await getPublicSalonPageData(slug),
+      title: `${data.salon.name} | Online Booking`,
+      description,
+      openGraph: {
+        title: `${data.salon.name} | Online Booking`,
+        description,
+        type: "website",
+        images: data.salon.coverImageUrl ? [{ url: data.salon.coverImageUrl, alt: data.salon.name }] : undefined,
+      },
     };
-  } catch (error) {
-    console.error("Failed to load public salon page:", error);
-    return { status: "error" as const, data: null };
+  } catch {
+    return { title: "Online Booking | Rezervo", description: "Book your appointment online." };
   }
 }
 
-export default function PublicSalonPage({ params }: PublicSalonPageProps) {
+export default async function PublicSalonPage({ params }: Props) {
+  const { slug } = await params;
+  let data;
+  try {
+    data = await loadSalon(slug);
+  } catch (error) {
+    console.error("PUBLIC_BOOKING_PAGE_LOAD_FAILED", { slugPresent: Boolean(slug), errorPresent: Boolean(error) });
+    return <main className="public-booking-page"><div className="public-booking-state" role="alert"><div className="public-booking-mark">R</div><h1>Rezervacije trenutno nisu dostupne</h1><p>Proverite internet vezu i pokušajte ponovo.</p></div></main>;
+  }
+
+  if (!data) notFound();
+
   return (
     <main className="public-booking-page">
-      <Suspense
-        fallback={<PublicBookingState message="Učitavamo podatke o salonu..." />}
-      >
-        <PublicSalonContent params={params} />
-      </Suspense>
+      <div className="public-booking-container">
+        <PublicSalonHeader salon={data.salon} />
+        <PublicBookingSelection salonId={data.salon.id} salonName={data.salon.name} salonSlug={data.salon.slug} salonTimeZone={data.salon.timezone} services={data.services} />
+        <footer className="public-booking-footer"><span>Rezervacije omogućava</span><strong>Rezervo</strong></footer>
+      </div>
     </main>
   );
 }

@@ -12,15 +12,16 @@ type PublicBookingSuccessProps = {
   salonName: string;
   service: PublicService;
   slot: PublicAvailabilitySlot;
+  timeZone: string;
   onBookAnother: () => void;
 };
 
-function formatDateTime(date: string, startTime: string) {
+function formatDateTime(date: string, startTime: string, timeZone: string) {
   const formattedDate = new Intl.DateTimeFormat("sr-RS", {
     day: "2-digit",
     month: "long",
     year: "numeric",
-    timeZone: "Europe/Belgrade",
+    timeZone,
   }).format(new Date(`${date}T12:00:00Z`));
   const formattedTime = new Intl.DateTimeFormat("sr-RS", {
     hour: "2-digit",
@@ -38,18 +39,19 @@ export function PublicBookingSuccess({
   salonName,
   service,
   slot,
+  timeZone,
   onBookAnother,
 }: PublicBookingSuccessProps) {
   return (
     <section className="public-booking-success" role="status">
       <div className="public-booking-success-mark" aria-hidden="true">✓</div>
       <p className="public-booking-eyebrow">Rezervacija potvrđena</p>
-      <h2>Termin je uspešno rezervisan.</h2>
+      <h2>Vaš termin je uspešno rezervisan.</h2>
       <dl>
         <div><dt>Salon</dt><dd>{salonName}</dd></div>
         <div><dt>Usluga</dt><dd>{service.name}</dd></div>
         <div><dt>Zaposleni</dt><dd>{employee.name}</dd></div>
-        <div><dt>Termin</dt><dd>{formatDateTime(date, slot.startTime)}</dd></div>
+        <div><dt>Termin</dt><dd>{formatDateTime(date, slot.startTime, timeZone)}</dd></div>
         <div><dt>Trajanje</dt><dd>{service.durationMinutes} min</dd></div>
         <div><dt>Klijent</dt><dd>{result.customer.fullName}</dd></div>
       </dl>

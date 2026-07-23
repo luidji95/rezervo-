@@ -6,14 +6,15 @@ type PublicSlotListProps = {
   loading: boolean;
   selectedSlot: PublicAvailabilitySlot | null;
   slots: PublicAvailabilitySlot[];
+  timeZone: string;
   onSelectSlot: (slot: PublicAvailabilitySlot) => void;
 };
 
-function formatSlotTime(value: string) {
+function formatSlotTime(value: string, timeZone: string) {
   return new Intl.DateTimeFormat("sr-RS", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Europe/Belgrade",
+    timeZone,
   }).format(new Date(value));
 }
 
@@ -23,6 +24,7 @@ export function PublicSlotList({
   loading,
   selectedSlot,
   slots,
+  timeZone,
   onSelectSlot,
 }: PublicSlotListProps) {
   return (
@@ -64,7 +66,7 @@ export function PublicSlotList({
                 key={`${slot.employeeId}-${slot.startTime}`}
                 onClick={() => onSelectSlot(slot)}
               >
-                {formatSlotTime(slot.startTime)}
+                {formatSlotTime(slot.startTime, timeZone)}
               </button>
             );
           })}

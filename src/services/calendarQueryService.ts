@@ -5,10 +5,9 @@ import {
   getDayRangeUtc,
 } from "@/lib/salonDateTime";
 import {
-  createNotification,
-  formatNotificationAppointmentTime,
   type NotificationType,
 } from "@/services/notificationService";
+import { createTrustedAppointmentNotification } from "@/services/trustedAppointmentNotificationService";
 
 const CALENDAR_APPOINTMENT_SELECT = `
   id,
@@ -293,14 +292,17 @@ export async function updateAppointmentStatus({
   const notification = notificationByStatus[nextStatus];
 
   if (notification) {
-    await createNotification({
-      salonId: appointment.salon_id,
-      type: notification.type,
-      title: notification.title,
-      message: `${appointment.clients?.full_name || "Klijent"} – ${appointment.services?.name || "usluga"}: termin je ${notification.action} (${formatNotificationAppointmentTime(appointment.start_time)})`,
-      entityType: "appointment",
-      entityId: appointment.id,
-    });
+    if (process.env.NODE_ENV === "development") {
+      console.debug("OWNER_STATUS_NOTIFICATION_SOURCE", {
+        source: "calendarQueryService/updateAppointmentStatus",
+        appointmentId,
+        eventType: notification.type,
+      });
+    }
+    await createTrustedAppointmentNotification(
+      appointment.id,
+      notification.type,
+    ).catch(() => null);
   }
 
   if (typeof window !== "undefined") {

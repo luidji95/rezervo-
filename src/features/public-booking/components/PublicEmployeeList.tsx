@@ -48,7 +48,7 @@ export function PublicEmployeeList({
       <div className="public-section-heading">
         <p className="public-booking-eyebrow">Zaposleni</p>
         <h2>Izaberite zaposlenog</h2>
-        <p>Možete izabrati konkretnu osobu ili bilo kog slobodnog zaposlenog.</p>
+        <p>Izaberite osobu kod koje želite da zakažete termin.</p>
       </div>
 
       {loading && (
@@ -71,20 +71,6 @@ export function PublicEmployeeList({
 
       {!loading && !error && employees.length > 0 && (
         <div className="public-employee-grid">
-          <button
-            type="button"
-            disabled={disabled}
-            className="public-employee-card public-employee-card-any"
-            aria-pressed={selectedEmployeeId === "any"}
-            onClick={() => onSelectEmployee("any")}
-          >
-            <span className="public-employee-avatar" aria-hidden="true">Svi</span>
-            <span className="public-employee-copy">
-              <strong>Bilo koji slobodan zaposleni</strong>
-              <small>Termin će kasnije biti pronađen kod prve slobodne osobe.</small>
-            </span>
-          </button>
-
           {employees.map((employee) => {
             const avatarUrl = safeImageUrl(employee.avatarUrl);
 

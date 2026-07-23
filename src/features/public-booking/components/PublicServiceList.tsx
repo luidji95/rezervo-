@@ -46,7 +46,7 @@ export function PublicServiceList({
       <div className="public-section-heading">
         <p className="public-booking-eyebrow">Usluge</p>
         <h2>Izaberite uslugu</h2>
-        <p>Izbor termina biće dostupan u sledećem koraku razvoja.</p>
+        <p>Izaberite uslugu da biste nastavili na izbor zaposlenog i termina.</p>
       </div>
 
       <div className="public-service-grid">

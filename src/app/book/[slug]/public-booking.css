@@ -6,6 +6,52 @@
     var(--color-bg);
 }
 
+.public-booking-wizard {
+  margin-top: 24px;
+}
+
+.public-wizard-progress {
+  padding: 22px 26px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.07);
+}
+
+.public-wizard-progress-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.public-wizard-progress-copy strong { color: var(--color-text); font-size: 15px; }
+.public-wizard-track { height: 5px; margin-top: 14px; overflow: hidden; background: #e9eaf0; border-radius: 99px; }
+.public-wizard-track i { display: block; height: 100%; background: linear-gradient(90deg, #6366f1, #8b5cf6); border-radius: inherit; transition: width 220ms ease; }
+.public-wizard-progress ol { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; padding: 0; margin: 18px 0 0; list-style: none; }
+.public-wizard-progress li { display: flex; min-width: 0; align-items: center; gap: 7px; color: #98a2b3; font-size: 11px; }
+.public-wizard-progress li span { display: grid; flex: 0 0 24px; width: 24px; height: 24px; place-items: center; border: 1px solid #d0d5dd; border-radius: 50%; font-weight: 800; }
+.public-wizard-progress li small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.public-wizard-progress li.is-active { color: #4338ca; }
+.public-wizard-progress li.is-active span { color: #fff; background: #4f46e5; border-color: #4f46e5; }
+
+.public-review-section {
+  margin-top: 24px;
+  padding: 32px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.public-wizard-actions { display: grid; grid-template-columns: minmax(0, .55fr) minmax(0, 1fr); gap: 12px; margin-top: 20px; }
+.public-wizard-actions .public-booking-submit { grid-column: auto; }
+.public-wizard-back { display: inline-flex; min-height: 44px; align-items: center; margin: 14px 4px 0; padding: 8px 12px; color: #475467; background: transparent; border: 0; border-radius: 9px; font-weight: 700; }
+.public-wizard-back:hover { color: #4338ca; background: #eef2ff; }
+.public-wizard-back:focus-visible { outline: 3px solid rgba(79, 70, 229, .24); outline-offset: 2px; }
+
 .public-booking-container {
   width: min(1040px, 100%);
   margin: 0 auto;
@@ -341,6 +387,23 @@
   border-radius: 10px;
 }
 
+.public-customer-field textarea {
+  width: 100%;
+  min-height: 104px;
+  padding: 12px;
+  resize: vertical;
+  color: var(--color-text);
+  background: #fff;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 500;
+}
+
+.public-customer-field em { color: var(--color-text-muted); font-style: normal; font-weight: 500; }
+.public-field-wide { grid-column: 1 / -1; }
+.public-customer-field textarea:focus-visible { outline: 3px solid rgba(79, 70, 229, .24); outline-offset: 2px; }
+
 .public-customer-field small {
   color: #b42318;
   font-size: 12px;
@@ -594,6 +657,10 @@
   line-height: 1.6;
 }
 
+.public-booking-state .public-booking-secondary-action { margin-top: 24px; }
+.public-booking-footer { display: flex; justify-content: center; gap: 7px; padding: 30px 12px 0; color: var(--color-text-muted); font-size: 13px; }
+.public-booking-footer strong { color: #4338ca; }
+
 @media (max-width: 720px) {
   .public-booking-page {
     padding: 12px 12px 40px;
@@ -651,6 +718,14 @@
     align-items: stretch;
     flex-direction: column;
   }
+
+  .public-wizard-progress { padding: 18px; }
+  .public-wizard-progress ol { grid-template-columns: repeat(6, 24px); justify-content: space-between; }
+  .public-wizard-progress li small { display: none; }
+  .public-review-section { padding: 22px 20px; }
+  .public-wizard-actions { grid-template-columns: 1fr; }
+  .public-wizard-actions .public-booking-submit,
+  .public-wizard-actions .public-booking-secondary-action { width: 100%; }
 }
 
 @media (max-width: 480px) {
@@ -675,6 +750,19 @@
   .public-salon-details a {
     border-radius: 10px;
   }
+}
+
+@media (max-width: 360px) {
+  .public-booking-page { padding-inline: 8px; }
+  .public-salon-details,
+  .public-services-section,
+  .public-employees-section,
+  .public-date-section,
+  .public-slots-section,
+  .public-customer-section,
+  .public-booking-success,
+  .public-review-section { padding-inline: 16px; }
+  .public-slot-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

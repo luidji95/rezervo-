@@ -5,6 +5,7 @@ import {
   createNotification,
   formatNotificationAppointmentTime,
 } from "@/services/notificationService";
+import { createTrustedAppointmentNotification } from "@/services/trustedAppointmentNotificationService";
 import type {
   CreateAppointmentInput,
   CreateAppointmentResult,
@@ -188,17 +189,17 @@ export async function createAppointment(
     throw new Error("Appointment created, but service snapshot failed.");
   }
 
-  await createNotification(
-    {
-      salonId,
-      type: "appointment_created",
-      title: "Novi termin",
-      message: `${client.fullName.trim()} je rezervisao/la ${service.name} za ${formatNotificationAppointmentTime(startIso)}`,
-      entityType: "appointment",
-      entityId: appointment.id,
-    },
-    supabaseClient
-  );
+  if (process.env.NODE_ENV === "development") {
+    console.debug("OWNER_STATUS_NOTIFICATION_SOURCE", {
+      source: "appointmentService/createAppointment",
+      appointmentId: appointment.id,
+      eventType: "appointment_created",
+    });
+  }
+  await createTrustedAppointmentNotification(
+    appointment.id,
+    "appointment_created",
+  ).catch(() => null);
 
   return appointment;
 }
@@ -245,17 +246,17 @@ export async function rescheduleAppointment(
     services: { name: string } | null;
   };
 
-  await createNotification(
-    {
-      salonId: appointment.salon_id,
-      type: "appointment_rescheduled",
-      title: "Termin pomeren",
-      message: `${appointment.clients?.full_name || "Klijent"}: ${appointment.services?.name || "usluga"} je pomerena za ${formatNotificationAppointmentTime(appointment.start_time)}`,
-      entityType: "appointment",
-      entityId: appointment.id,
-    },
-    supabaseClient
-  );
+  if (process.env.NODE_ENV === "development") {
+    console.debug("OWNER_STATUS_NOTIFICATION_SOURCE", {
+      source: "appointmentService/rescheduleAppointment",
+      appointmentId: appointment.id,
+      eventType: "appointment_rescheduled",
+    });
+  }
+  await createTrustedAppointmentNotification(
+    appointment.id,
+    "appointment_rescheduled",
+  ).catch(() => null);
 
   return appointment;
 }
@@ -289,7 +290,7 @@ export async function createPublicBookingAtomic(
   }
 
   if (result.was_created) {
-    await createNotification(
+    const notification = await createNotification(
       {
         salonId: input.salonId,
         type: "appointment_created",
@@ -300,6 +301,14 @@ export async function createPublicBookingAtomic(
       },
       supabaseClient
     );
+
+    if (!notification && process.env.NODE_ENV === "development") {
+      console.error("PUBLIC_APPOINTMENT_NOTIFICATION_MISSING", {
+        appointmentCreated: true,
+        notificationInsertAttempted: true,
+        appointmentIdPresent: Boolean(result.appointment_id),
+      });
+    }
   }
 
   return {

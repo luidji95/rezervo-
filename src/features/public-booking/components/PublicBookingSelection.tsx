@@ -1,132 +1,57 @@
 "use client";
 
+import { useMemo, useState } from "react";
+import { getTodayDateKey } from "@/lib/salonDateTime";
 import { usePublicBookingSelection } from "../hooks/usePublicBookingSelection";
-import type { PublicService } from "../types";
-import { PublicDatePicker } from "./PublicDatePicker";
+import type { PublicCustomerData, PublicService } from "../types";
 import { PublicBookingSuccess } from "./PublicBookingSuccess";
+import { PublicBookingSummary } from "./PublicBookingSummary";
 import { PublicCustomerForm } from "./PublicCustomerForm";
+import { PublicDatePicker } from "./PublicDatePicker";
 import { PublicEmployeeList } from "./PublicEmployeeList";
 import { PublicServiceList } from "./PublicServiceList";
 import { PublicSlotList } from "./PublicSlotList";
-import { getTodayDateKey } from "@/lib/salonDateTime";
 
-type PublicBookingSelectionProps = {
-  salonId: string;
-  salonName: string;
-  salonSlug: string;
-  salonTimeZone: string;
-  services: PublicService[];
-};
+type Props = { salonId: string; salonName: string; salonSlug: string; salonTimeZone: string; services: PublicService[] };
+const steps = ["Usluga", "Zaposleni", "Datum", "Vreme", "Kontakt", "Potvrda"];
 
-export function PublicBookingSelection({
-  salonId,
-  salonName,
-  salonSlug,
-  salonTimeZone,
-  services,
-}: PublicBookingSelectionProps) {
+export function PublicBookingSelection({ salonId, salonName, salonSlug, salonTimeZone, services }: Props) {
   const selection = usePublicBookingSelection(salonId, salonSlug);
-  const minimumDate = getTodayDateKey(salonTimeZone);
-  const selectedService = services.find(
-    (service) => service.id === selection.selectedServiceId
-  );
-  const selectedEmployee = selection.employees.find(
-    (employee) => employee.id === selection.selectedEmployeeId
-  );
+  const [customer, setCustomer] = useState<PublicCustomerData>(selection.customerForm);
+  const [reviewing, setReviewing] = useState(false);
+  const service = services.find((item) => item.id === selection.selectedServiceId);
+  const employee = selection.employees.find((item) => item.id === selection.selectedEmployeeId);
+  const currentStep = reviewing && selection.selectedSlot ? 6 : selection.selectedSlot ? 5 : selection.selectedDate ? 4 : selection.selectedEmployeeId ? 3 : selection.selectedServiceId ? 2 : 1;
 
-  if (
-    selection.bookingResult &&
-    selectedService &&
-    selectedEmployee &&
-    selection.selectedSlot
-  ) {
-    return (
-      <PublicBookingSuccess
-        date={selection.selectedDate}
-        employee={selectedEmployee}
-        result={selection.bookingResult}
-        salonName={salonName}
-        service={selectedService}
-        slot={selection.selectedSlot}
-        onBookAnother={selection.resetBookingFlow}
-      />
-    );
+  const progress = useMemo(() => Math.min(currentStep, 6) / 6 * 100, [currentStep]);
+
+  if (selection.bookingResult && service && employee && selection.selectedSlot) {
+    return <PublicBookingSuccess date={selection.selectedDate} employee={employee} result={selection.bookingResult} salonName={salonName} service={service} slot={selection.selectedSlot} timeZone={salonTimeZone} onBookAnother={selection.resetBookingFlow} />;
   }
 
   return (
-    <>
-      <PublicServiceList
-        services={services}
-        disabled={selection.isCreatingBooking}
-        selectedServiceId={selection.selectedServiceId}
-        onSelectService={(serviceId) => {
-          void selection.selectService(serviceId);
-        }}
-      />
+    <section className="public-booking-wizard" aria-label="Koraci rezervacije">
+      <div className="public-wizard-progress">
+        <div className="public-wizard-progress-copy"><span>Korak {currentStep} od 6</span><strong>{steps[currentStep - 1]}</strong></div>
+        <div className="public-wizard-track" aria-hidden="true"><i style={{ width: `${progress}%` }} /></div>
+        <ol>{steps.map((label, index) => <li className={index + 1 <= currentStep ? "is-active" : ""} key={label}><span>{index + 1}</span><small>{label}</small></li>)}</ol>
+      </div>
 
-      {selection.selectedServiceId && (
-        <PublicEmployeeList
-          employees={selection.employees}
-          disabled={selection.isCreatingBooking}
-          error={selection.employeesError}
-          loading={selection.employeesLoading}
-          selectedEmployeeId={selection.selectedEmployeeId}
-          onSelectEmployee={selection.selectEmployee}
-        />
-      )}
-
-      {selection.selectedEmployeeId === "any" && (
-        <section className="public-date-section">
-          <div className="public-inline-state" role="status">
-            Izaberite konkretnog zaposlenog da biste videli slobodne termine.
-          </div>
+      {currentStep === 1 && <PublicServiceList services={services} disabled={selection.isCreatingBooking} selectedServiceId={selection.selectedServiceId} onSelectService={(id) => void selection.selectService(id)} />}
+      {currentStep === 2 && <PublicEmployeeList employees={selection.employees} disabled={selection.isCreatingBooking} error={selection.employeesError} loading={selection.employeesLoading} selectedEmployeeId={selection.selectedEmployeeId} onSelectEmployee={selection.selectEmployee} />}
+      {currentStep === 3 && <PublicDatePicker minDate={getTodayDateKey(salonTimeZone)} disabled={selection.isCreatingBooking} selectedDate={selection.selectedDate} onSelectDate={(date) => void selection.selectDate(date)} />}
+      {currentStep === 4 && <PublicSlotList error={selection.slotsError} disabled={selection.isCreatingBooking} loading={selection.isLoadingSlots} selectedSlot={selection.selectedSlot} slots={selection.slots} timeZone={salonTimeZone} onSelectSlot={selection.selectSlot} />}
+      {currentStep === 5 && <PublicCustomerForm defaultValues={customer} disabled={selection.isCreatingBooking} onContinue={(value) => { setCustomer(value); setReviewing(true); }} />}
+      {currentStep === 6 && service && employee && selection.selectedSlot && (
+        <section className="public-review-section">
+          <div className="public-section-heading"><p className="public-booking-eyebrow">Potvrda</p><h2>Proverite detalje rezervacije</h2></div>
+          <PublicBookingSummary customer={customer} date={selection.selectedDate} employee={employee} salonName={salonName} service={service} slot={selection.selectedSlot} timeZone={salonTimeZone} />
+          {selection.bookingError && <div className="public-inline-state public-inline-state-error" role="alert">{selection.bookingError}</div>}
+          <div className="public-wizard-actions"><button type="button" className="public-booking-secondary-action" disabled={selection.isCreatingBooking} onClick={() => setReviewing(false)}>Izmeni podatke</button><button type="button" className="public-booking-submit" disabled={selection.isCreatingBooking} onClick={() => void selection.createBooking(customer)}>{selection.isCreatingBooking ? "Zakazujem…" : "Potvrdi rezervaciju"}</button></div>
         </section>
       )}
 
-      {selection.selectedEmployeeId &&
-        selection.selectedEmployeeId !== "any" && (
-          <PublicDatePicker
-            minDate={minimumDate}
-            disabled={selection.isCreatingBooking}
-            selectedDate={selection.selectedDate}
-            onSelectDate={(date) => {
-              void selection.selectDate(date);
-            }}
-          />
-        )}
-
-      {selection.selectedDate &&
-        selection.selectedEmployeeId &&
-        selection.selectedEmployeeId !== "any" && (
-          <PublicSlotList
-            error={selection.slotsError}
-            disabled={selection.isCreatingBooking}
-            loading={selection.isLoadingSlots}
-            selectedSlot={selection.selectedSlot}
-            slots={selection.slots}
-            onSelectSlot={selection.selectSlot}
-          />
-        )}
-
-      {selection.bookingError && !selection.selectedSlot && (
-        <div className="public-booking-flow-error public-inline-state public-inline-state-error" role="alert">
-          {selection.bookingError}
-        </div>
-      )}
-
-      {selection.selectedSlot && selectedService && selectedEmployee && (
-        <PublicCustomerForm
-          bookingError={selection.bookingError}
-          date={selection.selectedDate}
-          defaultValues={selection.customerForm}
-          employee={selectedEmployee}
-          isSubmitting={selection.isCreatingBooking}
-          salonName={salonName}
-          service={selectedService}
-          slot={selection.selectedSlot}
-          onSubmit={selection.createBooking}
-        />
-      )}
-    </>
+      {currentStep > 1 && currentStep < 6 && <button type="button" className="public-wizard-back" onClick={() => { if (currentStep === 2) void selection.selectService(null); else if (currentStep === 3) selection.selectEmployee(null); else if (currentStep === 4) void selection.selectDate(""); else selection.selectSlot(null); }}>← Nazad</button>}
+    </section>
   );
 }

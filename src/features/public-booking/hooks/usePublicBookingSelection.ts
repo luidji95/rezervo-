@@ -20,6 +20,7 @@ const EMPTY_CUSTOMER: PublicCustomerData = {
   fullName: "",
   phone: "",
   email: "",
+  note: "",
 };
 
 export function usePublicBookingSelection(salonId: string, salonSlug: string) {
@@ -98,6 +99,9 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string) {
 
         if (employeeRequestIdRef.current === requestId) {
           setEmployees(nextEmployees);
+          if (nextEmployees.length === 1) {
+            setSelectedEmployeeId(nextEmployees[0].id);
+          }
         }
       } catch (error) {
         console.error("Failed to load employees for public booking:", error);

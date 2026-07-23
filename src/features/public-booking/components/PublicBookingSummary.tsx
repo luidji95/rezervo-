@@ -12,6 +12,7 @@ type PublicBookingSummaryProps = {
   salonName: string;
   service: PublicService;
   slot: PublicAvailabilitySlot;
+  timeZone: string;
 };
 
 function formatDate(value: string) {
@@ -23,11 +24,11 @@ function formatDate(value: string) {
   }).format(new Date(`${value}T12:00:00Z`));
 }
 
-function formatTime(value: string) {
+function formatTime(value: string, timeZone: string) {
   return new Intl.DateTimeFormat("sr-RS", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Europe/Belgrade",
+    timeZone,
   }).format(new Date(value));
 }
 
@@ -51,6 +52,7 @@ export function PublicBookingSummary({
   salonName,
   service,
   slot,
+  timeZone,
 }: PublicBookingSummaryProps) {
   return (
     <div className="public-booking-summary">
@@ -60,12 +62,13 @@ export function PublicBookingSummary({
         <div><dt>Usluga</dt><dd>{service.name}</dd></div>
         <div><dt>Zaposleni</dt><dd>{employee.name}</dd></div>
         <div><dt>Datum</dt><dd>{formatDate(date)}</dd></div>
-        <div><dt>Vreme</dt><dd>{formatTime(slot.startTime)}</dd></div>
+        <div><dt>Vreme</dt><dd>{formatTime(slot.startTime, timeZone)}</dd></div>
         <div><dt>Trajanje</dt><dd>{service.durationMinutes} min</dd></div>
         <div><dt>Cena</dt><dd>{formatPrice(service.price, service.currency)}</dd></div>
         <div><dt>Klijent</dt><dd>{customer.fullName || "—"}</dd></div>
         {customer.phone && <div><dt>Telefon</dt><dd>{customer.phone}</dd></div>}
         {customer.email && <div><dt>Email</dt><dd>{customer.email}</dd></div>}
+        {customer.note && <div><dt>Napomena</dt><dd>{customer.note}</dd></div>}
       </dl>
     </div>
   );

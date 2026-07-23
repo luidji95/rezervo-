@@ -46,6 +46,7 @@ import EditAppointmentModal from "./EditAppointmentModal";
 
 // DODATO: Uvoz novog modala za kreiranje termina
 import { CreateAppointmentModal } from "./CreateAppointmentModal";
+import EmployeeCreateAppointmentModal from "./EmployeeCreateAppointmentModal";
 
 import "./calendar.css";
 
@@ -448,6 +449,16 @@ function CalendarPageContent() {
     setSelectedDate(addDaysToDateKey(selectedDate, -1));
   };
 
+  const handleEmployeeAppointmentCreated = async () => {
+    if (!currentSalon) return;
+    const freshAppointments = await getCalendarAppointments(
+      currentSalon.id,
+      selectedDate,
+      salonTimeZone,
+    );
+    setAppointments(freshAppointments);
+  };
+
   const handleNextDay = () => {
     setSelectedDate(addDaysToDateKey(selectedDate, 1));
   };
@@ -465,12 +476,12 @@ function CalendarPageContent() {
         onNextDay={handleNextDay}
         onToday={handleToday}
         onCreateClick={() => setIsCreateAppointmentModalOpen(true)}
-        canCreateAppointment={!isEmployeeReadOnly}
+        canCreateAppointment={currentRole === "owner" || currentRole === "employee"}
       />
 
       {isEmployeeReadOnly && (
         <p className="calendar-readonly-notice">
-          Možete menjati status svojih termina. Kreiranje, uređivanje i pomeranje nisu dostupni.
+          Možete kreirati termine za sebe i menjati njihov status. Uređivanje i pomeranje nisu dostupni.
         </p>
       )}
 
@@ -609,6 +620,16 @@ function CalendarPageContent() {
         selectedDate={selectedDate} // Podrazumevano prosleđuje trenutno otvoren datum na kalendaru
         onSuccess={handleCreateAppointmentConfirm}
       />}
+
+      {isEmployeeReadOnly && isCreateAppointmentModalOpen && (
+        <EmployeeCreateAppointmentModal
+          isOpen
+          onClose={() => setIsCreateAppointmentModalOpen(false)}
+          selectedDate={selectedDate}
+          salonTimeZone={currentSalon.timezone}
+          onCreated={handleEmployeeAppointmentCreated}
+        />
+      )}
     </main>
   );
 }

@@ -80,8 +80,13 @@ export async function generateAvailableSlots(
       .from("employees")
       .select(
         `
-        *,
-        employee_services!inner(service_id, salon_id, is_active)
+        id,
+        employee_services!inner(
+          service_id,
+          salon_id,
+          is_active,
+          custom_duration_minutes
+        )
       `
       )
       .eq("salon_id", salonId)
@@ -213,7 +218,10 @@ export async function generateAvailableSlots(
       ? combineDateAndTime(date, schedule.break_ends_at, salonTimeZone)
       : null;
 
-    const appointmentDuration = service.duration_minutes + (service.buffer_minutes ?? 0);
+    const relation = employee.employee_services?.[0];
+    const appointmentDuration =
+      (relation?.custom_duration_minutes ?? service.duration_minutes) +
+      (service.buffer_minutes ?? 0);
 
     let currentSlotStart = workStart;
 

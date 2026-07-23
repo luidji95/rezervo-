@@ -7,6 +7,7 @@ type ProtectedRouteRule = {
 
 export const PROTECTED_ROUTE_PERMISSIONS: readonly ProtectedRouteRule[] = [
   { path: "/dashboard", permission: "canViewDashboard" },
+  { path: "/statistics", permission: "canViewStatistics" },
   { path: "/calendar", permission: "canViewCalendar" },
   { path: "/appointmets", permission: "canViewAppointments" },
   { path: "/clients", permission: "canViewClients" },

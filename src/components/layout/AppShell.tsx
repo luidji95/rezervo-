@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Calendar as CalendarIcon,
   CalendarClock,
+  ChartNoAxesCombined,
   ChevronLeft,
   ChevronRight,
   LayoutDashboard,
@@ -60,6 +61,12 @@ const navLinks: Array<{
     permission: "canViewClients",
   },
   {
+    href: "/statistics",
+    label: "Statistika",
+    icon: ChartNoAxesCombined,
+    permission: "canViewStatistics",
+  },
+  {
     href: "/services",
     label: "Usluge",
     icon: Scissors,
@@ -85,6 +92,7 @@ function getPageName(path: string) {
   if (path.includes("/clients")) return "Klijenti";
   if (path.includes("/services")) return "Usluge";
   if (path.includes("/employees")) return "Zaposleni";
+  if (path.includes("/statistics")) return "Statistika";
   if (path.includes("/settings")) return "Podešavanja";
   return "Dashboard";
 }

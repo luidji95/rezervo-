@@ -27,6 +27,7 @@ export type AuthorizationPermissions = {
   canViewAppointments: boolean;
   canViewClients: boolean;
   canViewAnalytics: boolean;
+  canViewStatistics: boolean;
   canManageSalon: boolean;
   canManageEmployees: boolean;
   canManageServices: boolean;

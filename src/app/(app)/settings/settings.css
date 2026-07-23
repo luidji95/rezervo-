@@ -1358,6 +1358,39 @@
   margin-top: 8px;
 }
 
+.team-invite-btn {
+  width: fit-content;
+  margin-top: 8px;
+}
+
+.team-invitation-status {
+  display: grid;
+  gap: 3px;
+  margin-top: 8px;
+}
+
+.team-invitation-status .team-access-message {
+  margin-top: 0;
+}
+
+.team-invitation-status > span,
+.team-invitation-status > small {
+  overflow-wrap: anywhere;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.team-access-message--invited {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.team-invitation-warning {
+  margin: 10px 0 0;
+  color: #9a3412;
+  font-size: 13px;
+}
+
 @media (max-width: 760px) {
   .team-employee-grid {
     grid-template-columns: 1fr;
@@ -1752,6 +1785,12 @@
 
   .team-modal-actions,
   .team-add-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .team-invite-btn,
+  .team-owner-link-btn {
     width: 100%;
     justify-content: center;
   }

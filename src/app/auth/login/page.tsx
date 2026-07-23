@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,8 +18,9 @@ import {
   type LoginFormValues,
 } from "@/features/auth/schemas/authSchema";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const { user, loading } = useAuth();
 
@@ -91,6 +92,11 @@ export default function LoginPage() {
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit(onSubmit)}>
+          {searchParams.get("activated") === "1" && (
+            <p className="form-success" role="status">
+              Nalog je aktiviran. Prijavite se novom lozinkom.
+            </p>
+          )}
           <div className="form-field">
             <label htmlFor="email">Email</label>
 
@@ -154,5 +160,13 @@ export default function LoginPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<main className="auth-page"><p>Učitavanje...</p></main>}>
+      <LoginContent />
+    </Suspense>
   );
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { supabaseServer } from "@/lib/supabaseServer";
+import { getAuthenticatedRequestUser } from "@/lib/server/requestAuth";
 import { emailSchema } from "@/lib/validation/commonSchemas";
 
 const inviteEmployeeSchema = z
@@ -30,12 +31,6 @@ function errorResponse(
   status: number,
 ) {
   return NextResponse.json({ success: false, code, message }, { status });
-}
-
-function getBearerToken(request: Request) {
-  const authorization = request.headers.get("authorization");
-  if (!authorization?.startsWith("Bearer ")) return null;
-  return authorization.slice("Bearer ".length).trim() || null;
 }
 
 function getRedirectUrl(request: Request) {
@@ -82,20 +77,11 @@ function isExistingAuthEmailError(error: unknown) {
 }
 
 export async function POST(request: Request) {
-  const accessToken = getBearerToken(request);
-
-  if (!accessToken) {
+  const authResult = await getAuthenticatedRequestUser(request);
+  if (!authResult.ok) {
     return errorResponse("UNAUTHORIZED", "Prijava je obavezna.", 401);
   }
-
-  const {
-    data: { user: caller },
-    error: callerError,
-  } = await supabaseServer.auth.getUser(accessToken);
-
-  if (callerError || !caller) {
-    return errorResponse("UNAUTHORIZED", "Sesija nije važeća.", 401);
-  }
+  const caller = authResult.user;
 
   const body = await request.json().catch(() => null);
   const parsed = inviteEmployeeSchema.safeParse(body);

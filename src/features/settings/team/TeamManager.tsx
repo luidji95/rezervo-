@@ -12,14 +12,22 @@ import {
 
 import { useSalon } from "@/context/SalonContext";
 import { useAuthorization } from "@/context/AuthorizationContext";
+import { useAuth } from "@/context/AuthContext";
 import {
   getSalonEmployees,
   linkEmployeeToCurrentOwner,
   OwnerEmployeeAlreadyLinkedError,
 } from "@/services/employeeService";
 import { getSalonMembers, getTeamProfiles } from "@/services/teamService";
+import {
+  getTeamInvitations,
+  sendTeamInvitation,
+  SendInvitationError,
+  type TeamInvitationSummary,
+} from "@/services/teamInvitationService";
 import type { Employee } from "@/types/employee";
 import type { SalonMember, TeamProfile } from "@/types/team";
+import TeamInviteModal from "./TeamInviteModal";
 
 function getEmployeeName(employee: Employee) {
   return employee.display_name || employee.full_name;
@@ -51,6 +59,22 @@ function getMemberRoleLabel(member: SalonMember, ownerId: string) {
   return member.role;
 }
 
+function getInvitationErrorMessage(code: string) {
+  const messages: Record<string, string> = {
+    UNAUTHORIZED: "Morate biti prijavljeni.",
+    FORBIDDEN: "Nemate dozvolu da pozivate zaposlene.",
+    INVALID_INPUT: "Proverite unete podatke.",
+    EMPLOYEE_NOT_FOUND: "Zaposleni nije pronađen.",
+    EMPLOYEE_ALREADY_LINKED: "Ovaj zaposleni već ima pristup aplikaciji.",
+    ALREADY_INVITED: "Poziv je već poslat ovom zaposlenom.",
+    ALREADY_MEMBER: "Ovaj korisnik je već član salona.",
+    EMAIL_ALREADY_USED:
+      "Ovaj email je već povezan sa drugim nalogom ili članstvom.",
+    INVITE_FAILED: "Poziv trenutno nije moguće poslati. Pokušajte ponovo.",
+  };
+  return messages[code] ?? messages.INVITE_FAILED;
+}
+
 function ProfileAvatar({ profile }: { profile?: TeamProfile }) {
   if (profile?.avatar_url) {
     return (
@@ -74,20 +98,28 @@ function ProfileAvatar({ profile }: { profile?: TeamProfile }) {
 
 export default function TeamManager() {
   const { currentSalon, salonLoading } = useSalon();
-  const { currentRole } = useAuthorization();
+  const { user, loading: authLoading } = useAuth();
+  const { currentRole, loading: authorizationLoading } = useAuthorization();
   const [members, setMembers] = useState<SalonMember[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [profiles, setProfiles] = useState<TeamProfile[]>([]);
+  const [invitations, setInvitations] = useState<TeamInvitationSummary[]>([]);
+  const [invitationStatusesLoaded, setInvitationStatusesLoaded] = useState(false);
+  const [invitationStatusError, setInvitationStatusError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [linkingEmployeeId, setLinkingEmployeeId] = useState<string | null>(null);
   const [linkMessage, setLinkMessage] = useState<string | null>(null);
+  const [employeeToInvite, setEmployeeToInvite] = useState<Employee | null>(null);
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
 
   const salonId = currentSalon?.id;
   const ownerId = currentSalon?.owner_id;
+  const userId = user?.id;
 
   useEffect(() => {
-    if (!salonId || !ownerId) return;
+    if (authLoading || authorizationLoading) return;
+    if (!userId || !salonId || !ownerId) return;
 
     let ignore = false;
 
@@ -114,6 +146,32 @@ export default function TeamManager() {
           setEmployees(employeesData);
           setProfiles(profilesData);
         }
+
+        if (currentRole === "owner") {
+          try {
+            const invitationsData = await getTeamInvitations(salonId as string);
+            if (!ignore) {
+              setInvitations(invitationsData);
+              setInvitationStatusesLoaded(true);
+              setInvitationStatusError(null);
+            }
+          } catch (invitationError) {
+            if (process.env.NODE_ENV === "development") {
+              console.error("Invitation statuses failed to load", invitationError);
+            }
+            if (!ignore) {
+              setInvitations([]);
+              setInvitationStatusesLoaded(false);
+              setInvitationStatusError(
+                "Statusi poziva trenutno nisu dostupni.",
+              );
+            }
+          }
+        } else if (!ignore) {
+          setInvitations([]);
+          setInvitationStatusesLoaded(true);
+          setInvitationStatusError(null);
+        }
       } catch (teamError) {
         console.error("Greška pri učitavanju tima:", teamError);
         if (!ignore) {
@@ -129,7 +187,7 @@ export default function TeamManager() {
     return () => {
       ignore = true;
     };
-  }, [ownerId, salonId]);
+  }, [authLoading, authorizationLoading, currentRole, ownerId, salonId, userId]);
 
   const profilesById = useMemo(
     () => new Map(profiles.map((profile) => [profile.id, profile])),
@@ -148,6 +206,81 @@ export default function TeamManager() {
       ),
     [employees],
   );
+  const invitationsByEmployeeId = useMemo(() => {
+    const latestByEmployee = new Map<string, TeamInvitationSummary>();
+    invitations.forEach((invitation) => {
+      if (!latestByEmployee.has(invitation.employeeId)) {
+        latestByEmployee.set(invitation.employeeId, invitation);
+      }
+    });
+    return latestByEmployee;
+  }, [invitations]);
+
+  async function refreshInvitations() {
+    if (!salonId || currentRole !== "owner") return false;
+    try {
+      setInvitations(await getTeamInvitations(salonId));
+      setInvitationStatusesLoaded(true);
+      setInvitationStatusError(null);
+      return true;
+    } catch (invitationError) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("Invitation statuses failed to refresh", invitationError);
+      }
+      setInvitationStatusesLoaded(false);
+      setInvitationStatusError(
+        "Statusi poziva trenutno nisu dostupni.",
+      );
+      return false;
+    }
+  }
+
+  async function handleInvite(email: string) {
+    if (!salonId || !employeeToInvite || currentRole !== "owner") return;
+
+    const invitedEmployee = employeeToInvite;
+    try {
+      await sendTeamInvitation({
+        salonId,
+        employeeId: invitedEmployee.id,
+        email,
+      });
+      const now = new Date();
+      setInvitations((current) => [
+        {
+          employeeId: invitedEmployee.id,
+          email,
+          status: "invited",
+          createdAt: now.toISOString(),
+          expiresAt: new Date(
+            now.getTime() + 7 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+        },
+        ...current.filter(
+          (invitation) => invitation.employeeId !== invitedEmployee.id,
+        ),
+      ]);
+      await refreshInvitations();
+      setEmployeeToInvite(null);
+      setInviteMessage(`Poziv je poslat na ${email}.`);
+    } catch (inviteError) {
+      if (
+        inviteError instanceof SendInvitationError &&
+        inviteError.code === "ALREADY_INVITED"
+      ) {
+        await refreshInvitations();
+        setEmployeeToInvite(null);
+        setInviteMessage("Poziv je već poslat ovom zaposlenom.");
+        return;
+      }
+
+      throw new Error(
+        inviteError instanceof SendInvitationError
+          ? getInvitationErrorMessage(inviteError.code)
+          : getInvitationErrorMessage("INVITE_FAILED"),
+      );
+    }
+  }
 
   async function handleOwnerLink(employeeId: string) {
     if (!salonId || currentRole !== "owner") return;
@@ -255,6 +388,7 @@ export default function TeamManager() {
               const hasActiveEmployeeAccess =
                 membership?.role === "employee" && membership.status === "active";
               const isOwnerBusinessRecord = employee.profile_id === ownerId;
+              const invitation = invitationsByEmployeeId.get(employee.id);
 
               return (
                 <article key={employee.id} className="team-employee-card">
@@ -285,11 +419,60 @@ export default function TeamManager() {
                       <BadgeCheck size={15} /> Pristup aplikaciji aktivan · Uloga:
                       Zaposleni
                     </p>
+                  ) : employee.profile_id ? (
+                    <p className="team-link-warning">
+                      Nalog postoji, ali pristup nije aktivan
+                      {membership ? ` · ${getStatusLabel(membership.status)}` : ""}
+                    </p>
+                  ) : !invitationStatusesLoaded ? (
+                    <p className="team-link-warning">
+                      Status pristupa trenutno nije dostupan
+                    </p>
+                  ) : invitation?.status === "invited" ? (
+                    <div className="team-invitation-status">
+                      <p className="team-access-message team-access-message--invited">
+                        Poziv poslat
+                      </p>
+                      <span>{invitation.email}</span>
+                      <small>
+                        {new Intl.DateTimeFormat("sr-RS", {
+                          dateStyle: "medium",
+                        }).format(new Date(invitation.createdAt))}
+                      </small>
+                    </div>
+                  ) : invitation?.status === "expired" ? (
+                    <p className="team-link-warning">Poziv je istekao</p>
+                  ) : invitation?.status === "revoked" ? (
+                    <p className="team-link-warning">Poziv je opozvan</p>
+                  ) : invitation?.status === "accepted" ? (
+                    <p className="team-link-warning">
+                      Poziv je prihvaćen, ali nalog nije pravilno povezan
+                    </p>
                   ) : (
                     <p className="team-access-message">
                       Pristup aplikaciji nije omogućen
                     </p>
                   )}
+
+                  {currentRole === "owner" &&
+                    employee.is_active &&
+                    !employee.profile_id &&
+                    invitation?.status !== "invited" &&
+                    invitation?.status !== "accepted" && (
+                      <button
+                        type="button"
+                        className="settings-primary-btn team-invite-btn"
+                        disabled={!invitationStatusesLoaded}
+                        onClick={() => {
+                          setInviteMessage(null);
+                          setEmployeeToInvite(employee);
+                        }}
+                      >
+                        {invitationStatusesLoaded
+                          ? "Pozovi u aplikaciju"
+                          : "Status poziva nije dostupan"}
+                      </button>
+                    )}
 
                   {currentRole === "owner" && !employee.profile_id && (
                     ownerEmployee ? (
@@ -318,6 +501,16 @@ export default function TeamManager() {
         {linkMessage && (
           <p className="settings-save-message standalone" role="status">
             {linkMessage}
+          </p>
+        )}
+        {inviteMessage && (
+          <p className="settings-save-message standalone" role="status">
+            {inviteMessage}
+          </p>
+        )}
+        {invitationStatusError && (
+          <p className="team-invitation-warning" role="status">
+            {invitationStatusError}
           </p>
         )}
       </section>
@@ -373,9 +566,18 @@ export default function TeamManager() {
         <BriefcaseBusiness size={17} />
         <p>
           Pozicija zaposlenog je poslovni podatak. Login uloga i pristup dolaze
-          isključivo iz membership zapisa. Invitation flow još nije omogućen.
+          isključivo iz membership zapisa. Zaposleni bez naloga može dobiti
+          bezbedan email poziv i sam postaviti lozinku.
         </p>
       </div>
+
+      {employeeToInvite && currentRole === "owner" && (
+        <TeamInviteModal
+          employee={employeeToInvite}
+          onClose={() => setEmployeeToInvite(null)}
+          onSubmit={handleInvite}
+        />
+      )}
     </div>
   );
 }

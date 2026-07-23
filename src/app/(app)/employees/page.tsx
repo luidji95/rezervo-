@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { Briefcase, CalendarDays, Plus, UserRound } from "lucide-react";
 
 import { AddEmployeeModal } from "./AddEmployeeModal";
@@ -30,7 +30,7 @@ export default function EmployeesPage() {
   const [restoringEmployeeId, setRestoringEmployeeId] = useState<string | null>(
     null
   );
-  const detailsPanelRef = useRef<HTMLElement | null>(null);
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
 
   const {
     currentSalon,
@@ -39,6 +39,7 @@ export default function EmployeesPage() {
     filteredEmployees,
     getServicesForEmployee,
     loadData,
+    loadError,
     loading,
     salonId,
     salonLoading,
@@ -57,16 +58,10 @@ export default function EmployeesPage() {
 
   function handleSelectEmployee(employee: Employee) {
     setSelectedEmployee(employee);
-
-    if (window.matchMedia("(max-width: 1200px)").matches) {
-      window.requestAnimationFrame(() => {
-        detailsPanelRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      });
-    }
+    if (window.matchMedia("(max-width: 767px)").matches) setMobileDetailsOpen(true);
   }
+
+  const closeMobileDetails = useCallback(() => setMobileDetailsOpen(false), []);
 
   async function handleDeleteEmployee() {
     if (!deletingEmployee || !salonId || isDeleting) return;
@@ -112,9 +107,13 @@ export default function EmployeesPage() {
 
   if (salonLoading || loading) {
     return (
-      <div className="employees-page">
-        <div className="employees-card">
-          <p>Učitavanje zaposlenih...</p>
+      <div className="employees-page" aria-busy="true" aria-label="Učitavanje zaposlenih">
+        <div className="employees-loading-header"><span /><span /></div>
+        <div className="employee-kpi-grid employees-loading-kpis">
+          {Array.from({ length: 4 }, (_, index) => <span key={index} />)}
+        </div>
+        <div className="employees-card employees-loading-list">
+          {Array.from({ length: 5 }, (_, index) => <span key={index} />)}
         </div>
       </div>
     );
@@ -126,6 +125,20 @@ export default function EmployeesPage() {
         <div className="employees-card">
           <p className="employees-error">Salon nije pronađen.</p>
         </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="employees-page">
+        <section className="employees-card employees-load-error" role="alert">
+          <h1>Zaposleni trenutno nisu dostupni</h1>
+          <p>Pokušajte ponovo. Ostali delovi aplikacije ostaju dostupni.</p>
+          <button type="button" className="employees-primary-btn" onClick={() => void loadData()}>
+            Pokušaj ponovo
+          </button>
+        </section>
       </div>
     );
   }
@@ -188,11 +201,7 @@ export default function EmployeesPage() {
           />
         </main>
 
-        <aside
-          ref={detailsPanelRef}
-          className="employees-side"
-          tabIndex={-1}
-        >
+        <aside className="employees-side">
           <EmployeeDetailsPanel
             employee={selectedEmployee}
             services={
@@ -202,7 +211,9 @@ export default function EmployeesPage() {
             employeeWorkingHours={selectedEmployeeHours}
             stats={selectedEmployeeStats}
             isRestoring={restoringEmployeeId === selectedEmployee?.id}
-            onEdit={setEditingEmployee}
+            mobileOpen={mobileDetailsOpen}
+            onClose={closeMobileDetails}
+            onEdit={(employee) => { setMobileDetailsOpen(false); setEditingEmployee(employee); }}
             onDelete={(employee) => {
               setDeleteError("");
               setDeletingEmployee(employee);

@@ -128,6 +128,7 @@ function CalendarPageContent() {
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedAppointment, setSelectedAppointment] = useState<CalendarAppointment | null>(null);
+  const [mobileEmployeeId, setMobileEmployeeId] = useState("all");
 
   const [clientHistory, setClientHistory] = useState<ClientHistoryAppointment[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -468,6 +469,26 @@ function CalendarPageContent() {
     setSelectedDate(getTodayDateKey(salonTimeZone));
   };
 
+  const mobileAppointments = appointments
+    .filter(
+      (appointment) =>
+        isEmployeeReadOnly ||
+        mobileEmployeeId === "all" ||
+        appointment.employees?.id === mobileEmployeeId,
+    )
+    .sort(
+      (first, second) =>
+        new Date(first.start_time).getTime() - new Date(second.start_time).getTime(),
+    );
+
+  const statusLabels: Record<string, string> = {
+    pending: "Na čekanju",
+    confirmed: "Potvrđeno",
+    completed: "Završeno",
+    cancelled: "Otkazano",
+    no_show: "Nije došao",
+  };
+
   return (
     <main className="calendar-page">
       <CalendarToolbar
@@ -497,6 +518,81 @@ function CalendarPageContent() {
 
       {!employeesLoading && employees.length > 0 && (
         <div className="calendar-content">
+          <section className="calendar-mobile-agenda" aria-label="Dnevni raspored">
+            {!isEmployeeReadOnly && (
+              <label className="calendar-mobile-employee-filter">
+                <span>Zaposleni</span>
+                <select
+                  value={mobileEmployeeId}
+                  onChange={(event) => setMobileEmployeeId(event.target.value)}
+                >
+                  <option value="all">Svi zaposleni</option>
+                  {employees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {getEmployeeDisplayName(employee)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {appointmentsLoading ? (
+              <div className="calendar-mobile-skeleton" aria-label="Učitavanje termina">
+                <span />
+                <span />
+                <span />
+              </div>
+            ) : mobileAppointments.length === 0 ? (
+              <div className="calendar-mobile-empty">
+                Nema termina za izabrani dan i zaposlenog.
+              </div>
+            ) : (
+              <ol className="calendar-mobile-list">
+                {mobileAppointments.map((appointment) => {
+                  const duration = Math.max(
+                    0,
+                    Math.round(
+                      (new Date(appointment.end_time).getTime() -
+                        new Date(appointment.start_time).getTime()) /
+                        60000,
+                    ),
+                  );
+                  return (
+                    <li key={appointment.id}>
+                      <button
+                        type="button"
+                        className="calendar-mobile-appointment"
+                        onClick={() => setSelectedAppointment(appointment)}
+                      >
+                        <span className="calendar-mobile-appointment__time">
+                          {new Intl.DateTimeFormat("sr-RS", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            timeZone: salonTimeZone,
+                          }).format(new Date(appointment.start_time))}
+                          <small>{duration} min</small>
+                        </span>
+                        <span className="calendar-mobile-appointment__body">
+                          <strong>{appointment.clients?.full_name ?? "Klijent nije dostupan"}</strong>
+                          <span>{appointment.services?.name ?? "Usluga nije dostupna"}</span>
+                          {!isEmployeeReadOnly && mobileEmployeeId === "all" && (
+                            <small>
+                              {appointment.employees?.display_name ||
+                                appointment.employees?.full_name ||
+                                "Zaposleni nije dostupan"}
+                            </small>
+                          )}
+                        </span>
+                        <span className={`calendar-mobile-status calendar-mobile-status--${appointment.status}`}>
+                          {statusLabels[appointment.status] ?? appointment.status}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </section>
           <section className="calendar-shell">
             
             <div
@@ -587,6 +683,7 @@ function CalendarPageContent() {
             onRescheduleClick={() => setIsRescheduleModalOpen(true)}
             onEditClick={() => setIsEditModalOpen(true)}
             employeeStatusOnly={isEmployeeReadOnly}
+            onClose={() => setSelectedAppointment(null)}
           />
         </div>
       )}

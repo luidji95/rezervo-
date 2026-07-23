@@ -62,10 +62,12 @@ export default function CalendarAppointmentCard({
   const isSelectedClass = isSelected ? "calendar-appointment-card--selected" : "";
   
   return (
-    <div
+    <button
+      type="button"
       className={`calendar-appointment-card ${statusClass} ${isSelectedClass}`}
       style={{ top: `${top}px`, height: `${height}px` }}
       onClick={() => onSelect(appointment)}
+      aria-label={`${getAppointmentStatusLabel(appointment.status)} termin za ${appointment.clients?.full_name ?? "klijenta"}`}
     >
       {/* Vreme trajanja termina */}
       <div className="calendar-appointment-time">
@@ -90,8 +92,9 @@ export default function CalendarAppointmentCard({
         </span>
       </div>
 
-      {/* Status termina - UI label na srpskom */}
-        
-    </div>
+      <span className="calendar-appointment-status">
+        {getAppointmentStatusLabel(appointment.status)}
+      </span>
+    </button>
   );
 }

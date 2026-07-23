@@ -20,10 +20,10 @@ export function AppointmentStatusChart({ appointments }: { appointments: Statist
       <div className="statistics-card__header"><div><h2>Status termina</h2><p>{formatStatisticsNumber(appointments.total)} ukupno zakazanih termina.</p></div></div>
       {appointments.total === 0 ? <div className="statistics-empty">Nema termina u izabranom periodu.</div> : <div className="statistics-breakdown__body">
         <div className="statistics-donut" role="img" aria-label={values.map((item) => `${item.label}: ${item.value}`).join("; ")}>
-          <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={values} dataKey="value" nameKey="label" innerRadius={54} outerRadius={78} paddingAngle={2}>{values.map((item) => <Cell key={item.key} fill={item.color} />)}</Pie><Tooltip formatter={(value) => formatStatisticsNumber(Number(value))} /></PieChart></ResponsiveContainer>
+          <ResponsiveContainer width="100%" height="100%"><PieChart accessibilityLayer><Pie isAnimationActive={false} data={values} dataKey="value" nameKey="label" innerRadius={54} outerRadius={78} paddingAngle={2}>{values.map((item) => <Cell key={item.key} fill={item.color} />)}</Pie><Tooltip wrapperStyle={{ maxWidth: "calc(100vw - 48px)", fontSize: 12 }} formatter={(value) => formatStatisticsNumber(Number(value))} /></PieChart></ResponsiveContainer>
           <strong>{formatStatisticsNumber(appointments.total)}</strong>
         </div>
-        <ul>{values.map((item) => <li key={item.key}><i style={{ background: item.color }} /><span>{item.label}</span><strong>{formatStatisticsNumber(item.value)}</strong></li>)}</ul>
+        <ul>{values.map((item) => <li key={item.key}><i style={{ background: item.color }} /><span>{item.label}</span><strong>{formatStatisticsNumber(item.value)} · {(item.value / appointments.total * 100).toLocaleString("sr-RS", { maximumFractionDigits: 1 })}%</strong></li>)}</ul>
       </div>}
     </section>
   );

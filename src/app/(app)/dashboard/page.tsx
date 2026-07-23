@@ -45,6 +45,16 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
+function formatAppointmentStatus(status: string) {
+  return {
+    pending: "Na čekanju",
+    confirmed: "Potvrđeno",
+    completed: "Završeno",
+    cancelled: "Otkazano",
+    no_show: "Nije došao",
+  }[status] ?? status;
+}
+
 function getEmployeeLabel(employee: {
   display_name: string | null;
   full_name: string;
@@ -290,6 +300,37 @@ function OwnerDashboard() {
                   </React.Fragment>
                 ))}
               </div>
+            )}
+            {todaySchedule.length > 0 && (
+              <ul className="dashboard-calendar-mobile" aria-label="Današnji termini">
+                {[...todaySchedule]
+                  .sort(
+                    (first, second) =>
+                      new Date(first.start_time).getTime() -
+                      new Date(second.start_time).getTime(),
+                  )
+                  .map((appointment) => (
+                    <li key={appointment.id}>
+                      <time>{formatTime(appointment.start_time, salonTimeZone)}</time>
+                      <div>
+                        <strong>
+                          {appointment.clients?.full_name ?? "Klijent nije dostupan"}
+                        </strong>
+                        <span>
+                          {appointment.services?.name ?? "Usluga nije dostupna"}
+                        </span>
+                        <small>
+                          {appointment.employees?.display_name ||
+                            appointment.employees?.full_name ||
+                            "Zaposleni nije dostupan"}
+                        </small>
+                      </div>
+                      <span className="dashboard-calendar-mobile__status">
+                        {formatAppointmentStatus(appointment.status)}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
             )}
           </article>
 

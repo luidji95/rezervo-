@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 import type { Employee } from "@/types/employee";
+import { useEmployeeDialog } from "./useEmployeeDialog";
 
 type EmployeeDeleteModalProps = {
   employee: Employee;
@@ -19,10 +20,11 @@ export function EmployeeDeleteModal({
   onConfirm,
 }: EmployeeDeleteModalProps) {
   const name = employee.display_name || employee.full_name;
+  const dialogRef = useEmployeeDialog(onCancel, isDeleting);
 
   return (
     <div className="employee-modal-backdrop" role="presentation">
-      <div className="employee-modal employee-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="employee-delete-title">
+      <div ref={dialogRef} className="employee-modal employee-confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="employee-delete-title">
         <div className="employee-modal-header">
           <div>
             <h3 id="employee-delete-title">Obrisati zaposlenog?</h3>

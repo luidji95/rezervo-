@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef } from "react";
 import {
   CalendarDays,
   Mail,
@@ -5,6 +8,7 @@ import {
   Phone,
   RotateCcw,
   Trash2,
+  X,
 } from "lucide-react";
 
 import type { EmployeeStats } from "@/services/employeeAnalyticsService";
@@ -28,6 +32,8 @@ type EmployeeDetailsPanelProps = {
   employeeWorkingHours: WorkingHour[];
   stats: EmployeeStats;
   isRestoring: boolean;
+  mobileOpen: boolean;
+  onClose: () => void;
   onDelete: (employee: Employee) => void;
   onEdit: (employee: Employee) => void;
   onRestore: (employee: Employee) => Promise<void>;
@@ -40,10 +46,40 @@ export function EmployeeDetailsPanel({
   employeeWorkingHours,
   stats,
   isRestoring,
+  mobileOpen,
+  onClose,
   onDelete,
   onEdit,
   onRestore,
 }: EmployeeDetailsPanelProps) {
+  const panelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!mobileOpen || !employee) return;
+    const panel = panelRef.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusable = panel?.querySelectorAll<HTMLElement>('button, [href], [tabindex]:not([tabindex="-1"])');
+    focusable?.[0]?.focus();
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") { onClose(); return; }
+      if (event.key !== "Tab" || !focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, [employee, mobileOpen, onClose]);
+
   if (!employee) {
     return (
       <section className="employees-card employee-details-empty">
@@ -53,19 +89,33 @@ export function EmployeeDetailsPanel({
   }
 
   return (
-    <section className="employees-card employee-details-card">
+    <section
+      ref={panelRef}
+      className={`employees-card employee-details-card ${mobileOpen ? "mobile-open" : ""}`}
+      role={mobileOpen ? "dialog" : undefined}
+      aria-modal={mobileOpen ? true : undefined}
+      aria-labelledby="employee-details-title"
+    >
+      <button type="button" className="employee-details-close" onClick={onClose} aria-label="Zatvori detalje zaposlenog"><X size={20} /></button>
       <div className="employee-details-header">
         <div className="employee-details-avatar">
           {getInitials(employee.display_name || employee.full_name)}
         </div>
 
         <div>
-          <h3>{employee.display_name || employee.full_name}</h3>
+          <h3 id="employee-details-title">{employee.display_name || employee.full_name}</h3>
           <p>{employee.position || "Zaposleni"}</p>
           {!employee.is_active && (
             <span className="employee-status inactive">Neaktivan</span>
           )}
         </div>
+      </div>
+
+      <div className="employee-section employee-profile-status">
+        <h4>Pristup aplikaciji</h4>
+        <span className={`employee-status ${employee.profile_id ? "active" : "inactive"}`}>
+          {employee.profile_id ? "Profil je povezan" : "Profil nije povezan"}
+        </span>
       </div>
 
       <div className="employee-details-actions">

@@ -41,6 +41,7 @@ export function useServicesPageData() {
   });
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [sortOption, setSortOption] = useState<ServiceSortOption>("name-asc");
@@ -53,6 +54,7 @@ export function useServicesPageData() {
 
     try {
       setLoading(true);
+      setLoadError(false);
 
       const servicesData = await getSalonServices(salonId);
       const analyticsData = await getServiceAnalytics(salonId, servicesData);
@@ -60,9 +62,7 @@ export function useServicesPageData() {
       setServices(servicesData);
       setAnalytics(analyticsData);
       setSelectedService((current) => {
-        const visibleServices = showInactive
-          ? servicesData
-          : servicesData.filter((service) => service.is_active);
+        const visibleServices = servicesData.filter((service) => service.is_active);
 
         if (current) {
           return (
@@ -75,11 +75,12 @@ export function useServicesPageData() {
         return visibleServices[0] ?? null;
       });
     } catch (error) {
+      setLoadError(true);
       console.error("Greška pri učitavanju usluga:", error);
     } finally {
       setLoading(false);
     }
-  }, [salonId, showInactive]);
+  }, [salonId]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -90,6 +91,13 @@ export function useServicesPageData() {
       window.clearTimeout(timeoutId);
     };
   }, [loadData]);
+
+  function handleShowInactiveChange(value: boolean) {
+    setShowInactive(value);
+    if (!value && selectedService && !selectedService.is_active) {
+      setSelectedService(services.find((service) => service.is_active) ?? null);
+    }
+  }
 
   const categories = useMemo(() => {
     const counts = new Map<string, number>();
@@ -189,6 +197,7 @@ export function useServicesPageData() {
     handleRestoreService,
     loadData,
     loading,
+    loadError,
     salonId,
     salonLoading,
     searchValue,
@@ -201,7 +210,7 @@ export function useServicesPageData() {
     showInactive,
     setSearchValue,
     setSelectedCategory,
-    setShowInactive,
+    setShowInactive: handleShowInactiveChange,
     setSelectedService,
     setSortOption,
     sortOption,

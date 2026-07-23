@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 
 import { createClient, updateClient } from "@/services/clientService";
@@ -28,6 +28,39 @@ export function AddClientModal({
 }: AddClientModalProps) {
   const [errors, setErrors] = useState<ClientFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const submittingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    submittingRef.current = isSubmitting;
+    onCloseRef.current = onClose;
+  }, [isSubmitting, onClose]);
+
+  useEffect(() => {
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !submittingRef.current) onCloseRef.current();
+      if (event.key !== "Tab") return;
+      const focusable = modalRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])');
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      returnFocusRef.current?.focus();
+    };
+  }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -77,15 +110,15 @@ export function AddClientModal({
   }
 
   return (
-    <div className="client-modal-backdrop">
-      <div className="client-modal">
+    <div className="client-modal-backdrop" onClick={() => { if (!isSubmitting) onClose(); }}>
+      <div ref={modalRef} className="client-modal" role="dialog" aria-modal="true" aria-labelledby="client-modal-title" onClick={(event) => event.stopPropagation()}>
         <div className="client-modal-header">
           <div>
-            <h3>{editingClient ? "Izmeni klijenta" : "Novi klijent"}</h3>
+            <h3 id="client-modal-title">{editingClient ? "Izmeni klijenta" : "Novi klijent"}</h3>
             <p>Osnovni kontakt podaci klijenta.</p>
           </div>
 
-          <button type="button" onClick={onClose} aria-label="Zatvori">
+          <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Zatvori" disabled={isSubmitting}>
             <X size={18} />
           </button>
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   CheckCircle2,
   Clock,
@@ -25,6 +25,7 @@ export default function ServicesPage() {
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [deletingService, setDeletingService] = useState<Service | null>(null);
   const [isDeletingService, setIsDeletingService] = useState(false);
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
 
   const {
     categories,
@@ -33,6 +34,7 @@ export default function ServicesPage() {
     handleDeleteService,
     handleRestoreService,
     loadData,
+    loadError,
     loading,
     salonId,
     salonLoading,
@@ -58,8 +60,20 @@ export default function ServicesPage() {
   }
 
   function openEditModal(service: Service) {
+    setMobileDetailsOpen(false);
     setEditingService(service);
     setIsModalOpen(true);
+  }
+
+  const closeMobileDetails = useCallback(() => {
+    setMobileDetailsOpen(false);
+  }, []);
+
+  function selectService(service: Service) {
+    setSelectedService(service);
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      setMobileDetailsOpen(true);
+    }
   }
 
   async function confirmDeleteService() {
@@ -79,9 +93,13 @@ export default function ServicesPage() {
 
   if (salonLoading || loading) {
     return (
-      <div className="services-page">
-        <div className="services-card">
-          <p>Učitavanje usluga...</p>
+      <div className="services-page" aria-busy="true" aria-label="Učitavanje usluga">
+        <div className="services-loading-header"><span /><span /></div>
+        <div className="service-kpi-grid services-loading-kpis">
+          {Array.from({ length: 4 }, (_, index) => <span key={index} />)}
+        </div>
+        <div className="services-card services-loading-list">
+          {Array.from({ length: 5 }, (_, index) => <span key={index} />)}
         </div>
       </div>
     );
@@ -93,6 +111,20 @@ export default function ServicesPage() {
         <div className="services-card">
           <p className="services-error">Salon nije pronađen.</p>
         </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="services-page">
+        <section className="services-card services-load-error" role="alert">
+          <h1>Usluge trenutno nisu dostupne</h1>
+          <p>Pokušajte ponovo. Ostali delovi aplikacije ostaju dostupni.</p>
+          <button type="button" className="services-primary-btn" onClick={() => void loadData()}>
+            Pokušaj ponovo
+          </button>
+        </section>
       </div>
     );
   }
@@ -162,7 +194,7 @@ export default function ServicesPage() {
             onDeleteService={setDeletingService}
             onRestoreService={handleRestoreService}
             onSearchChange={setSearchValue}
-            onSelectService={setSelectedService}
+            onSelectService={selectService}
             onShowInactiveChange={setShowInactive}
             onSortChange={setSortOption}
           />
@@ -172,6 +204,8 @@ export default function ServicesPage() {
           <ServiceDetailsPanel
             service={selectedService}
             stats={selectedServiceStats}
+            mobileOpen={mobileDetailsOpen}
+            onClose={closeMobileDetails}
             onEditService={openEditModal}
           />
         </aside>

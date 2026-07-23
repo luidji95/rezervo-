@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  Clock,
+  Euro,
   RotateCcw,
   Scissors,
   Search,
@@ -212,6 +214,100 @@ export function ServiceTable({
           })
         )}
       </div>
+
+      {services.length > 0 && (
+        <div className="services-mobile-list" aria-label="Lista usluga">
+          {services.map((service) => {
+            const stats = serviceStatsByServiceId[service.id];
+
+            return (
+              <article
+                key={service.id}
+                className={`service-mobile-card ${
+                  service.is_active ? "" : "inactive"
+                }`}
+              >
+                <button
+                  type="button"
+                  className="service-mobile-card-main"
+                  onClick={() => onSelectService(service)}
+                  aria-label={`Otvori detalje usluge ${service.name}`}
+                >
+                  <span className="service-mobile-card-heading">
+                    <span className="service-avatar" aria-hidden="true">
+                      <Scissors size={18} />
+                    </span>
+                    <span>
+                      <strong>{service.name}</strong>
+                      <span>{service.category_name || "Bez kategorije"}</span>
+                    </span>
+                    <span
+                      className={`service-status-pill ${
+                        service.is_active ? "active" : "inactive"
+                      }`}
+                    >
+                      {service.is_active ? "Aktivna" : "Neaktivna"}
+                    </span>
+                  </span>
+
+                  {service.description && (
+                    <span className="service-mobile-description">
+                      {service.description}
+                    </span>
+                  )}
+
+                  <span className="service-mobile-metrics">
+                    <span>
+                      <Euro size={15} aria-hidden="true" />
+                      <small>Osnovna cena</small>
+                      <strong>{formatPrice(service)}</strong>
+                    </span>
+                    <span>
+                      <Clock size={15} aria-hidden="true" />
+                      <small>Trajanje</small>
+                      <strong>{formatDuration(service.duration_minutes)}</strong>
+                    </span>
+                    <span>
+                      <Scissors size={15} aria-hidden="true" />
+                      <small>Termini</small>
+                      <strong>{stats?.totalAppointments ?? 0}</strong>
+                    </span>
+                  </span>
+                </button>
+
+                <div className="service-mobile-actions">
+                  <button
+                    type="button"
+                    className="services-secondary-btn"
+                    onClick={() => onSelectService(service)}
+                  >
+                    Detalji i izmena
+                  </button>
+                  {service.is_active ? (
+                    <button
+                      type="button"
+                      className="service-row-action danger"
+                      onClick={() => onDeleteService(service)}
+                    >
+                      <Trash2 size={15} aria-hidden="true" />
+                      Obriši
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="service-row-action"
+                      onClick={() => onRestoreService(service)}
+                    >
+                      <RotateCcw size={15} aria-hidden="true" />
+                      Vrati
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

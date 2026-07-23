@@ -1,5 +1,7 @@
 .dashboard-page {
   min-height: 100vh;
+  min-width: 0;
+  width: 100%;
   padding: 24px;
   background: #f8fafc;
   color: #0f172a;
@@ -22,6 +24,7 @@
 }
 
 .dashboard-card {
+  min-width: 0;
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 18px;
@@ -137,6 +140,10 @@
   border-radius: 14px;
   overflow-x: auto;
   background: #ffffff;
+}
+
+.dashboard-calendar-mobile {
+  display: none;
 }
 
 .dashboard-calendar-empty {
@@ -318,7 +325,7 @@
 
 @media (max-width: 1250px) {
   .dashboard-top-kpi {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .dashboard-mid-grid,
@@ -329,11 +336,26 @@
 
 @media (max-width: 760px) {
   .dashboard-page {
-    padding: 16px;
+    padding: 4px;
   }
 
   .dashboard-top-kpi {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .dashboard-card {
+    border-radius: 15px;
+    padding: 16px;
+  }
+
+  .dashboard-kpi-card {
+    min-height: 112px;
+  }
+
+  .dashboard-kpi-value {
+    overflow-wrap: anywhere;
+    font-size: clamp(20px, 7vw, 25px);
   }
 
   .dashboard-card-header {
@@ -348,13 +370,78 @@
   .dashboard-list-item,
   .dashboard-bottom-grid .dashboard-list-item {
     grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .dashboard-list-item p {
+    overflow: visible;
+    white-space: normal;
   }
 
   .dashboard-calendar-grid {
-    grid-template-columns: 58px repeat(4, 140px);
+    display: none;
+  }
+
+  .dashboard-calendar-mobile {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .dashboard-calendar-mobile li {
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 10px;
+    border: 1px solid #e9e4f4;
+    border-radius: 13px;
+    padding: 13px;
+    background: #fcfbff;
+  }
+
+  .dashboard-calendar-mobile time {
+    color: #6d28d9;
+    font-size: 14px;
+    font-weight: 900;
+  }
+
+  .dashboard-calendar-mobile div {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+  }
+
+  .dashboard-calendar-mobile strong,
+  .dashboard-calendar-mobile span,
+  .dashboard-calendar-mobile small {
+    overflow-wrap: anywhere;
+  }
+
+  .dashboard-calendar-mobile span,
+  .dashboard-calendar-mobile small {
+    color: #64748b;
+    font-size: 12px;
+  }
+
+  .dashboard-calendar-mobile__status {
+    grid-column: 2;
+    width: fit-content;
+    border-radius: 999px;
+    padding: 4px 8px;
+    background: #ede9fe;
+    color: #6d28d9 !important;
+    font-weight: 800;
   }
 }
 
+@media (max-width: 390px) {
+  .dashboard-top-kpi {
+    grid-template-columns: 1fr;
+  }
+}
+
+.employee-dashboard { display: flex; flex-direction: column; }
 .employee-dashboard__hero { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .employee-dashboard__primary-action,
 .employee-dashboard__quick-actions button,
@@ -395,11 +482,24 @@
 }
 
 @media (max-width: 760px) {
-  .employee-dashboard__hero { align-items: stretch; flex-direction: column; }
+  .employee-dashboard__hero { order: 0; align-items: stretch; flex-direction: column; }
+  .employee-dashboard__grid,
+  .employee-dashboard__side { display: contents; }
+  .employee-dashboard__side > article:first-child { order: 1; }
+  .employee-dashboard__appointments { order: 2; }
+  .employee-dashboard__quick-actions { order: 3; }
+  .employee-dashboard__side > article:last-child { order: 4; }
+  .employee-dashboard__kpis { order: 5; margin-top: 20px; }
+  .employee-dashboard__weekly-empty,
+  .employee-dashboard__section-error { order: 6; }
+  .employee-dashboard > .dashboard-card,
+  .employee-dashboard__grid > .dashboard-card,
+  .employee-dashboard__side > .dashboard-card { margin-bottom: 16px; }
   .employee-dashboard__appointment-list li { grid-template-columns: 1fr; align-items: stretch; }
   .employee-dashboard__primary-action,
   .employee-dashboard__quick-actions button,
-  .employee-dashboard__quick-actions a { width: 100%; }
+  .employee-dashboard__quick-actions a { width: 100%; min-height: 46px; }
+  .employee-dashboard__status { width: fit-content; }
 }
 
 @media (max-width: 460px) {

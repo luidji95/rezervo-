@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { X } from "lucide-react";
@@ -14,6 +15,7 @@ import {
   type EmployeeFormData,
   type EmployeeFormInput,
 } from "./employeeSchema";
+import { useEmployeeDialog } from "./useEmployeeDialog";
 
 type AddEmployeeModalProps = {
   salonId: string;
@@ -32,6 +34,7 @@ export function AddEmployeeModal({
   onClose,
   onCreated,
 }: AddEmployeeModalProps) {
+  const [formError, setFormError] = useState("");
   const {
     register,
     handleSubmit,
@@ -47,6 +50,7 @@ export function AddEmployeeModal({
       bio: "",
     },
   });
+  const dialogRef = useEmployeeDialog(onClose, isSubmitting);
 
   function toggleService(serviceId: string) {
     if (selectedServiceIds.includes(serviceId)) {
@@ -58,39 +62,42 @@ export function AddEmployeeModal({
   }
 
   async function onSubmit(data: EmployeeFormData) {
-    const employee = await createEmployee({
-      salonId,
-      fullName: data.fullName,
-      displayName: data.displayName || null,
-      position: data.position || null,
-      phone: data.phone || null,
-      email: data.email || null,
-      bio: data.bio || null,
-    });
+    try {
+      setFormError("");
+      const employee = await createEmployee({
+        salonId,
+        fullName: data.fullName,
+        displayName: data.displayName || null,
+        position: data.position || null,
+        phone: data.phone || null,
+        email: data.email || null,
+        bio: data.bio || null,
+      });
 
-    await Promise.all(
-      selectedServiceIds.map((serviceId) =>
-        assignServiceToEmployee({
-          salonId,
-          employeeId: employee.id,
-          serviceId,
-        })
-      )
-    );
-
-    await onCreated();
+      await Promise.all(
+        selectedServiceIds.map((serviceId) =>
+          assignServiceToEmployee({ salonId, employeeId: employee.id, serviceId })
+        )
+      );
+      await onCreated();
+    } catch (error) {
+      console.error("Failed to create employee:", error);
+      setFormError("Zaposlenog trenutno nije moguće sačuvati. Pokušajte ponovo.");
+    }
   }
 
   return (
     <div className="employee-modal-backdrop">
-      <div className="employee-modal">
+      <div ref={dialogRef} className="employee-modal" role="dialog" aria-modal="true" aria-labelledby="employee-add-title">
         <div className="employee-modal-header">
           <div>
-            <h3>Novi zaposleni</h3>
+            <h3 id="employee-add-title">Novi zaposleni</h3>
             <p>Dodajte zaposlenog i usluge koje može da obavlja.</p>
           </div>
 
-          <button type="button" onClick={onClose}>
+          {formError && <p className="employees-error" role="alert">{formError}</p>}
+
+          <button type="button" onClick={onClose} aria-label="Zatvori" disabled={isSubmitting}>
             <X size={18} />
           </button>
         </div>
@@ -99,30 +106,31 @@ export function AddEmployeeModal({
           <div className="employee-form-grid">
             <FormField
               label="Ime i prezime *"
+              htmlFor="employee-add-full-name"
               error={errors.fullName?.message}
               full
             >
-              <input {...register("fullName")} />
+              <input id="employee-add-full-name" {...register("fullName")} />
             </FormField>
 
-            <FormField label="Prikazano ime">
-              <input {...register("displayName")} />
+            <FormField label="Prikazano ime" htmlFor="employee-add-display-name">
+              <input id="employee-add-display-name" {...register("displayName")} />
             </FormField>
 
-            <FormField label="Pozicija">
-              <input {...register("position")} placeholder="Barber, Frizer..." />
+            <FormField label="Pozicija" htmlFor="employee-add-position">
+              <input id="employee-add-position" {...register("position")} placeholder="Barber, Frizer..." />
             </FormField>
 
-            <FormField label="Telefon">
-              <input {...register("phone")} />
+            <FormField label="Telefon" htmlFor="employee-add-phone">
+              <input id="employee-add-phone" {...register("phone")} />
             </FormField>
 
-            <FormField label="Email" error={errors.email?.message}>
-              <input {...register("email")} />
+            <FormField label="Email" htmlFor="employee-add-email" error={errors.email?.message}>
+              <input id="employee-add-email" {...register("email")} />
             </FormField>
 
-            <FormField label="Bio" full>
-              <textarea rows={3} {...register("bio")} />
+            <FormField label="Bio" htmlFor="employee-add-bio" full>
+              <textarea id="employee-add-bio" rows={3} {...register("bio")} />
             </FormField>
           </div>
 
@@ -152,6 +160,7 @@ export function AddEmployeeModal({
               type="button"
               className="employees-secondary-btn"
               onClick={onClose}
+              disabled={isSubmitting}
             >
               Otkaži
             </button>
@@ -172,18 +181,20 @@ export function AddEmployeeModal({
 
 function FormField({
   label,
+  htmlFor,
   error,
   full,
   children,
 }: {
   label: string;
+  htmlFor: string;
   error?: string;
   full?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className={`employee-form-field ${full ? "full" : ""}`}>
-      <label>{label}</label>
+      <label htmlFor={htmlFor}>{label}</label>
       {children}
       {error && <small>{error}</small>}
     </div>

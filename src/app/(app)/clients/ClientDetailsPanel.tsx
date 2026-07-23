@@ -1,6 +1,7 @@
 "use client";
 
-import { CalendarPlus, Mail, Phone, Sparkles } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { CalendarPlus, Mail, Phone, Sparkles, X } from "lucide-react";
 
 import type { ClientPageItem } from "@/features/clients/types";
 import {
@@ -11,9 +12,44 @@ import {
 
 type ClientDetailsPanelProps = {
   client: ClientPageItem | null;
+  mobileOpen: boolean;
+  onClose: () => void;
 };
 
-export function ClientDetailsPanel({ client }: ClientDetailsPanelProps) {
+export function ClientDetailsPanel({ client, mobileOpen, onClose }: ClientDetailsPanelProps) {
+  const panelRef = useRef<HTMLElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const clientId = client?.id;
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!clientId || !mobileOpen || !window.matchMedia("(max-width: 767px)").matches) return;
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCloseRef.current();
+      if (event.key !== "Tab") return;
+      const focusable = panelRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])');
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      returnFocusRef.current?.focus();
+    };
+  }, [clientId, mobileOpen]);
   if (!client) {
     return (
       <section className="clients-card client-details-empty">
@@ -23,7 +59,10 @@ export function ClientDetailsPanel({ client }: ClientDetailsPanelProps) {
   }
 
   return (
-    <section className="clients-card client-details">
+    <>
+    <button type="button" className={`client-details-backdrop ${mobileOpen ? "open" : ""}`} aria-label="Zatvori detalje klijenta" onClick={onClose} />
+    <section ref={panelRef} className={`clients-card client-details ${mobileOpen ? "client-details--mobile-open" : ""}`} role="dialog" aria-modal={mobileOpen} aria-labelledby="client-details-title">
+      <header className="client-details-mobile-header"><strong id="client-details-title">Detalji klijenta</strong><button ref={closeButtonRef} type="button" aria-label="Zatvori detalje klijenta" onClick={onClose}><X size={20} /></button></header>
       <div className="client-details-header">
         <div className="client-details-avatar">
           {client.fullName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "KL"}
@@ -111,5 +150,6 @@ export function ClientDetailsPanel({ client }: ClientDetailsPanelProps) {
         Novi termin za klijenta
       </button>
     </section>
+    </>
   );
 }

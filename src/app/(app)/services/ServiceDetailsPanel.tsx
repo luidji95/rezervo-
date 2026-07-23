@@ -1,4 +1,7 @@
-import { CalendarCheck, Clock, Euro, Scissors, TrendingUp } from "lucide-react";
+"use client";
+
+import { useEffect, useRef } from "react";
+import { CalendarCheck, Clock, Euro, Scissors, TrendingUp, X } from "lucide-react";
 
 import type { ServiceStats } from "@/services/serviceAnalyticsService";
 import type { Service } from "@/types/service";
@@ -13,14 +16,59 @@ import {
 type ServiceDetailsPanelProps = {
   service: Service | null;
   stats: ServiceStats;
+  mobileOpen: boolean;
+  onClose: () => void;
   onEditService: (service: Service) => void;
 };
 
 export function ServiceDetailsPanel({
   service,
   stats,
+  mobileOpen,
+  onClose,
   onEditService,
 }: ServiceDetailsPanelProps) {
+  const panelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!mobileOpen || !service) return;
+
+    const panel = panelRef.current;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const focusable = panel?.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    focusable?.[0]?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab" || !focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
+  }, [mobileOpen, onClose, service]);
+
   if (!service) {
     return (
       <section className="services-card service-details-empty">
@@ -30,14 +78,28 @@ export function ServiceDetailsPanel({
   }
 
   return (
-    <section className="services-card service-details-card">
+    <section
+      ref={panelRef}
+      className={`services-card service-details-card ${mobileOpen ? "mobile-open" : ""}`}
+      role={mobileOpen ? "dialog" : undefined}
+      aria-modal={mobileOpen ? true : undefined}
+      aria-labelledby="service-details-title"
+    >
+      <button
+        type="button"
+        className="service-details-close"
+        onClick={onClose}
+        aria-label="Zatvori detalje usluge"
+      >
+        <X size={20} />
+      </button>
       <div className="service-details-header">
         <div className="service-details-avatar">
           <Scissors size={24} />
         </div>
 
         <div>
-          <h3>{service.name}</h3>
+          <h3 id="service-details-title">{service.name}</h3>
           <span
             className={`service-status-pill ${
               service.is_active ? "active" : "inactive"

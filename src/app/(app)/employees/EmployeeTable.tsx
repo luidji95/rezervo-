@@ -125,6 +125,56 @@ export function EmployeeTable({
           })
         )}
       </div>
+
+      {employees.length > 0 && (
+        <div className="employees-mobile-list" aria-label="Lista zaposlenih">
+          {employees.map((employee) => {
+            const stats = employeeStatsByEmployeeId[employee.id];
+            const name = employee.display_name || employee.full_name;
+
+            return (
+              <article key={employee.id} className={`employee-mobile-card ${employee.is_active ? "" : "inactive"}`}>
+                <button
+                  type="button"
+                  className="employee-mobile-card-main"
+                  onClick={() => onSelectEmployee(employee)}
+                  aria-label={`Otvori detalje zaposlenog ${name}`}
+                >
+                  <span className="employee-mobile-heading">
+                    <span className="employee-avatar" aria-hidden="true">{getInitials(name)}</span>
+                    <span className="employee-mobile-identity">
+                      <strong>{name}</strong>
+                      <span>{employee.position || "Zaposleni"}</span>
+                      <small>{employee.phone || employee.email || "Nema kontakta"}</small>
+                    </span>
+                  </span>
+
+                  <span className="employee-mobile-statuses">
+                    <span className={`employee-status ${employee.is_active ? "active" : "inactive"}`}>
+                      {employee.is_active ? "Aktivan" : "Neaktivan"}
+                    </span>
+                    <span className={`employee-status ${employee.is_bookable ? "active" : "inactive"}`}>
+                      {employee.is_bookable ? "Prima rezervacije" : "Nije dostupan za rezervacije"}
+                    </span>
+                    <span className={`employee-status ${employee.is_public ? "active" : "inactive"}`}>
+                      {employee.is_public ? "Javno vidljiv" : "Nije javno vidljiv"}
+                    </span>
+                  </span>
+
+                  <span className="employee-mobile-metrics">
+                    <span><small>Usluge</small><strong>{serviceCountsByEmployeeId[employee.id] ?? 0}</strong></span>
+                    <span><small>Termini</small><strong>{stats?.totalAppointments ?? 0}</strong></span>
+                    <span><small>Profil</small><strong>{employee.profile_id ? "Povezan" : "Nije povezan"}</strong></span>
+                  </span>
+                </button>
+                <button type="button" className="employees-secondary-btn employee-mobile-edit" onClick={() => onSelectEmployee(employee)}>
+                  Detalji i izmena
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }

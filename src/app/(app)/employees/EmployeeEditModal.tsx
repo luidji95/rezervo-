@@ -16,6 +16,7 @@ import {
   type EmployeeFormData,
   type EmployeeFormInput,
 } from "./employeeSchema";
+import { useEmployeeDialog } from "./useEmployeeDialog";
 
 type EmployeeEditModalProps = {
   employee: Employee;
@@ -55,6 +56,7 @@ export function EmployeeEditModal({
       isPublic: employee.is_public,
     },
   });
+  const dialogRef = useEmployeeDialog(onClose, isSubmitting);
 
   async function onSubmit(data: EmployeeFormData) {
     try {
@@ -86,13 +88,13 @@ export function EmployeeEditModal({
 
   return (
     <div className="employee-modal-backdrop" role="presentation">
-      <div className="employee-modal" role="dialog" aria-modal="true" aria-labelledby="employee-edit-title">
+      <div ref={dialogRef} className="employee-modal" role="dialog" aria-modal="true" aria-labelledby="employee-edit-title">
         <div className="employee-modal-header">
           <div>
             <h3 id="employee-edit-title">Izmeni zaposlenog</h3>
             <p>Izmenite podatke i usluge koje zaposleni pruža.</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Zatvori">
+          <button type="button" onClick={onClose} aria-label="Zatvori" disabled={isSubmitting}>
             <X size={18} />
           </button>
         </div>
@@ -128,9 +130,18 @@ export function EmployeeEditModal({
           </div>
 
           <div className="employee-visibility-options">
-            <label><input type="checkbox" {...register("isActive")} /> Aktivan</label>
-            <label><input type="checkbox" {...register("isBookable")} /> Prima rezervacije</label>
-            <label><input type="checkbox" {...register("isPublic")} /> Javno vidljiv</label>
+            <label>
+              <span><strong>Aktivan</strong><small>Zaposleni je aktivan član salona.</small></span>
+              <input type="checkbox" {...register("isActive")} />
+            </label>
+            <label>
+              <span><strong>Dostupan za zakazivanje</strong><small>Može biti izabran pri kreiranju termina.</small></span>
+              <input type="checkbox" {...register("isBookable")} />
+            </label>
+            <label>
+              <span><strong>Javno vidljiv</strong><small>Prikazuje se u javnom booking flow-u.</small></span>
+              <input type="checkbox" {...register("isPublic")} />
+            </label>
           </div>
 
           <EmployeeServiceSelector

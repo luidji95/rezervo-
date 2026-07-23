@@ -23,12 +23,17 @@ export default function CalendarToolbar({
 }: CalendarToolbarProps) {
   return (
     <section className="calendar-toolbar">
+      <div className="calendar-toolbar__title">
+        <h1>Kalendar</h1>
+        <p>Pregled dnevnog rasporeda</p>
+      </div>
       {/* LEVA STRANA: Navigacija kroz vreme */}
       <div className="calendar-toolbar__left">
         <button
           type="button"
           className="btn-today"
           onClick={onToday}
+          aria-label="Prikaži današnji datum"
         >
           Danas
         </button>
@@ -38,6 +43,7 @@ export default function CalendarToolbar({
             type="button" 
             className="btn-nav-arrow"
             onClick={onPreviousDay}
+            aria-label="Prethodni dan"
           >
             <ChevronLeft size={16} />
           </button>
@@ -56,6 +62,7 @@ export default function CalendarToolbar({
                 type="date"
                 value={selectedDate}
                 onChange={(event) => onDateChange(event.target.value)}
+                aria-label="Izaberi datum"
               />
             </div>
           </div>
@@ -64,6 +71,7 @@ export default function CalendarToolbar({
             type="button" 
             className="btn-nav-arrow"
             onClick={onNextDay}
+            aria-label="Sledeći dan"
           >
             <ChevronRight size={16} />
           </button>
@@ -77,6 +85,7 @@ export default function CalendarToolbar({
           type="button" 
           className="topbar-new-appointment-btn"
           onClick={onCreateClick} // <-- Aktivirana akcija na klik
+          aria-label="Kreiraj novi termin"
         >
           <Plus size={16} />
           <span>Novi termin</span>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 
 import {
@@ -30,6 +30,44 @@ export function AddServiceModal({
 }: AddServiceModalProps) {
   const [errors, setErrors] = useState<ServiceFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const modal = modalRef.current;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    modal?.querySelector<HTMLElement>("input, button, select, textarea")?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isSubmitting) {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = modal?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
+  }, [isSubmitting, onClose]);
 
   const categoryOptions = Array.from(
     new Set([...DEFAULT_SERVICE_CATEGORIES, ...categories])
@@ -62,11 +100,15 @@ export function AddServiceModal({
     }
 
     setErrors({});
+    setSubmitError(null);
     setIsSubmitting(true);
 
     try {
       await saveService(parsed.data);
       await onSaved();
+    } catch (error) {
+      console.error("Service save failed", error);
+      setSubmitError("Uslugu trenutno nije moguće sačuvati. Pokušajte ponovo.");
     } finally {
       setIsSubmitting(false);
     }
@@ -102,21 +144,27 @@ export function AddServiceModal({
 
   return (
     <div className="service-modal-backdrop">
-      <div className="service-modal">
+      <div
+        ref={modalRef}
+        className="service-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="service-modal-title"
+      >
         <div className="service-modal-header">
           <div>
-            <h3>{editingService ? "Izmeni uslugu" : "Nova usluga"}</h3>
+            <h3 id="service-modal-title">{editingService ? "Izmeni uslugu" : "Nova usluga"}</h3>
             <p>Uredite osnovne podatke, cenu, trajanje i status usluge.</p>
           </div>
 
-          <button type="button" onClick={onClose} aria-label="Zatvori">
+          <button type="button" onClick={onClose} aria-label="Zatvori" disabled={isSubmitting}>
             <X size={18} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="service-modal-form" noValidate>
           <div className="service-form-grid">
-            <FormField label="Naziv *" error={errors.name} full>
+            <FormField label="Naziv *" htmlFor="service-name" error={errors.name} full>
               <input
                 id="service-name"
                 name="name"
@@ -127,7 +175,7 @@ export function AddServiceModal({
               />
             </FormField>
 
-            <FormField label="Opis" full>
+            <FormField label="Opis" htmlFor="service-description" full>
               <textarea
                 id="service-description"
                 name="description"
@@ -136,7 +184,7 @@ export function AddServiceModal({
               />
             </FormField>
 
-            <FormField label="Trajanje" error={errors.durationMinutes}>
+            <FormField label="Trajanje" htmlFor="service-duration" error={errors.durationMinutes}>
               <input
                 id="service-duration"
                 name="durationMinutes"
@@ -148,7 +196,7 @@ export function AddServiceModal({
               />
             </FormField>
 
-            <FormField label="Cena" error={errors.priceAmount}>
+            <FormField label="Cena" htmlFor="service-price" error={errors.priceAmount}>
               <input
                 id="service-price"
                 name="priceAmount"
@@ -160,7 +208,7 @@ export function AddServiceModal({
               />
             </FormField>
 
-            <FormField label="Kategorija" full>
+            <FormField label="Kategorija" htmlFor="service-category" full>
               <select
                 id="service-category"
                 name="categoryName"
@@ -177,6 +225,10 @@ export function AddServiceModal({
               </select>
             </FormField>
           </div>
+
+          {submitError && (
+            <p className="service-form-error" role="alert">{submitError}</p>
+          )}
 
           <div className="service-checkbox-grid">
             <label>
@@ -205,6 +257,7 @@ export function AddServiceModal({
               type="button"
               className="services-secondary-btn"
               onClick={onClose}
+              disabled={isSubmitting}
             >
               Otkaži
             </button>
@@ -225,18 +278,20 @@ export function AddServiceModal({
 
 function FormField({
   label,
+  htmlFor,
   error,
   full,
   children,
 }: {
   label: string;
+  htmlFor: string;
   error?: string;
   full?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className={`service-form-field ${full ? "full" : ""}`}>
-      <label>{label}</label>
+      <label htmlFor={htmlFor}>{label}</label>
       {children}
       {error && <small>{error}</small>}
     </div>

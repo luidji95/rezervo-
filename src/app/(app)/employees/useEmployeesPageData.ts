@@ -57,6 +57,7 @@ export function useEmployeesPageData() {
   const [statusFilter, setStatusFilter] =
     useState<EmployeeStatusFilter>("all");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const salonId = currentSalon?.id;
 
@@ -65,6 +66,7 @@ export function useEmployeesPageData() {
 
     try {
       setLoading(true);
+      setLoadError(false);
 
       const [
         employeesData,
@@ -103,6 +105,7 @@ export function useEmployeesPageData() {
         return employeesData[0] ?? null;
       });
     } catch (error) {
+      setLoadError(true);
       console.error("Greška pri učitavanju zaposlenih:", error);
     } finally {
       setLoading(false);
@@ -218,6 +221,7 @@ export function useEmployeesPageData() {
     filteredEmployees,
     getServicesForEmployee,
     loadData,
+    loadError,
     loading,
     salonId,
     salonLoading,

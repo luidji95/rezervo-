@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Phone,
   Mail,
@@ -12,6 +12,7 @@ import {
   Edit3,
   CalendarRange,
   Trash2,
+  X,
 } from "lucide-react";
 import ClientHistoryModal, { HistoryStatusBadge } from "./ClientHistoryModal";
 import { EmployeeStatusConfirmationModal } from "@/features/appointments/components/EmployeeStatusConfirmationModal";
@@ -38,6 +39,7 @@ type AppointmentDetailsPanelProps = {
   onRescheduleClick: () => void; // Prop za otvaranje reschedule modala
   onEditClick: () => void;       // <-- DODATO: Novi prop za otvaranje Edit modala
   employeeStatusOnly?: boolean;
+  onClose: () => void;
 };
 
 function formatAppointmentDuration(start: string, end: string): string {
@@ -90,11 +92,59 @@ export default function AppointmentDetailsPanel({
   onRescheduleClick,
   onEditClick, // <-- Destrukturiran novi prop
   employeeStatusOnly = false,
+  onClose,
 }: AppointmentDetailsPanelProps) {
   const [localLoading, setLocalLoading] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [pendingAction, setPendingAction] =
     useState<EmployeeAppointmentStatusAction | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const loadingRef = useRef(localLoading);
+  const onCloseRef = useRef(onClose);
+  const selectedAppointmentId = selectedAppointment?.id;
+
+  useEffect(() => {
+    loadingRef.current = localLoading;
+    onCloseRef.current = onClose;
+  }, [localLoading, onClose]);
+
+  useEffect(() => {
+    if (!selectedAppointmentId || !window.matchMedia("(max-width: 767px)").matches) return;
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeButtonRef.current?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !loadingRef.current) {
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      returnFocusRef.current?.focus();
+    };
+  }, [selectedAppointmentId]);
 
   if (!selectedAppointment) {
     return (
@@ -134,7 +184,34 @@ export default function AppointmentDetailsPanel({
   };
 
   return (
-    <aside className="calendar-details-panel">
+    <>
+    <button
+      type="button"
+      className="calendar-details-backdrop"
+      aria-label="Zatvori detalje termina"
+      onClick={() => {
+        if (!localLoading) onClose();
+      }}
+    />
+    <aside
+      ref={panelRef}
+      className="calendar-details-panel calendar-details-panel--selected"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="calendar-details-title"
+    >
+      <header className="calendar-details-mobile-header">
+        <strong id="calendar-details-title">Detalji termina</strong>
+        <button
+          ref={closeButtonRef}
+          type="button"
+          aria-label="Zatvori detalje termina"
+          disabled={localLoading}
+          onClick={onClose}
+        >
+          <X size={22} />
+        </button>
+      </header>
       <div className="details-container">
         
         {/* Gornji red: Vreme i Usluga Badge */}
@@ -428,5 +505,6 @@ export default function AppointmentDetailsPanel({
         }}
       />
     </aside>
+    </>
   );
 }

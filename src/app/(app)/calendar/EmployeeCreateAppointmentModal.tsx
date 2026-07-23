@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 
@@ -67,6 +67,11 @@ export default function EmployeeCreateAppointmentModal({
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [serverError, setServerError] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const submittingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
   const { register, control, handleSubmit, setValue, reset, formState: { errors, isSubmitting } } =
     useForm<FormValues>({
       resolver: zodResolver(schema),
@@ -75,6 +80,34 @@ export default function EmployeeCreateAppointmentModal({
   const serviceId = useWatch({ control, name: "serviceId" });
   const startTime = useWatch({ control, name: "startTime" });
   const selectedService = services.find((service) => service.id === serviceId);
+  useEffect(() => {
+    submittingRef.current = isSubmitting;
+    onCloseRef.current = onClose;
+  }, [isSubmitting, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !submittingRef.current) onCloseRef.current();
+      if (event.key !== "Tab") return;
+      const focusable = modalRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+      returnFocusRef.current?.focus();
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -143,10 +176,10 @@ export default function EmployeeCreateAppointmentModal({
 
   return (
     <div className="modal-overlay" onClick={close}>
-      <div className="modal-container" onClick={(event) => event.stopPropagation()}>
+      <div ref={modalRef} className="modal-container" role="dialog" aria-modal="true" aria-labelledby="employee-create-appointment-title" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
-          <h2>Novi termin</h2>
-          <button type="button" className="btn-close-modal" onClick={close} disabled={isSubmitting}>&times;</button>
+          <h2 id="employee-create-appointment-title">Novi termin</h2>
+          <button ref={closeButtonRef} type="button" className="btn-close-modal" aria-label="Zatvori" onClick={close} disabled={isSubmitting}>&times;</button>
         </div>
         <form className="modal-form" onSubmit={handleSubmit(submit)}>
           <div className="form-section-title">Usluga i vreme</div>

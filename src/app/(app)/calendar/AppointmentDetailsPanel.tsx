@@ -30,7 +30,7 @@ type AppointmentDetailsPanelProps = {
   ) => Promise<void>;
   onRescheduleClick: () => void; // Prop za otvaranje reschedule modala
   onEditClick: () => void;       // <-- DODATO: Novi prop za otvaranje Edit modala
-  readOnly?: boolean;
+  employeeStatusOnly?: boolean;
 };
 
 function formatAppointmentDuration(start: string, end: string): string {
@@ -82,7 +82,7 @@ export default function AppointmentDetailsPanel({
   onStatusChange,
   onRescheduleClick,
   onEditClick, // <-- Destrukturiran novi prop
-  readOnly = false,
+  employeeStatusOnly = false,
 }: AppointmentDetailsPanelProps) {
   const [localLoading, setLocalLoading] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -241,10 +241,41 @@ export default function AppointmentDetailsPanel({
 
         <hr className="details-divider" />
 
-        {readOnly ? (
-          <p className="calendar-readonly-notice">
-            Izmene termina za zaposlene biće omogućene u sledećoj fazi.
-          </p>
+        {employeeStatusOnly ? (
+          <div className="status-quick-actions-section">
+            <h3>Status termina</h3>
+            <p className="calendar-readonly-notice">
+              Možete promeniti samo status svog termina.
+            </p>
+            <div className="details-actions-stack">
+              {selectedAppointment.status === "pending" && (
+                <>
+                  <button type="button" className="btn-action btn-edit" disabled={localLoading} onClick={() => handleAction("confirmed")}>
+                    Potvrdi termin
+                  </button>
+                  <button type="button" className="btn-action btn-cancel" disabled={localLoading} onClick={() => handleAction("cancelled")}>
+                    Otkaži termin
+                  </button>
+                </>
+              )}
+              {selectedAppointment.status === "confirmed" && (
+                <>
+                  <button type="button" className="btn-action btn-edit" disabled={localLoading} onClick={() => handleAction("completed")}>
+                    Označi kao završeno
+                  </button>
+                  <button type="button" className="btn-action btn-reschedule" disabled={localLoading} onClick={() => handleAction("no_show")}>
+                    Klijent se nije pojavio
+                  </button>
+                  <button type="button" className="btn-action btn-cancel" disabled={localLoading} onClick={() => handleAction("cancelled")}>
+                    Otkaži termin
+                  </button>
+                </>
+              )}
+              {!["pending", "confirmed"].includes(selectedAppointment.status) && (
+                <p>Nema dostupnih akcija za ovaj status.</p>
+              )}
+            </div>
+          </div>
         ) : <>
         {/* BRZE STATUSNE AKCIJE */}
         <div className="status-quick-actions-section" style={{ marginBottom: "20px" }}>

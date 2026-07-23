@@ -4,6 +4,11 @@ import { useEffect, useState } from "react";
 import { useSalon } from "@/context/SalonContext";
 import { useAuthorization } from "@/context/AuthorizationContext";
 import { getSalonAppointmentsByDate } from "@/services/appointmentQueryService";
+import {
+  EmployeeAppointmentError,
+  type EmployeeAppointmentStatus,
+  updateOwnAppointmentStatus,
+} from "@/services/employeeAppointmentService";
 
 import type { AppointmentListItem } from "@/services/appointmentQueryService";
 import {
@@ -31,7 +36,37 @@ export default function AppointmentsPage() {
   );
   const [appointments, setAppointments] = useState<AppointmentListItem[]>([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
+  const [updatingAppointmentId, setUpdatingAppointmentId] = useState<string | null>(null);
   const [error, setError] = useState("");
+
+  async function handleEmployeeStatusChange(
+    appointmentId: string,
+    status: EmployeeAppointmentStatus,
+  ) {
+    if (!currentSalon || currentRole !== "employee" || updatingAppointmentId) return;
+
+    try {
+      setUpdatingAppointmentId(appointmentId);
+      setError("");
+      await updateOwnAppointmentStatus(appointmentId, status);
+    } catch (statusError) {
+      setError(
+        statusError instanceof EmployeeAppointmentError &&
+          (statusError.code === "INVALID_STATUS_TRANSITION" ||
+            statusError.code === "APPOINTMENT_ALREADY_UPDATED")
+          ? "Status termina je u međuvremenu promenjen. Lista je osvežena."
+          : "Status termina trenutno nije moguće promeniti.",
+      );
+    } finally {
+      const freshAppointments = await getSalonAppointmentsByDate(
+        currentSalon.id,
+        selectedDate,
+        salonTimeZone,
+      ).catch(() => null);
+      if (freshAppointments) setAppointments(freshAppointments);
+      setUpdatingAppointmentId(null);
+    }
+  }
 
   useEffect(() => {
     async function loadAppointments() {
@@ -132,6 +167,31 @@ export default function AppointmentsPage() {
                   </p>
 
                   <p>Status: {appointment.status}</p>
+
+                  {currentRole === "employee" && appointment.status === "pending" && (
+                    <div>
+                      <button type="button" disabled={Boolean(updatingAppointmentId)} onClick={() => void handleEmployeeStatusChange(appointment.id, "confirmed")}>
+                        Potvrdi
+                      </button>{" "}
+                      <button type="button" disabled={Boolean(updatingAppointmentId)} onClick={() => void handleEmployeeStatusChange(appointment.id, "cancelled")}>
+                        Otkaži
+                      </button>
+                    </div>
+                  )}
+
+                  {currentRole === "employee" && appointment.status === "confirmed" && (
+                    <div>
+                      <button type="button" disabled={Boolean(updatingAppointmentId)} onClick={() => void handleEmployeeStatusChange(appointment.id, "completed")}>
+                        Završi
+                      </button>{" "}
+                      <button type="button" disabled={Boolean(updatingAppointmentId)} onClick={() => void handleEmployeeStatusChange(appointment.id, "no_show")}>
+                        Nije došao
+                      </button>{" "}
+                      <button type="button" disabled={Boolean(updatingAppointmentId)} onClick={() => void handleEmployeeStatusChange(appointment.id, "cancelled")}>
+                        Otkaži
+                      </button>
+                    </div>
+                  )}
 
                   <p>
                     Price: {appointment.price} {appointment.currency}

@@ -29,6 +29,10 @@ import { getSalonServices } from "@/services/serviceService";
 import { rescheduleAppointment, updateAppointmentDetails, createAppointment } from "@/services/appointmentService";
 import { CreateAppointmentFormInput } from "@/types/appointment";
 import {
+  EmployeeAppointmentError,
+  updateOwnAppointmentStatus,
+} from "@/services/employeeAppointmentService";
+import {
   DEFAULT_SALON_TIME_ZONE,
   addDaysToDateKey,
   getTodayDateKey,
@@ -256,13 +260,17 @@ function CalendarPageContent() {
     appointmentId: string,
     status: "confirmed" | "completed" | "cancelled" | "no_show"
   ) => {
-    if (!currentSalon || isEmployeeReadOnly) return;
+    if (!currentSalon) return;
     try {
-      await updateAppointmentStatus({
-        appointmentId,
-        salonId: currentSalon.id,
-        nextStatus: status,
-      });
+      if (isEmployeeReadOnly) {
+        await updateOwnAppointmentStatus(appointmentId, status);
+      } else {
+        await updateAppointmentStatus({
+          appointmentId,
+          salonId: currentSalon.id,
+          nextStatus: status,
+        });
+      }
       
       const freshAppointments = await getCalendarAppointments(currentSalon.id, selectedDate, salonTimeZone);
       setAppointments(freshAppointments);
@@ -273,7 +281,24 @@ function CalendarPageContent() {
       }
     } catch (err) {
       console.error("Greška prilikom operativne promene statusa:", err);
-      alert("Sistem nije uspeo da promeni status termina.");
+      if (
+        err instanceof EmployeeAppointmentError &&
+        (err.code === "INVALID_STATUS_TRANSITION" ||
+          err.code === "APPOINTMENT_ALREADY_UPDATED")
+      ) {
+        alert("Status termina je već promenjen. Podaci će biti osveženi.");
+      } else {
+        alert("Sistem nije uspeo da promeni status termina.");
+      }
+      const freshAppointments = await getCalendarAppointments(
+        currentSalon.id,
+        selectedDate,
+        salonTimeZone,
+      );
+      setAppointments(freshAppointments);
+      setSelectedAppointment(
+        freshAppointments.find((appointment) => appointment.id === appointmentId) ?? null,
+      );
     }
   };
 
@@ -445,7 +470,7 @@ function CalendarPageContent() {
 
       {isEmployeeReadOnly && (
         <p className="calendar-readonly-notice">
-          Izmene termina za zaposlene biće omogućene u sledećoj fazi.
+          Možete menjati status svojih termina. Kreiranje, uređivanje i pomeranje nisu dostupni.
         </p>
       )}
 
@@ -549,7 +574,7 @@ function CalendarPageContent() {
             onStatusChange={handleStatusChange}
             onRescheduleClick={() => setIsRescheduleModalOpen(true)}
             onEditClick={() => setIsEditModalOpen(true)}
-            readOnly={isEmployeeReadOnly}
+            employeeStatusOnly={isEmployeeReadOnly}
           />
         </div>
       )}

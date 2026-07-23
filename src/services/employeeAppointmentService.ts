@@ -58,5 +58,9 @@ export async function updateOwnAppointmentStatus(
     );
   }
 
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("rezervo:appointment-status-changed"));
+  }
+
   return result.appointment;
 }

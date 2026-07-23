@@ -14,6 +14,13 @@ import {
   Trash2,
 } from "lucide-react";
 import ClientHistoryModal, { HistoryStatusBadge } from "./ClientHistoryModal";
+import { EmployeeStatusConfirmationModal } from "@/features/appointments/components/EmployeeStatusConfirmationModal";
+import {
+  getEmployeeAppointmentFinalMessage,
+  getEmployeeAppointmentStatusActions,
+  getEmployeeAppointmentStatusLabel,
+  type EmployeeAppointmentStatusAction,
+} from "@/features/appointments/employeeAppointmentStatusTransitions";
 
 import type {
   CalendarAppointment,
@@ -86,6 +93,8 @@ export default function AppointmentDetailsPanel({
 }: AppointmentDetailsPanelProps) {
   const [localLoading, setLocalLoading] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] =
+    useState<EmployeeAppointmentStatusAction | null>(null);
 
   if (!selectedAppointment) {
     return (
@@ -107,6 +116,21 @@ export default function AppointmentDetailsPanel({
     } finally {
       setLocalLoading(false);
     }
+  };
+
+  const employeeActions = getEmployeeAppointmentStatusActions(
+    selectedAppointment.status,
+  );
+  const employeeFinalMessage = getEmployeeAppointmentFinalMessage(
+    selectedAppointment.status,
+  );
+
+  const handleEmployeeAction = (action: EmployeeAppointmentStatusAction) => {
+    if (action.requiresConfirmation) {
+      setPendingAction(action);
+      return;
+    }
+    void handleAction(action.nextStatus);
   };
 
   return (
@@ -179,7 +203,9 @@ export default function AppointmentDetailsPanel({
         {/* Status Badge */}
         <div className="details-status-container">
           <span className={`status-badge ${selectedAppointment.status?.toLowerCase()}`}>
-            {getAppointmentStatusLabel(selectedAppointment.status)}
+            {employeeStatusOnly
+              ? getEmployeeAppointmentStatusLabel(selectedAppointment.status)
+              : getAppointmentStatusLabel(selectedAppointment.status)}
           </span>
         </div>
 
@@ -245,34 +271,24 @@ export default function AppointmentDetailsPanel({
           <div className="status-quick-actions-section">
             <h3>Status termina</h3>
             <p className="calendar-readonly-notice">
-              Možete promeniti samo status svog termina.
+              Možete promeniti samo status svog termina kroz dostupne naredne korake.
             </p>
             <div className="details-actions-stack">
-              {selectedAppointment.status === "pending" && (
-                <>
-                  <button type="button" className="btn-action btn-edit" disabled={localLoading} onClick={() => handleAction("confirmed")}>
-                    Potvrdi termin
-                  </button>
-                  <button type="button" className="btn-action btn-cancel" disabled={localLoading} onClick={() => handleAction("cancelled")}>
-                    Otkaži termin
-                  </button>
-                </>
-              )}
-              {selectedAppointment.status === "confirmed" && (
-                <>
-                  <button type="button" className="btn-action btn-edit" disabled={localLoading} onClick={() => handleAction("completed")}>
-                    Označi kao završeno
-                  </button>
-                  <button type="button" className="btn-action btn-reschedule" disabled={localLoading} onClick={() => handleAction("no_show")}>
-                    Klijent se nije pojavio
-                  </button>
-                  <button type="button" className="btn-action btn-cancel" disabled={localLoading} onClick={() => handleAction("cancelled")}>
-                    Otkaži termin
-                  </button>
-                </>
-              )}
-              {!["pending", "confirmed"].includes(selectedAppointment.status) && (
-                <p>Nema dostupnih akcija za ovaj status.</p>
+              {employeeActions.map((action) => (
+                <button
+                  key={action.nextStatus}
+                  type="button"
+                  className={`employee-status-action employee-status-action--${action.tone}`}
+                  disabled={localLoading}
+                  onClick={() => handleEmployeeAction(action)}
+                >
+                  {localLoading ? action.loadingLabel : action.label}
+                </button>
+              ))}
+              {employeeActions.length === 0 && (
+                <p className="employee-appointments__final-state">
+                  {employeeFinalMessage || "Nema dostupnih akcija za ovaj status."}
+                </p>
               )}
             </div>
           </div>
@@ -400,6 +416,17 @@ export default function AppointmentDetailsPanel({
           onClose={() => setIsHistoryModalOpen(false)}
         />
       )}
+      <EmployeeStatusConfirmationModal
+        action={pendingAction}
+        loading={localLoading}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={() => {
+          if (!pendingAction) return;
+          const nextStatus = pendingAction.nextStatus;
+          setPendingAction(null);
+          void handleAction(nextStatus);
+        }}
+      />
     </aside>
   );
 }

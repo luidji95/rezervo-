@@ -49,6 +49,7 @@ import { CreateAppointmentModal } from "./CreateAppointmentModal";
 import EmployeeCreateAppointmentModal from "./EmployeeCreateAppointmentModal";
 
 import "./calendar.css";
+import "../appointmets/appointments.css";
 
 // ==========================================
 // Pomoćne funkcije i konstante

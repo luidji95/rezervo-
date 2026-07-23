@@ -15,6 +15,8 @@ import {
   DEFAULT_SALON_TIME_ZONE,
   getTodayDateKey,
 } from "@/lib/salonDateTime";
+import { EmployeeAppointmentsView } from "@/features/appointments/components/EmployeeAppointmentsView";
+import "./appointments.css";
 
 
 
@@ -26,7 +28,7 @@ function formatTime(value: string, timeZone: string) {
   });
 }
 
-export default function AppointmentsPage() {
+function OwnerAppointmentsView() {
   const { currentSalon, salonLoading } = useSalon();
   const { currentRole } = useAuthorization();
   const salonTimeZone = currentSalon?.timezone || DEFAULT_SALON_TIME_ZONE;
@@ -204,4 +206,12 @@ export default function AppointmentsPage() {
       )}
     </main>
   );
+}
+
+export default function AppointmentsPage() {
+  const { currentRole, loading } = useAuthorization();
+
+  if (loading) return <div className="employee-appointments__page-loading" aria-label="Učitavanje" />;
+  if (currentRole === "employee") return <EmployeeAppointmentsView />;
+  return <OwnerAppointmentsView />;
 }

@@ -125,6 +125,7 @@ export default function EmployeeCreateAppointmentModal({
         idempotencyKey,
       });
       await onCreated();
+      window.dispatchEvent(new Event("rezervo:appointment-created"));
       reset();
       setSlots([]);
       setIdempotencyKey(crypto.randomUUID());

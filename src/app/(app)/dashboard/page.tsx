@@ -5,7 +5,7 @@ import Link from "next/link";
 
 import { useSalon } from "@/context/SalonContext";
 import { useAuthorization } from "@/context/AuthorizationContext";
-import { EmployeeDashboardPlaceholder } from "@/features/dashboard/components/EmployeeDashboardPlaceholder";
+import { EmployeeDashboard } from "@/features/dashboard/components/EmployeeDashboard";
 import { getDashboardStats, type DashboardStats } from "@/services/dashboardStatsService";
 import { getTodaySchedule, getUpcomingAppointments } from "@/services/dashboardAppointmentsService";
 import { getPopularServices, getTopClients, type PopularService, type TopClient } from "@/services/dashboardAnalyticsService";
@@ -17,6 +17,7 @@ import {
   getTodayDateKey,
 } from "@/lib/salonDateTime";
 
+import "../calendar/calendar.css";
 import "./dashboard.css";
 
 const DEFAULT_DASHBOARD_HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17];
@@ -423,9 +424,9 @@ export default function DashboardPage() {
 
   if (currentRole === "employee" && currentEmployee && currentSalon) {
     return (
-      <EmployeeDashboardPlaceholder
+      <EmployeeDashboard
         employee={currentEmployee}
-        salonName={currentSalon.name}
+        salon={currentSalon}
       />
     );
   }

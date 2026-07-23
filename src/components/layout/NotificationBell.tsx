@@ -114,10 +114,9 @@ export default function NotificationBell() {
       void loadNotifications();
     }, 0);
 
-    const unsubscribe = subscribeToNotifications(
-      currentSalon.id,
-      handleIncomingNotification
-    );
+    const unsubscribe = subscribeToNotifications(currentSalon.id, () => {
+      void loadNotifications();
+    });
 
     const handleLocalNotification = (event: Event) => {
       handleIncomingNotification(
@@ -258,7 +257,7 @@ export default function NotificationBell() {
               </p>
             ) : notifications.length === 0 ? (
               <p className="notification-dropdown__state">
-                Još uvek nema notifikacija.
+                Nema novih obaveštenja.
               </p>
             ) : (
               notifications.map((notification) => (

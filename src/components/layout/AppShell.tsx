@@ -94,9 +94,13 @@ export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const {
     currentProfile,
+    currentMembership,
     currentRole,
     currentSalon,
+    currentEmployee,
     permissions,
+    source,
+    loading: authorizationLoading,
   } = useAuthorization();
 
   const visibleNavLinks = navLinks.filter(
@@ -107,6 +111,15 @@ export default function AppShell({ children }: AppShellProps) {
   const profileName =
     currentProfile?.full_name?.trim() || currentProfile?.email || "Korisnik";
   const roleLabel = currentRole === "employee" ? "Zaposleni" : "Vlasnik";
+  const hasNotificationContext =
+    !authorizationLoading &&
+    Boolean(currentProfile && currentSalon) &&
+    hasPermission(permissions, "canViewNotifications") &&
+    ((currentRole === "owner" &&
+      (currentMembership?.status === "active" || source === "owner_fallback")) ||
+      (currentRole === "employee" &&
+        currentMembership?.status === "active" &&
+        Boolean(currentEmployee)));
 
   async function handleLogout() {
     try {
@@ -190,7 +203,7 @@ export default function AppShell({ children }: AppShellProps) {
           </div>
 
           <div className="topbar__actions">
-            {currentRole === "owner" && <NotificationBell />}
+            {hasNotificationContext && <NotificationBell />}
             <button
               type="button"
               className="topbar-avatar-btn"

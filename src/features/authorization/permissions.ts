@@ -19,6 +19,7 @@ const CLOSED_PERMISSIONS: AuthorizationPermissions = {
   canViewSalonFinancials: false,
   canViewAllAppointments: false,
   canViewOwnAppointments: false,
+  canViewNotifications: false,
 };
 
 export function getPermissions(
@@ -39,6 +40,7 @@ export function getPermissions(
       canViewSalonFinancials: true,
       canViewAllAppointments: true,
       canViewOwnAppointments: true,
+      canViewNotifications: true,
     };
   }
 
@@ -49,6 +51,7 @@ export function getPermissions(
       canViewCalendar: true,
       canViewAppointments: true,
       canViewOwnAppointments: true,
+      canViewNotifications: true,
     };
   }
 

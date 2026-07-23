@@ -53,7 +53,7 @@ export async function createNotification(
     return null;
   }
 
-  const notification = data as AppNotification;
+  const notification = { ...data, is_read: false } as AppNotification;
 
   if (typeof window !== "undefined") {
     window.dispatchEvent(
@@ -67,49 +67,80 @@ export async function createNotification(
 export async function getNotifications(salonId: string, limit = 30) {
   const [{ data, error }, { count, error: countError }] = await Promise.all([
     supabase
-      .from("notifications")
-      .select("*")
-      .eq("salon_id", salonId)
-      .order("created_at", { ascending: false })
+      .from("notification_recipients")
+      .select(`
+        is_read,
+        notifications!inner(
+          id,
+          salon_id,
+          type,
+          title,
+          message,
+          entity_type,
+          entity_id,
+          created_at
+        )
+      `)
+      .eq("notifications.salon_id", salonId)
+      .order("created_at", { referencedTable: "notifications", ascending: false })
       .limit(limit),
     supabase
-      .from("notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("salon_id", salonId)
+      .from("notification_recipients")
+      .select("id, notifications!inner(id)", { count: "exact", head: true })
+      .eq("notifications.salon_id", salonId)
       .eq("is_read", false),
   ]);
 
   if (error) throw new Error(error.message);
   if (countError) throw new Error(countError.message);
 
+  const notifications = (data ?? []).map((recipient) => {
+    const notification = recipient.notifications as unknown as Omit<
+      AppNotification,
+      "is_read"
+    >;
+    return { ...notification, is_read: recipient.is_read };
+  });
+
   return {
-    notifications: (data ?? []) as AppNotification[],
+    notifications,
     unreadCount: count ?? 0,
   };
 }
 
 export async function markNotificationAsRead(notificationId: string) {
   const { error } = await supabase
-    .from("notifications")
-    .update({ is_read: true })
-    .eq("id", notificationId);
+    .from("notification_recipients")
+    .update({ is_read: true, read_at: new Date().toISOString() })
+    .eq("notification_id", notificationId)
+    .eq("is_read", false);
 
   if (error) throw new Error(error.message);
 }
 
 export async function markAllNotificationsAsRead(salonId: string) {
-  const { error } = await supabase
-    .from("notifications")
-    .update({ is_read: true })
-    .eq("salon_id", salonId)
+  const { data: recipients, error: lookupError } = await supabase
+    .from("notification_recipients")
+    .select("id, notifications!inner(id)")
+    .eq("notifications.salon_id", salonId)
     .eq("is_read", false);
+
+  if (lookupError) throw new Error(lookupError.message);
+
+  const recipientIds = (recipients ?? []).map((recipient) => recipient.id);
+  if (recipientIds.length === 0) return;
+
+  const { error } = await supabase
+    .from("notification_recipients")
+    .update({ is_read: true, read_at: new Date().toISOString() })
+    .in("id", recipientIds);
 
   if (error) throw new Error(error.message);
 }
 
 export function subscribeToNotifications(
   salonId: string,
-  onInsert: (notification: AppNotification) => void
+  onInsert: () => void
 ) {
   const channel = supabase
     .channel(`notifications:${salonId}`)
@@ -121,7 +152,7 @@ export function subscribeToNotifications(
         table: "notifications",
         filter: `salon_id=eq.${salonId}`,
       },
-      (payload) => onInsert(payload.new as AppNotification)
+      () => onInsert()
     )
     .subscribe();
 

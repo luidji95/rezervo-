@@ -35,6 +35,7 @@ export type AuthorizationPermissions = {
   canViewSalonFinancials: boolean;
   canViewAllAppointments: boolean;
   canViewOwnAppointments: boolean;
+  canViewNotifications: boolean;
 };
 
 export type AuthorizationSource = "membership" | "owner_fallback" | null;

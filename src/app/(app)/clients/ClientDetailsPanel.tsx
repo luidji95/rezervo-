@@ -2,21 +2,18 @@
 
 import { CalendarPlus, Mail, Phone, Sparkles } from "lucide-react";
 
-import type { ClientMetrics } from "@/services/clientAnalyticsService";
-import type { Client } from "@/types/client";
+import type { ClientPageItem } from "@/features/clients/types";
 import {
   formatClientDate,
   formatMoney,
-  getClientInitials,
   getClientSourceLabel,
 } from "./clientUtils";
 
 type ClientDetailsPanelProps = {
-  client: Client | null;
-  metrics: ClientMetrics;
+  client: ClientPageItem | null;
 };
 
-export function ClientDetailsPanel({ client, metrics }: ClientDetailsPanelProps) {
+export function ClientDetailsPanel({ client }: ClientDetailsPanelProps) {
   if (!client) {
     return (
       <section className="clients-card client-details-empty">
@@ -29,11 +26,11 @@ export function ClientDetailsPanel({ client, metrics }: ClientDetailsPanelProps)
     <section className="clients-card client-details">
       <div className="client-details-header">
         <div className="client-details-avatar">
-          {getClientInitials(client) || "KL"}
+          {client.fullName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "KL"}
         </div>
 
         <div>
-          <h3>{client.full_name}</h3>
+          <h3>{client.fullName}</h3>
           <span className="client-source-pill">
             Izvor: {getClientSourceLabel(client.source)}
           </span>
@@ -56,32 +53,28 @@ export function ClientDetailsPanel({ client, metrics }: ClientDetailsPanelProps)
         <div className="client-info-row">
           <Sparkles size={16} />
           <span>Prvi dolazak</span>
-          <strong>{formatClientDate(client.created_at)}</strong>
+          <strong>{formatClientDate(client.createdAt)}</strong>
         </div>
       </div>
 
       <div className="client-section">
         <h4>Omiljene usluge</h4>
-        {metrics.favoriteServices.length === 0 ? (
+        {!client.favoriteService ? (
           <p className="client-muted-text">Nema zavrsenih usluga za ovog klijenta.</p>
         ) : (
           <div className="client-chip-row">
-            {metrics.favoriteServices.map((service) => (
-              <span key={service.serviceId}>
-                {service.name} ({service.count})
-              </span>
-            ))}
+            <span>{client.favoriteService.name} ({client.favoriteService.count})</span>
           </div>
         )}
       </div>
 
       <div className="client-section">
         <h4>Istorija poseta</h4>
-        {metrics.history.length === 0 ? (
+        {client.recentVisits.length === 0 ? (
           <p className="client-muted-text">Nema zavrsenih poseta.</p>
         ) : (
           <div className="client-history-list">
-            {metrics.history.map((appointment) => (
+            {client.recentVisits.map((appointment) => (
               <div key={appointment.id}>
                 <span>{formatClientDate(appointment.startTime)}</span>
                 <strong>{appointment.serviceName}</strong>
@@ -95,15 +88,15 @@ export function ClientDetailsPanel({ client, metrics }: ClientDetailsPanelProps)
       <div className="client-stats-grid">
         <div className="client-mini-stat">
           <span>Ukupno poseta</span>
-          <strong>{metrics.visits}</strong>
+          <strong>{client.completedVisits}</strong>
         </div>
         <div className="client-mini-stat">
           <span>Ukupno potroseno</span>
-          <strong>{formatMoney(metrics.totalSpent)}</strong>
+          <strong>{formatMoney(client.completedRevenue)}</strong>
         </div>
         <div className="client-mini-stat">
           <span>Prosecno</span>
-          <strong>{formatMoney(metrics.averageSpent)}</strong>
+          <strong>{formatMoney(client.completedVisits > 0 ? client.completedRevenue / client.completedVisits : 0)}</strong>
         </div>
       </div>
 

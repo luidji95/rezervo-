@@ -14,7 +14,8 @@ export function getClientStatus(client: Client): ClientStatus {
 }
 
 export function getClientStatusLabel(client: Client) {
-  return getClientStatus(client) === "active" ? "Aktivan" : "Neaktivan";
+  const labels: Record<ClientStatus, string> = { active: "Aktivan", blocked: "Blokiran", archived: "Arhiviran" };
+  return labels[getClientStatus(client)];
 }
 
 export function getClientSourceLabel(source: string | null) {

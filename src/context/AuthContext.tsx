@@ -27,16 +27,50 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadUser() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    let ignore = false;
 
-      setUser(user);
+    async function loadUser() {
+      const sessionStartedAt = performance.now();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+      if (ignore) return;
+
+      if (process.env.NODE_ENV === "development") {
+        console.info("AUTH_BOOTSTRAP_SESSION", {
+          durationMs: Math.round(performance.now() - sessionStartedAt),
+          hasSession: Boolean(session),
+          hasError: Boolean(sessionError),
+        });
+      }
+
+      setUser(session?.user ?? null);
       setLoading(false);
+
+      // Network validation is only needed when local storage contains a session.
+      // RLS and server endpoints remain the authorization boundary.
+      if (!session) return;
+
+      const userStartedAt = performance.now();
+      const {
+        data: { user: verifiedUser },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (ignore) return;
+
+      if (process.env.NODE_ENV === "development") {
+        console.info("AUTH_BOOTSTRAP_USER", {
+          durationMs: Math.round(performance.now() - userStartedAt),
+          hasUser: Boolean(verifiedUser),
+          hasError: Boolean(userError),
+        });
+      }
+
+      setUser(verifiedUser);
     }
 
-    loadUser();
+    void loadUser();
 
     const {
       data: { subscription },
@@ -46,6 +80,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     });
 
     return () => {
+      ignore = true;
       subscription.unsubscribe();
     };
   }, []);

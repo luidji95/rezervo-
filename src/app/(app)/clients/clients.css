@@ -133,6 +133,27 @@
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.03);
 }
 
+.clients-page__skeleton {
+  min-height: 420px;
+  background: linear-gradient(90deg, #f8fafc 20%, #ffffff 50%, #f8fafc 80%);
+  background-size: 200% 100%;
+  animation: clients-shimmer 1.3s infinite;
+}
+
+@keyframes clients-shimmer { to { background-position: -200% 0; } }
+
+.clients-layout--loading { opacity: .55; pointer-events: none; }
+
+.clients-error-panel {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 16px; padding: 12px 14px; border: 1px solid #fecaca;
+  border-radius: 12px; background: #fff7f7; color: #991b1b;
+}
+
+.clients-error-panel button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #fecaca; border-radius: 9px; padding: 8px 10px; background: #fff; color: inherit; font-weight: 700; cursor: pointer; }
+
+.clients-pagination__ellipsis { padding: 0 4px; color: #94a3b8; }
+
 .clients-toolbar {
   display: flex;
   flex-wrap: wrap;

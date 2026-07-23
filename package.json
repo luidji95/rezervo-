@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:dry-run": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts dry-run",
+    "seed:small": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts seed --profile small",
+    "seed:medium": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts seed --profile medium",
+    "seed:large": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts seed --profile large",
+    "seed:cleanup": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts cleanup",
+    "seed:validate": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts validate"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

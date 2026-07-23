@@ -1,175 +1,100 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { useSalon } from "@/context/SalonContext";
-import {
-  getClientAnalytics,
-  type ClientAnalytics,
-  type ClientKpis,
-  type ClientMetrics,
-} from "@/services/clientAnalyticsService";
-import { deleteClient, getSalonClients } from "@/services/clientService";
-import type { Client } from "@/types/client";
-import { getClientSourceLabel } from "./clientUtils";
+import { clientsQuerySchema } from "@/features/clients/schemas";
+import { ClientsPageError, getClientsPage } from "@/features/clients/clientPageService";
+import type { ClientPageItem, ClientsPageResponse, ClientsSort, ClientsStatus } from "@/features/clients/types";
+import { deleteClient } from "@/services/clientService";
 
-const emptyClientKpis: ClientKpis = {
-  visitsThisMonth: 0,
-  returningClients: 0,
-  returningClientsPercent: 0,
-  clientsWithVisits: 0,
-  revenueThisMonth: 0,
+const EMPTY_PAGE: ClientsPageResponse = {
+  items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 1,
+  kpis: { totalClients: 0, newClientsThisMonth: 0, visitsThisMonth: 0, revenueThisMonth: 0, clientsWithVisits: 0, returningClients: 0, returningClientsPercent: 0 },
 };
 
-function getEmptyClientMetrics(): ClientMetrics {
-  return {
-    visits: 0,
-    totalSpent: 0,
-    averageSpent: 0,
-    lastVisitAt: null,
-    favoriteServices: [],
-    history: [],
-  };
-}
-
 export function useClientsPageData() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { currentSalon, salonLoading } = useSalon();
-
-  const [clients, setClients] = useState<Client[]>([]);
-  const [analytics, setAnalytics] = useState<ClientAnalytics>({
-    metricsByClientId: {},
-    kpis: emptyClientKpis,
-  });
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [searchValue, setSearchValue] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("all");
-
   const salonId = currentSalon?.id;
+  const parsed = useMemo(() => {
+    const fallback = { salonId: salonId ?? "00000000-0000-0000-0000-000000000000", page: 1, pageSize: 20, search: "", status: "all" as const, sort: "newest" as const };
+    const result = clientsQuerySchema.safeParse({
+      salonId: fallback.salonId,
+      page: searchParams.get("page") ?? 1,
+      pageSize: 20,
+      search: searchParams.get("search") ?? "",
+      status: searchParams.get("status") ?? "all",
+      sort: searchParams.get("sort") ?? "newest",
+    });
+    return result.success ? result.data : fallback;
+  }, [salonId, searchParams]);
+  const [result, setResult] = useState(EMPTY_PAGE);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [searchValue, setSearchValue] = useState(parsed.search);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [requestVersion, setRequestVersion] = useState(0);
 
-  const loadData = useCallback(async () => {
-    if (!salonId) return;
-
-    try {
-      setLoading(true);
-
-      const [clientsData, analyticsData] = await Promise.all([
-        getSalonClients(salonId),
-        getClientAnalytics(salonId),
-      ]);
-
-      setClients(clientsData);
-      setAnalytics(analyticsData);
-      setSelectedClient((current) => {
-        if (current) {
-          return (
-            clientsData.find((client) => client.id === current.id) ??
-            clientsData[0] ??
-            null
-          );
-        }
-
-        return clientsData[0] ?? null;
-      });
-    } catch (error) {
-      console.error("Greska pri ucitavanju klijenata:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [salonId]);
+  const updateQuery = useCallback((patch: Partial<{ page: number; search: string; status: ClientsStatus; sort: ClientsSort }>) => {
+    const query = new URLSearchParams(searchParams.toString());
+    const nextPage = patch.page ?? (patch.search !== undefined || patch.status !== undefined || patch.sort !== undefined ? 1 : parsed.page);
+    query.set("page", String(nextPage));
+    query.set("search", patch.search ?? parsed.search);
+    query.set("status", patch.status ?? parsed.status);
+    query.set("sort", patch.sort ?? parsed.sort);
+    router.replace(`/clients?${query.toString()}`, { scroll: false });
+  }, [parsed, router, searchParams]);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      void loadData();
+    const timeout = window.setTimeout(() => setSearchValue(parsed.search), 0);
+    return () => window.clearTimeout(timeout);
+  }, [parsed.search]);
+  useEffect(() => {
+    if (searchValue === parsed.search) return;
+    const timeout = window.setTimeout(() => updateQuery({ search: searchValue.trim() }), 300);
+    return () => window.clearTimeout(timeout);
+  }, [parsed.search, searchValue, updateQuery]);
+
+  useEffect(() => {
+    if (!salonId) return;
+    const controller = new AbortController();
+    const request = window.setTimeout(() => {
+      setLoading(true);
+      setError("");
+      void getClientsPage({ salonId, page: parsed.page, pageSize: 20, search: parsed.search, status: parsed.status, sort: parsed.sort, signal: controller.signal })
+        .then((data) => {
+          if (controller.signal.aborted) return;
+          setResult(data);
+          setSelectedId((current) => data.items.some((client) => client.id === current) ? current : data.items[0]?.id ?? null);
+        })
+        .catch((requestError) => {
+          if (controller.signal.aborted) return;
+          setResult((current) => ({ ...current, items: [] }));
+          setError(requestError instanceof ClientsPageError && requestError.code === "FORBIDDEN" ? "Nemate dozvolu za pregled klijenata." : "Klijente trenutno nije moguće učitati.");
+        })
+        .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, 0);
+    return () => { window.clearTimeout(request); controller.abort(); };
+  }, [parsed.page, parsed.search, parsed.sort, parsed.status, requestVersion, salonId]);
 
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [loadData]);
-
-  const sourceOptions = useMemo(() => {
-    const sources = new Set<string>();
-
-    clients.forEach((client) => {
-      sources.add(getClientSourceLabel(client.source));
-    });
-
-    return Array.from(sources);
-  }, [clients]);
-
-  const filteredClients = useMemo(() => {
-    const search = searchValue.trim().toLowerCase();
-
-    return clients.filter((client) => {
-      const matchesSearch =
-        client.full_name.toLowerCase().includes(search) ||
-        client.phone?.toLowerCase().includes(search) ||
-        client.email?.toLowerCase().includes(search);
-
-      const matchesSource =
-        sourceFilter === "all" ||
-        getClientSourceLabel(client.source) === sourceFilter;
-
-      return matchesSearch && matchesSource;
-    });
-  }, [clients, searchValue, sourceFilter]);
-
-  const selectedClientMetrics = useMemo(() => {
-    if (!selectedClient) {
-      return getEmptyClientMetrics();
-    }
-
-    return analytics.metricsByClientId[selectedClient.id] ?? getEmptyClientMetrics();
-  }, [analytics.metricsByClientId, selectedClient]);
-
-  const newClientsThisMonth = useMemo(() => {
-    const now = new Date();
-
-    return clients.filter((client) => {
-      const createdAt = new Date(client.created_at);
-
-      return (
-        createdAt.getMonth() === now.getMonth() &&
-        createdAt.getFullYear() === now.getFullYear()
-      );
-    }).length;
-  }, [clients]);
-
-  async function handleDeleteClient(clientId: string) {
-    const confirmed = window.confirm(
-      "Da li sigurno zelis da obrises ovog klijenta?"
-    );
-
-    if (!confirmed) return;
-
-    try {
-      await deleteClient(clientId);
-      await loadData();
-    } catch (error) {
-      console.error("Greska pri brisanju klijenta:", error);
-    }
-  }
+  const selectedClient = result.items.find((client) => client.id === selectedId) ?? null;
+  const retry = useCallback(() => setRequestVersion((value) => value + 1), []);
+  const handleDeleteClient = useCallback(async (clientId: string) => {
+    if (!window.confirm("Da li sigurno želite da obrišete ovog klijenta?")) return;
+    await deleteClient(clientId);
+    retry();
+  }, [retry]);
 
   return {
-    clients,
-    clientKpis: analytics.kpis,
-    clientMetricsByClientId: analytics.metricsByClientId,
-    currentSalon,
-    filteredClients,
-    handleDeleteClient,
-    loadData,
-    loading,
-    newClientsThisMonth,
-    salonId,
-    salonLoading,
-    searchValue,
-    selectedClient,
-    selectedClientMetrics,
-    setSearchValue,
-    setSelectedClient,
-    setSourceFilter,
-    sourceFilter,
-    sourceOptions,
+    currentSalon, salonId, salonLoading, loading, error, result, selectedClient,
+    searchValue, setSearchValue, status: parsed.status, sort: parsed.sort, retry, handleDeleteClient,
+    selectClient: (client: ClientPageItem) => setSelectedId(client.id),
+    setPage: (page: number) => updateQuery({ page }),
+    setStatus: (status: ClientsStatus) => updateQuery({ status }),
+    setSort: (sort: ClientsSort) => updateQuery({ sort }),
+    reload: retry,
   };
 }

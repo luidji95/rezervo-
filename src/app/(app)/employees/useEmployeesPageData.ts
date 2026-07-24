@@ -182,6 +182,11 @@ export function useEmployeesPageData() {
     });
   }, [employees, searchValue, statusFilter]);
 
+  const activeEmployeeCount = useMemo(
+    () => employees.filter((employee) => employee.is_active).length,
+    [employees],
+  );
+
   const selectedEmployeeStats = useMemo((): EmployeeStats => {
     if (!selectedEmployee) {
       return createEmptyEmployeeStats();
@@ -216,6 +221,7 @@ export function useEmployeesPageData() {
 
   return {
     currentSalon,
+    activeEmployeeCount,
     employeeKPIs: analytics.kpis,
     employeeStatsByEmployeeId: analytics.statsByEmployeeId,
     filteredEmployees,

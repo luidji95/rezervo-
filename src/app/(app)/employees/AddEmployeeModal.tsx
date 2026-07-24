@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { X } from "lucide-react";
+import { InlineFormAlert } from "@/features/billing/components/InlineFormAlert";
 
 import { createEmployee } from "@/services/employeeService";
 import { assignServiceToEmployee } from "@/services/employeeServiceRelationService";
@@ -35,6 +36,8 @@ export function AddEmployeeModal({
   onCreated,
 }: AddEmployeeModalProps) {
   const [formError, setFormError] = useState("");
+  const [limitError, setLimitError] = useState(false);
+  const alertRef = useRef<HTMLDivElement>(null);
   const {
     register,
     handleSubmit,
@@ -52,6 +55,10 @@ export function AddEmployeeModal({
   });
   const dialogRef = useEmployeeDialog(onClose, isSubmitting);
 
+  useEffect(() => {
+    if (limitError) alertRef.current?.focus();
+  }, [limitError]);
+
   function toggleService(serviceId: string) {
     if (selectedServiceIds.includes(serviceId)) {
       setSelectedServiceIds(selectedServiceIds.filter((id) => id !== serviceId));
@@ -64,6 +71,7 @@ export function AddEmployeeModal({
   async function onSubmit(data: EmployeeFormData) {
     try {
       setFormError("");
+      setLimitError(false);
       const employee = await createEmployee({
         salonId,
         fullName: data.fullName,
@@ -82,11 +90,9 @@ export function AddEmployeeModal({
       await onCreated();
     } catch (error) {
       console.error("Failed to create employee:", error);
-      setFormError(
-        error instanceof Error && error.name === "EMPLOYEE_LIMIT_REACHED"
-          ? "Dostigli ste maksimalan broj zaposlenih za trenutni paket."
-          : "Zaposlenog trenutno nije moguće sačuvati. Pokušajte ponovo.",
-      );
+      const reachedLimit = error instanceof Error && error.name === "EMPLOYEE_LIMIT_REACHED";
+      setLimitError(reachedLimit);
+      setFormError(reachedLimit ? "" : "Zaposlenog trenutno nije moguće sačuvati. Pokušajte ponovo.");
     }
   }
 
@@ -98,8 +104,6 @@ export function AddEmployeeModal({
             <h3 id="employee-add-title">Novi zaposleni</h3>
             <p>Dodajte zaposlenog i usluge koje može da obavlja.</p>
           </div>
-
-          {formError && <p className="employees-error" role="alert">{formError}</p>}
 
           <button type="button" onClick={onClose} aria-label="Zatvori" disabled={isSubmitting}>
             <X size={18} />
@@ -158,6 +162,9 @@ export function AddEmployeeModal({
               </div>
             )}
           </div>
+
+          {limitError && <InlineFormAlert ref={alertRef} title="Dostigli ste limit zaposlenih" message="Dostigli ste maksimalan broj aktivnih zaposlenih za trenutni paket." showUpgradeAction />}
+          {formError && <p className="employees-error employee-form-error" role="alert">{formError}</p>}
 
           <div className="employee-modal-actions">
             <button

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CalendarX,
   Clock,
@@ -45,6 +45,24 @@ const SETTINGS_TABS = [
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTabId>("general");
 
+  useEffect(() => {
+    const syncTabFromUrl = () => {
+      const requestedTab = new URLSearchParams(window.location.search).get("tab");
+      setActiveTab(SETTINGS_TABS.some((tab) => tab.id === requestedTab) ? requestedTab as SettingsTabId : "general");
+    };
+    const timeout = window.setTimeout(syncTabFromUrl, 0);
+    window.addEventListener("popstate", syncTabFromUrl);
+    return () => { window.clearTimeout(timeout); window.removeEventListener("popstate", syncTabFromUrl); };
+  }, []);
+
+  function changeTab(tab: SettingsTabId) {
+    setActiveTab(tab);
+    const url = new URL(window.location.href);
+    if (tab === "general") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", tab);
+    window.history.pushState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+
   return (
     <div className="settings-page">
       <header className="settings-top-header">
@@ -62,7 +80,7 @@ export default function SettingsPage() {
               key={tab.id}
               type="button"
               className={`settings-tab-btn ${activeTab === tab.id ? "active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => changeTab(tab.id)}
             >
               <Icon size={17} />
               <span>{tab.label}</span>
@@ -72,7 +90,7 @@ export default function SettingsPage() {
       </nav>
 
       <main className="settings-content">
-        {activeTab === "general" && <GeneralManager onChangeTab={setActiveTab} />}
+        {activeTab === "general" && <GeneralManager onChangeTab={changeTab} />}
         {activeTab === "working-hours" && <WorkingHoursManager />}
         {activeTab === "closures" && <ClosuresManager />}
         {activeTab === "services" && (

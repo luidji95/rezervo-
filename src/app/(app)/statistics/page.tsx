@@ -15,7 +15,7 @@ import { StatisticsTrendChart } from "@/features/statistics/components/Statistic
 import { TopServicesTable } from "@/features/statistics/components/TopServicesTable";
 import { useStatistics } from "@/features/statistics/hooks/useStatistics";
 import { FeatureGate } from "@/features/billing/components/FeatureGate";
-import { UpgradeRequired } from "@/features/billing/components/UpgradeRequired";
+import { LockedFeatureState } from "@/features/billing/components/LockedFeatureState";
 
 import "./statistics.css";
 
@@ -35,7 +35,20 @@ function StatisticsPageContent() {
   if (!currentSalon) return null;
 
   return (
-    <FeatureGate entitlement="canUseStatistics" fallback={<main className="statistics-page"><UpgradeRequired message="Statistika je dostupna u Pro paketu." /></main>}>
+    <FeatureGate entitlement="canUseStatistics" fallback={
+      <main className="statistics-page">
+        <header className="statistics-header statistics-locked-header"><div className="statistics-header__title"><span>Pregled poslovanja</span><h1>Statistika</h1><p>{currentSalon.name}</p></div></header>
+        <LockedFeatureState
+          feature="statistics"
+          title="Napredna statistika je dostupna u Pro paketu"
+          description="Pratite prihod, učinak zaposlenih, najpopularnije usluge, klijente i trendove poslovanja."
+          actionLabel="Pogledaj pakete"
+          secondaryLabel="Nazad na dashboard"
+          secondaryHref="/dashboard"
+          preview={<><span /><span /><span /><span /><span /><span /></>}
+        />
+      </main>
+    }>
     <main className="statistics-page">
       <StatisticsHeader
         salonName={currentSalon.name}

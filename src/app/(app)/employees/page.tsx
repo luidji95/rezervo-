@@ -1,13 +1,16 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Briefcase, CalendarDays, Plus, UserRound } from "lucide-react";
+import { Briefcase, CalendarDays, LockKeyhole, Plus, UserRound } from "lucide-react";
+import { useEntitlements } from "@/features/billing/hooks/useEntitlements";
+import { UsageLimitIndicator } from "@/features/billing/components/UsageLimitIndicator";
 
 import { AddEmployeeModal } from "./AddEmployeeModal";
 import { EmployeeDeleteModal } from "./EmployeeDeleteModal";
 import { EmployeeDetailsPanel } from "./EmployeeDetailsPanel";
 import { EmployeeEditModal } from "./EmployeeEditModal";
 import { EmployeeTable } from "./EmployeeTable";
+import { LimitReachedDialog } from "./LimitReachedDialog";
 import { KpiCard } from "./KpiCard";
 import { formatMoney } from "./employeeUtils";
 import { useEmployeesPageData } from "./useEmployeesPageData";
@@ -22,6 +25,8 @@ import "./employees.css";
 
 export default function EmployeesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLimitDialogOpen, setIsLimitDialogOpen] = useState(false);
+  const { entitlements } = useEntitlements();
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null);
@@ -34,6 +39,7 @@ export default function EmployeesPage() {
 
   const {
     currentSalon,
+    activeEmployeeCount,
     employeeKPIs,
     employeeStatsByEmployeeId,
     filteredEmployees,
@@ -55,6 +61,8 @@ export default function EmployeesPage() {
     setStatusFilter,
     statusFilter,
   } = useEmployeesPageData();
+  const employeeLimit = entitlements?.maxEmployees ?? null;
+  const isEmployeeLimitReached = employeeLimit !== null && activeEmployeeCount >= employeeLimit;
 
   function handleSelectEmployee(employee: Employee) {
     setSelectedEmployee(employee);
@@ -146,17 +154,18 @@ export default function EmployeesPage() {
   return (
     <div className="employees-page">
       <header className="employees-header">
-        <div>
+        <div className="employees-heading-copy">
           <h1>Zaposleni</h1>
           <p>Pregled tima, usluga, radnog vremena i osnovnih performansi.</p>
+          {entitlements && <UsageLimitIndicator current={activeEmployeeCount} limit={employeeLimit} unit="zaposlenih" planName={entitlements.planName} />}
         </div>
 
         <button
           type="button"
           className="employees-primary-btn"
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => isEmployeeLimitReached ? setIsLimitDialogOpen(true) : setIsModalOpen(true)}
         >
-          <Plus size={17} />
+          {isEmployeeLimitReached ? <LockKeyhole size={17} /> : <Plus size={17} />}
           Novi zaposleni
         </button>
       </header>
@@ -240,6 +249,8 @@ export default function EmployeesPage() {
           }}
         />
       )}
+
+      {isLimitDialogOpen && employeeLimit !== null && entitlements && <LimitReachedDialog planName={entitlements.planName} limit={employeeLimit} onClose={() => setIsLimitDialogOpen(false)} />}
 
       {editingEmployee && (
         <EmployeeEditModal

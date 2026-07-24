@@ -1,18 +1,59 @@
 "use client";
 
-import { useState } from "react";
-import type { BillingPeriod } from "../types";
-import { CurrentPlanCard } from "./CurrentPlanCard";
-import { PaymentHistory } from "./PaymentHistory";
-import { PaymentMethodCard } from "./PaymentMethodCard";
-import { PricingPlans } from "./PricingPlans";
-import { SubscriptionOverview } from "./SubscriptionOverview";
+import { CalendarClock, Check, CircleMinus, Clock3, Sparkles, Users } from "lucide-react";
+import { useEntitlements } from "../hooks/useEntitlements";
+import { useBillingUsage } from "../hooks/useBillingUsage";
+import { PLAN_DESCRIPTIONS, PLAN_PRESENTATIONS, type PlanFeaturePresentation } from "../data/planPresentation";
+import type { SalonEntitlements } from "../types/entitlements";
+import styles from "./BillingPreview.module.css";
+
+const STATUS: Record<SalonEntitlements["subscriptionStatus"], { label: string; tone: string }> = {
+  trialing: { label: "Probni period", tone: "trial" }, active: { label: "Aktivan", tone: "active" },
+  past_due: { label: "Problem sa plaćanjem", tone: "warning" }, cancelled: { label: "Otkazano", tone: "neutral" }, expired: { label: "Isteklo", tone: "expired" },
+};
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("sr-Latn-RS", { dateStyle: "long" }).format(new Date(value));
+}
+
+function remainingTrialDays(value: string) {
+  return Math.max(0, Math.ceil((new Date(value).getTime() - Date.now()) / 86_400_000));
+}
+
+function FeatureRow({ feature, entitlements, current }: { feature: PlanFeaturePresentation; entitlements: SalonEntitlements; current: boolean }) {
+  const availability = current && feature.entitlementKey ? (entitlements[feature.entitlementKey] ? "included" : "not_included") : feature.availability;
+  const comingSoon = availability === "coming_soon";
+  const included = availability === "included";
+  return <li><span className={included ? styles.included : comingSoon ? styles.soon : styles.excluded}>{included ? <Check size={15} /> : comingSoon ? <Clock3 size={15} /> : <CircleMinus size={15} />}</span><span>{feature.label}</span><small>{included ? "Uključeno" : comingSoon ? "Uskoro" : "Nije uključeno"}</small></li>;
+}
 
 export function BillingPreview() {
-  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>("monthly");
-  return <div className="billing-page">
-    <div className="billing-preview-notice"><strong>Billing preview</strong><span>Ovaj ekran prikazuje budući izgled. Naplata, kartice i pretplata nisu aktivni.</span></div>
-    <div className="billing-top-grid"><CurrentPlanCard /><PricingPlans period={billingPeriod} onPeriodChange={setBillingPeriod} /></div>
-    <div className="billing-details-grid"><PaymentMethodCard /><PaymentHistory /><SubscriptionOverview /></div>
+  const entitlementState = useEntitlements();
+  const usageState = useBillingUsage();
+  const entitlements = entitlementState.entitlements;
+
+  if (entitlementState.loading) return <div className={styles.loading} aria-label="Učitavanje podataka o paketu" aria-busy="true"><span /><span /><span /></div>;
+  if (entitlementState.error || !entitlements || !PLAN_PRESENTATIONS.some((plan) => plan.code === entitlements.planCode)) {
+    return <section className={styles.fallback} role="status"><h2>Podaci o paketu trenutno nisu dostupni.</h2><p>Pokušajte ponovo. Ostala podešavanja salona ostaju dostupna.</p><button type="button" onClick={() => void entitlementState.refetchEntitlements()}>Pokušaj ponovo</button></section>;
+  }
+
+  const status = STATUS[entitlements.subscriptionStatus];
+  const trialDays = entitlements.trialEndsAt ? remainingTrialDays(entitlements.trialEndsAt) : null;
+
+  return <div className={styles.page}>
+    <section className={styles.overview} aria-labelledby="billing-current-title">
+      <div className={styles.overviewMain}><div className={styles.eyebrow}><Sparkles size={16} /> Trenutna pretplata</div><div className={styles.titleRow}><h2 id="billing-current-title">{entitlements.planName}{entitlements.subscriptionStatus === "trialing" ? " probni period" : ""}</h2><span className={`${styles.status} ${styles[status.tone]}`}>{status.label}</span></div><p>{PLAN_DESCRIPTIONS[entitlements.planCode]}</p>
+        {entitlements.subscriptionStatus === "trialing" && entitlements.trialEndsAt && <div className={styles.dateNotice}><CalendarClock size={17} /><div><strong>Preostalo još {trialDays} {trialDays === 1 ? "dan" : "dana"}</strong><span>Probni period traje do {formatDate(entitlements.trialEndsAt)}.</span></div></div>}
+        {entitlements.currentPeriodEndsAt && <p className={styles.periodDate}>Trenutni period traje do {formatDate(entitlements.currentPeriodEndsAt)}.</p>}
+      </div>
+      <div className={styles.usage}><span className={styles.usageIcon}><Users size={20} /></span><span>Aktivni zaposleni</span>{usageState.loading ? <i className={styles.usageSkeleton} /> : usageState.error || !usageState.usage ? <strong>Podatak trenutno nije dostupan</strong> : <><strong>{usageState.usage.activeEmployees}{entitlements.maxEmployees === null ? "" : ` / ${entitlements.maxEmployees}`}</strong>{entitlements.maxEmployees === null && <small>Bez ograničenja</small>}</>}</div>
+    </section>
+
+    <section className={styles.plans} aria-labelledby="billing-plans-title"><div className={styles.sectionHeading}><div><span>Poređenje paketa</span><h2 id="billing-plans-title">Paketi prilagođeni fazi vašeg salona</h2></div><p>Online plaćanje još nije uvedeno. Kartice ispod ne pokreću kupovinu.</p></div><div className={styles.planGrid}>{PLAN_PRESENTATIONS.map((plan) => {
+      const current = plan.code === entitlements.planCode;
+      return <article key={plan.code} className={`${styles.planCard} ${current ? styles.current : ""}`}><div className={styles.planTop}><h3>{plan.name}</h3><div>{current && <span className={styles.currentBadge}>Trenutni paket</span>}{plan.comingSoon && <span className={styles.soonBadge}>Uskoro</span>}</div></div><p>{plan.description}</p><ul>{plan.features.map((feature) => <FeatureRow key={feature.label} feature={feature} entitlements={entitlements} current={current} />)}</ul><button type="button" disabled>{current ? "Trenutni paket" : plan.comingSoon ? "AI paket je u pripremi" : "Online nadogradnja uskoro"}</button></article>;
+    })}</div></section>
+
+    <section className={styles.paymentNotice}><Clock3 size={20} /><div><h2>Online upravljanje paketom je u pripremi</h2><p>Trenutni pristup i paket prikazani su iz stvarnih subscription podataka. Rezervo trenutno ne čuva karticu i ne prikazuje izmišljene naplate ili račune.</p></div></section>
   </div>;
 }

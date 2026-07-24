@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { useAuthorization } from "@/context/AuthorizationContext";
+import { useEntitlements } from "@/features/billing/hooks/useEntitlements";
 import { statisticsPeriodInputSchema } from "../schemas/statisticsSchema";
 import {
   getStatistics,
@@ -30,6 +31,7 @@ export function useStatistics() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { currentSalon, currentRole } = useAuthorization();
+  const entitlementState = useEntitlements();
   const period = useMemo(
     () => periodFromParams(new URLSearchParams(searchParams.toString())),
     [searchParams],
@@ -61,7 +63,11 @@ export function useStatistics() {
   const retry = useCallback(() => setRequestVersion((value) => value + 1), []);
 
   useEffect(() => {
-    if (!currentSalon || currentRole !== "owner") return;
+    if (!currentSalon || currentRole !== "owner" || entitlementState.loading) return;
+    if (!entitlementState.entitlements?.canUseStatistics) {
+      Promise.resolve().then(() => setLoading(false));
+      return;
+    }
     const controller = new AbortController();
     const request = window.setTimeout(() => {
       setLoading(true);
@@ -92,7 +98,7 @@ export function useStatistics() {
       window.clearTimeout(request);
       controller.abort();
     };
-  }, [currentRole, currentSalon, period, requestVersion, router]);
+  }, [currentRole, currentSalon, entitlementState.entitlements?.canUseStatistics, entitlementState.loading, period, requestVersion, router]);
 
   return {
     data,

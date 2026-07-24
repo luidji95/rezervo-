@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createClient, type User } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 
 type JwtPayload = {
   sub?: unknown;
@@ -36,6 +36,18 @@ export type RequestAuthResult =
       errorMessagePresent: boolean;
       diagnostics: RequestAuthDiagnostics;
     };
+
+export function createAuthenticatedRequestClient(request: Request): SupabaseClient | null {
+  const authorization = request.headers.get("authorization");
+  const token = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : "";
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!token || !supabaseUrl || !anonKey) return null;
+  return createClient(supabaseUrl, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+}
 
 function decodeJwtPayload(token: string | undefined): JwtPayload | null {
   if (!token) return null;
@@ -120,9 +132,8 @@ export async function getAuthenticatedRequestUser(
     };
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !anonKey) {
+  const requestClient = createAuthenticatedRequestClient(request);
+  if (!requestClient) {
     return {
       ok: false,
       status: 401,
@@ -133,17 +144,6 @@ export async function getAuthenticatedRequestUser(
       diagnostics,
     };
   }
-
-  const requestClient = createClient(supabaseUrl, anonKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-    global: {
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  });
 
   let result: Awaited<ReturnType<typeof requestClient.auth.getUser>>;
   try {

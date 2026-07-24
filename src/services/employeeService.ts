@@ -35,25 +35,23 @@ export async function createEmployee({
   email,
   bio,
 }: CreateEmployeeInput): Promise<Employee> {
-  const { data, error } = await supabase
-    .from("employees")
-    .insert({
-      salon_id: salonId,
-      full_name: fullName,
-      display_name: displayName,
-      position,
-      phone,
-      email,
-      bio,
-    })
-    .select(employeeSelect)
-    .single();
-
-  if (error) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("UNAUTHORIZED");
+  const response = await fetch("/api/employees", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ salonId, fullName, displayName, position, phone, email, bio }),
+  });
+  const body = await response.json().catch(() => null) as
+    | { success: true; employee: Employee }
+    | { success: false; code?: string; message?: string }
+    | null;
+  if (!response.ok || !body?.success) {
+    const error = new Error(body && "message" in body ? body.message : "EMPLOYEE_CREATE_FAILED");
+    error.name = body && "code" in body && body.code ? body.code : "EMPLOYEE_CREATE_FAILED";
     throw error;
   }
-
-  return data as Employee;
+  return body.employee;
 }
 
 export async function getSalonEmployees(

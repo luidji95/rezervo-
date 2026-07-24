@@ -9,6 +9,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { addDaysToDateKey } from "@/lib/salonDateTime";
 import { statisticsPeriodInputSchema, statisticsQuerySchema } from "@/features/statistics/schemas/statisticsSchema";
 import type { StatisticsResponse } from "@/features/statistics/types";
+import { EntitlementError, requireSalonEntitlement } from "@/features/billing/services/entitlementService";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +90,15 @@ export async function GET(request: Request) {
 
   if (!isOwner) {
     return errorResponse("FORBIDDEN", "Nemate dozvolu za statistiku salona.", 403);
+  }
+
+  try {
+    await requireSalonEntitlement({ authenticatedUserId: authResult.user.id, salonId: salon.id }, "canUseStatistics");
+  } catch (error) {
+    if (error instanceof EntitlementError && error.code === "ENTITLEMENT_REQUIRED") {
+      return errorResponse("ENTITLEMENT_REQUIRED", "Statistika nije uključena u trenutni paket.", 403);
+    }
+    return errorResponse("STATISTICS_LOAD_FAILED", "Statistiku trenutno nije moguće učitati.", 500);
   }
 
   const timeZone = salon.timezone || "Europe/Belgrade";

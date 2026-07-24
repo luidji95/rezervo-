@@ -82,7 +82,11 @@ export function AddEmployeeModal({
       await onCreated();
     } catch (error) {
       console.error("Failed to create employee:", error);
-      setFormError("Zaposlenog trenutno nije moguće sačuvati. Pokušajte ponovo.");
+      setFormError(
+        error instanceof Error && error.name === "EMPLOYEE_LIMIT_REACHED"
+          ? "Dostigli ste maksimalan broj zaposlenih za trenutni paket."
+          : "Zaposlenog trenutno nije moguće sačuvati. Pokušajte ponovo.",
+      );
     }
   }
 

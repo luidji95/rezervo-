@@ -7,6 +7,7 @@ import type {
 export type StatisticsErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
+  | "ENTITLEMENT_REQUIRED"
   | "INVALID_PERIOD"
   | "SALON_NOT_FOUND"
   | "STATISTICS_LOAD_FAILED";

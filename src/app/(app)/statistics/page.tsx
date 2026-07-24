@@ -14,12 +14,15 @@ import { StatisticsSkeleton } from "@/features/statistics/components/StatisticsS
 import { StatisticsTrendChart } from "@/features/statistics/components/StatisticsTrendChart";
 import { TopServicesTable } from "@/features/statistics/components/TopServicesTable";
 import { useStatistics } from "@/features/statistics/hooks/useStatistics";
+import { FeatureGate } from "@/features/billing/components/FeatureGate";
+import { UpgradeRequired } from "@/features/billing/components/UpgradeRequired";
 
 import "./statistics.css";
 
 const ERROR_MESSAGES = {
   UNAUTHORIZED: "Sesija nije dostupna. Prijavite se ponovo.",
   FORBIDDEN: "Nemate pristup statistici salona.",
+  ENTITLEMENT_REQUIRED: "Statistika nije uključena u trenutni paket.",
   INVALID_PERIOD: "Izabrani period nije ispravan. Izaberite drugi period.",
   SALON_NOT_FOUND: "Salon nije pronađen.",
   STATISTICS_LOAD_FAILED: "Statistiku trenutno nije moguće učitati.",
@@ -32,6 +35,7 @@ function StatisticsPageContent() {
   if (!currentSalon) return null;
 
   return (
+    <FeatureGate entitlement="canUseStatistics" fallback={<main className="statistics-page"><UpgradeRequired message="Statistika je dostupna u Pro paketu." /></main>}>
     <main className="statistics-page">
       <StatisticsHeader
         salonName={currentSalon.name}
@@ -65,6 +69,7 @@ function StatisticsPageContent() {
         </div>
       )}
     </main>
+    </FeatureGate>
   );
 }
 

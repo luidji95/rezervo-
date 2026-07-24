@@ -24,9 +24,11 @@ type PlanRow = {
   whatsapp_enabled: boolean;
   instagram_enabled: boolean;
   marketing_enabled: boolean;
+  sms_reminders_enabled: boolean;
   max_employees: number | null;
   max_monthly_bookings: number | null;
   max_ai_messages: number | null;
+  max_monthly_reminders: number | null;
 };
 
 type SubscriptionRow = {
@@ -80,7 +82,8 @@ export async function resolveSalonEntitlements({
     .select(`status, trial_ends_at, current_period_ends_at, plans!inner(
       name, slug, analytics_enabled, ai_receptionist_enabled, whatsapp_enabled,
       instagram_enabled, marketing_enabled, max_employees,
-      max_monthly_bookings, max_ai_messages
+      max_monthly_bookings, max_ai_messages, sms_reminders_enabled,
+      max_monthly_reminders
     )`)
     .eq("salon_id", salonId)
     .maybeSingle();
@@ -101,9 +104,11 @@ export async function resolveSalonEntitlements({
     canUseWhatsApp: plan.whatsapp_enabled,
     canUseInstagram: plan.instagram_enabled,
     canUseMarketing: plan.marketing_enabled,
+    canUseSmsReminders: plan.sms_reminders_enabled,
     maxEmployees: plan.max_employees,
     maxMonthlyBookings: plan.max_monthly_bookings,
     maxAiMessages: plan.max_ai_messages,
+    maxMonthlyReminders: plan.max_monthly_reminders,
     trialEndsAt: row.trial_ends_at,
     currentPeriodEndsAt: row.current_period_ends_at,
   };
@@ -111,10 +116,9 @@ export async function resolveSalonEntitlements({
 
 export async function requireSalonEntitlement(
   input: { authenticatedUserId: string; salonId: string },
-  entitlement: "canUseStatistics",
+  entitlement: "canUseStatistics" | "canUseSmsReminders",
 ) {
   const entitlements = await resolveSalonEntitlements(input);
   if (!entitlements[entitlement]) throw new EntitlementError("ENTITLEMENT_REQUIRED");
   return entitlements;
 }
-

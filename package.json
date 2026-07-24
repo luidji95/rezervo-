@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:reminders": "node --experimental-strip-types --test src/features/reminders/services/reminderEligibilityService.test.ts",
     "seed:dry-run": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts dry-run",
     "seed:small": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts seed --profile small",
     "seed:medium": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts seed --profile medium",

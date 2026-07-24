@@ -12,9 +12,11 @@ export type SalonEntitlements = {
   canUseWhatsApp: boolean;
   canUseInstagram: boolean;
   canUseMarketing: boolean;
+  canUseSmsReminders: boolean;
   maxEmployees: number | null;
   maxMonthlyBookings: number | null;
   maxAiMessages: number | null;
+  maxMonthlyReminders: number | null;
   trialEndsAt: string | null;
   currentPeriodEndsAt: string | null;
 };
@@ -24,4 +26,3 @@ export type BooleanSalonEntitlement = {
     ? Key
     : never;
 }[keyof SalonEntitlements];
-

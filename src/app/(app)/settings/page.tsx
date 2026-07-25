@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   CalendarX,
+  BellRing,
   Clock,
   CreditCard,
   Scissors,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { BillingPreview } from "@/features/billing/components/BillingPreview";
+import { ReminderSettingsPanel } from "@/features/reminders/components/ReminderSettingsPanel";
 import ClosuresManager from "@/features/settings/closures/ClosureManager";
 import GeneralManager from "@/features/settings/general/GeneralManager";
 import TeamManager from "@/features/settings/team/TeamManager";
@@ -26,6 +28,7 @@ export type SettingsTabId =
   | "services"
   | "team"
   | "ai"
+  | "reminders"
   | "billing";
 
 const SETTINGS_TABS = [
@@ -35,6 +38,7 @@ const SETTINGS_TABS = [
   { id: "services", label: "Usluge i cene", icon: Scissors },
   { id: "team", label: "Tim i dozvole", icon: Users },
   { id: "ai", label: "AI Receptionist", icon: Sparkles },
+  { id: "reminders", label: "Podsetnici", icon: BellRing },
   { id: "billing", label: "Plaćanje i plan", icon: CreditCard },
 ] satisfies {
   id: SettingsTabId;
@@ -100,6 +104,7 @@ export default function SettingsPage() {
         {activeTab === "ai" && (
           <SettingsPlaceholder title="AI Receptionist" description="Podešavanja AI recepcionera dolaze kasnije." />
         )}
+        {activeTab === "reminders" && <ReminderSettingsPanel />}
         {activeTab === "billing" && <BillingPreview />}
       </main>
     </div>

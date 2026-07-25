@@ -20,6 +20,7 @@ export type ReminderClaim = {
   salonTimezone: string;
   attemptCount: number;
   leaseExpiresAt: string;
+  claimToken: string;
 };
 
 export type ReminderUsage = {
@@ -30,4 +31,3 @@ export type ReminderUsage = {
   maxMonthlyReminders: number | null;
   remaining: number | null;
 };
-

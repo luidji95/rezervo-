@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildReminderCronFailureLog,
+  getReminderWorkerReadiness,
   handleReminderCronRequest,
   parseReminderCronBatchSize,
   verifyReminderCronBearerAuth,
 } from "./reminderCronEndpointCore.ts";
+import { ReminderWorkerStageError } from "./reminderWorkerDiagnostics.ts";
 
 const secret = "cron-test-secret";
 
@@ -74,6 +77,19 @@ test("batch parsing defaults and clamps without throwing", () => {
   assert.equal(parseReminderCronBatchSize("7"), 7);
 });
 
+test("readiness distinguishes missing service-role and Infobip configuration", () => {
+  assert.deepEqual(getReminderWorkerReadiness({
+    supabaseUrl: "https://project.supabase.co",
+    infobipBaseUrl: "https://provider.invalid",
+    infobipApiKey: "configured",
+    infobipSender: "Rezervo",
+  }), { supabaseConfigured: false, infobipConfigured: true, ready: false });
+  assert.deepEqual(getReminderWorkerReadiness({
+    supabaseUrl: "https://project.supabase.co",
+    serviceRoleKey: "configured",
+  }), { supabaseConfigured: true, infobipConfigured: false, ready: false });
+});
+
 test("configuration and transient worker errors are controlled", async () => {
   const base = {
     authorization: `Bearer ${secret}`,
@@ -81,12 +97,58 @@ test("configuration and transient worker errors are controlled", async () => {
     runtimeEnabled: true,
     runWorker: async () => workerResult(),
   };
-  assert.equal((await handleReminderCronRequest({ ...base, providerAndDatabaseConfigured: false })).statusCode, 503);
-  assert.equal((await handleReminderCronRequest({
+  const configuration = await handleReminderCronRequest({ ...base, providerAndDatabaseConfigured: false, runId: "run-config" });
+  assert.equal(configuration.statusCode, 503);
+  assert.equal(configuration.diagnostic?.stage, "configuration");
+  const failed = await handleReminderCronRequest({
     ...base,
     providerAndDatabaseConfigured: true,
-    runWorker: async () => { throw new Error("sensitive stack"); },
-  })).statusCode, 500);
+    runId: "run-failed",
+    runWorker: async () => {
+      throw new ReminderWorkerStageError({
+        stage: "claim_rpc",
+        code: "PGRST202",
+        name: "SupabaseRpcError",
+        safeMessage: "Reminder claim RPC could not be executed",
+      });
+    },
+  });
+  assert.equal(failed.statusCode, 500);
+  assert.deepEqual(failed.body, { status: "error", code: "REMINDER_WORKER_FAILED", runId: "run-failed" });
+  assert.equal(failed.diagnostic?.stage, "claim_rpc");
+  assert.equal(failed.diagnostic?.code, "PGRST202");
+});
+
+test("HTTP body excludes diagnostics while server result keeps safe log fields", async () => {
+  const providerSecret = "provider-secret";
+  const result = await handleReminderCronRequest({
+    authorization: `Bearer ${secret}`,
+    configuredSecret: secret,
+    runtimeEnabled: true,
+    providerAndDatabaseConfigured: true,
+    runId: "safe-run-id",
+    sensitiveValues: [providerSecret],
+    runWorker: async () => { throw new Error(`failed with ${providerSecret} for +381641234567`); },
+  });
+  assert.deepEqual(result.body, {
+    status: "error",
+    code: "REMINDER_WORKER_FAILED",
+    runId: "safe-run-id",
+  });
+  assert.equal(result.diagnostic?.stage, "unknown");
+  assert.doesNotMatch(JSON.stringify(result.diagnostic), /provider-secret|\+381641234567/);
+  assert.match(result.diagnostic?.safeMessage ?? "", /\[REDACTED\]|\*{5}/);
+
+  const log = buildReminderCronFailureLog({
+    runId: "safe-run-id",
+    statusCode: result.statusCode,
+    diagnostic: result.diagnostic,
+    durationMs: 12,
+  });
+  assert.equal(log.runId, "safe-run-id");
+  assert.equal(log.stage, "unknown");
+  assert.equal(log.errorCode, "REMINDER_WORKER_FAILED");
+  assert.doesNotMatch(JSON.stringify(log), /provider-secret|\+381641234567/);
 });
 
 test("unauthorized requests never call the worker or expose secrets", async () => {

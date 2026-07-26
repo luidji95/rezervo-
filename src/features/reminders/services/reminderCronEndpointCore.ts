@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
 import type { ReminderWorkerRunResult } from "./reminderWorkerCore";
+import { normalizeWorkerError, type SafeWorkerError } from "./reminderWorkerDiagnostics.ts";
 
 const DEFAULT_BATCH_SIZE = 5;
 const MIN_BATCH_SIZE = 1;
@@ -19,8 +20,51 @@ export type ReminderCronResponse = {
 
 export type ReminderCronEndpointResult = {
   statusCode: 200 | 401 | 500 | 503;
-  body: ReminderCronResponse | { status: "error"; code: string };
+  body: ReminderCronResponse | { status: "error"; code: string; runId?: string };
+  diagnostic?: SafeWorkerError;
 };
+
+export type ReminderWorkerReadiness = {
+  supabaseConfigured: boolean;
+  infobipConfigured: boolean;
+  ready: boolean;
+};
+
+export function getReminderWorkerReadiness(environment: {
+  supabaseUrl?: string;
+  serviceRoleKey?: string;
+  infobipBaseUrl?: string;
+  infobipApiKey?: string;
+  infobipSender?: string;
+}): ReminderWorkerReadiness {
+  const supabaseConfigured = Boolean(environment.supabaseUrl?.trim() && environment.serviceRoleKey?.trim());
+  const infobipConfigured = Boolean(
+    environment.infobipBaseUrl?.trim()
+      && environment.infobipApiKey?.trim()
+      && environment.infobipSender?.trim(),
+  );
+  return { supabaseConfigured, infobipConfigured, ready: supabaseConfigured && infobipConfigured };
+}
+
+export function buildReminderCronFailureLog(input: {
+  runId: string;
+  statusCode: number;
+  diagnostic?: SafeWorkerError;
+  durationMs: number;
+  readiness?: ReminderWorkerReadiness;
+}) {
+  return {
+    event: "reminder_cron_failed",
+    runId: input.runId,
+    statusCode: input.statusCode,
+    stage: input.diagnostic?.stage ?? "unknown",
+    errorCode: input.diagnostic?.code ?? "REMINDER_WORKER_FAILED",
+    errorName: input.diagnostic?.name ?? "UnknownWorkerError",
+    safeMessage: input.diagnostic?.safeMessage ?? "Reminder worker failed unexpectedly.",
+    durationMs: input.durationMs,
+    ...(input.readiness ? { readiness: input.readiness } : {}),
+  };
+}
 
 function timingSafeStringEqual(left: string, right: string) {
   const leftBuffer = Buffer.from(left);
@@ -50,6 +94,8 @@ export async function handleReminderCronRequest(input: {
   runtimeEnabled: boolean;
   batchSizeValue?: string;
   providerAndDatabaseConfigured: boolean;
+  runId?: string;
+  sensitiveValues?: string[];
   runWorker: (batchSize: number) => Promise<ReminderWorkerRunResult>;
 }): Promise<ReminderCronEndpointResult> {
   if (!verifyReminderCronBearerAuth(input)) {
@@ -66,7 +112,13 @@ export async function handleReminderCronRequest(input: {
   if (!input.providerAndDatabaseConfigured) {
     return {
       statusCode: 503,
-      body: { status: "error", code: "REMINDER_WORKER_NOT_CONFIGURED" },
+      body: { status: "error", code: "REMINDER_WORKER_NOT_CONFIGURED", runId: input.runId },
+      diagnostic: {
+        stage: "configuration",
+        code: "REMINDER_WORKER_NOT_CONFIGURED",
+        name: "ReminderWorkerConfigurationError",
+        safeMessage: "Required reminder worker server configuration is missing.",
+      },
     };
   }
 
@@ -85,10 +137,11 @@ export async function handleReminderCronRequest(input: {
         skipped: result.skipped,
       },
     };
-  } catch {
+  } catch (error) {
     return {
       statusCode: 500,
-      body: { status: "error", code: "REMINDER_WORKER_FAILED" },
+      body: { status: "error", code: "REMINDER_WORKER_FAILED", runId: input.runId },
+      diagnostic: normalizeWorkerError(error, "unknown", input.sensitiveValues),
     };
   }
 }

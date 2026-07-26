@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSalon } from "@/context/SalonContext";
 import { useAuthorization } from "@/context/AuthorizationContext";
@@ -37,6 +37,18 @@ import {
   addDaysToDateKey,
   getTodayDateKey,
 } from "@/lib/salonDateTime";
+import {
+  getSalonWorkingHours,
+  WORKING_HOURS_CHANGED_EVENT,
+  WORKING_HOURS_VERSION_KEY,
+} from "@/services/workingService";
+import type { WorkingHour } from "@/types/workingHour";
+import {
+  CALENDAR_HOUR_HEIGHT,
+  calculateCalendarItemTop,
+  calculateCurrentTimeLineTop,
+  deriveCalendarVisibleRange,
+} from "@/features/calendar/calendarTimeRange";
 
 import AppointmentDetailsPanel from "./AppointmentDetailsPanel";
 import CalendarAppointmentCard from "./CalendarAppointmentCard";
@@ -55,11 +67,6 @@ import "../appointmets/appointments.css";
 // Pomoćne funkcije i konstante
 // ==========================================
 
-const HOURS = [
-  "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00",
-  "15:00", "16:00", "17:00", "18:00", "19:00", "20:00",
-];
-
 function getEmployeeDisplayName(employee: CalendarEmployee) {
   return employee.display_name || employee.full_name;
 }
@@ -74,22 +81,11 @@ function getEmployeeInitials(employee: CalendarEmployee) {
     .toUpperCase();
 }
 
-function getMinutesSinceStartOfDay(dateString: string) {
-  const date = new Date(dateString);
-  return date.getHours() * 60 + date.getMinutes();
-}
-
-function calculateAppointmentTop(startTime: string) {
-  const minutes = getMinutesSinceStartOfDay(startTime);
-  const calendarStartHour = 8;
-  return ((minutes - calendarStartHour * 60) / 60) * 112;
-}
-
 function calculateAppointmentHeight(startTime: string, endTime: string) {
   const start = new Date(startTime);
   const end = new Date(endTime);
   const diffInMinutes = (end.getTime() - start.getTime()) / 1000 / 60;
-  return (diffInMinutes / 60) * 112;
+  return (diffInMinutes / 60) * CALENDAR_HOUR_HEIGHT;
 }
 
 // ==========================================
@@ -122,6 +118,8 @@ function CalendarPageContent() {
   const [employees, setEmployees] = useState<CalendarEmployee[]>([]);
   const [services, setServices] = useState<Service[]>([]); // DODATO: Držanje usluga salona u state-u
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
+  const [workingHours, setWorkingHours] = useState<WorkingHour[]>([]);
+  const [workingHoursVersion, setWorkingHoursVersion] = useState(0);
   
   const [employeesLoading, setEmployeesLoading] = useState(false);
   const [servicesLoading, setServicesLoading] = useState(false); // DODATO: Loading za usluge
@@ -257,6 +255,33 @@ function CalendarPageContent() {
       isMounted = false;
     };
   }, [currentSalon, salonTimeZone, selectedDate]);
+
+  useEffect(() => {
+    if (!currentSalon) return;
+    let ignore = false;
+    getSalonWorkingHours(currentSalon.id)
+      .then((data) => {
+        if (!ignore) setWorkingHours(data);
+      })
+      .catch((workingHoursError) => {
+        console.error("Failed to load Calendar working hours:", workingHoursError);
+        if (!ignore) setWorkingHours([]);
+      });
+    return () => { ignore = true; };
+  }, [currentSalon, workingHoursVersion]);
+
+  useEffect(() => {
+    const refresh = () => setWorkingHoursVersion((version) => version + 1);
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === WORKING_HOURS_VERSION_KEY) refresh();
+    };
+    window.addEventListener(WORKING_HOURS_CHANGED_EVENT, refresh);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener(WORKING_HOURS_CHANGED_EVENT, refresh);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
 
   // Operativni handler za promenu statusa na klik kružića
   const handleStatusChange = async (
@@ -421,30 +446,21 @@ function CalendarPageContent() {
     return () => clearInterval(interval);
   }, []);
 
+  const visibleRange = useMemo(() => deriveCalendarVisibleRange({
+    selectedDate,
+    timeZone: salonTimeZone,
+    workingHours,
+    appointments,
+  }), [appointments, salonTimeZone, selectedDate, workingHours]);
+  const timeLineTop = calculateCurrentTimeLineTop(currentTime, selectedDate, salonTimeZone, visibleRange);
+
   if (salonLoading) return <p>Loading salon...</p>;
   if (!currentSalon) return <p>No salon selected.</p>;
-
-  function calculateTimeLineTop(time: Date) {
-    const currentHours = time.getHours();
-    const currentMinutes = time.getMinutes();
-    
-    const calendarStartHour = 8;
-    const calendarEndHour = 20;   
-    const hourHeight = 112;      
-
-    if (currentHours < calendarStartHour || currentHours >= calendarEndHour) {
-      return null;
-    }
-
-    const totalMinutesSinceStart = (currentHours - calendarStartHour) * 60 + currentMinutes;
-    return (totalMinutesSinceStart / 60) * hourHeight;
-  }
-
-  const timeLineTop = calculateTimeLineTop(currentTime);
 
   const formattedCurrentTime = currentTime.toLocaleTimeString("sr-RS", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: salonTimeZone,
   });
 
   const handlePreviousDay = () => {
@@ -601,7 +617,7 @@ function CalendarPageContent() {
                 gridTemplateColumns: `90px repeat(${employees.length}, 1fr)`,
               }}
             >
-              <div className="timezone-cell">GMT+1</div>
+              <div className="timezone-cell">{salonTimeZone}</div>
               {employees.map((employee) => (
                 <div className="employee-header-cell" key={employee.id}>
                   <span className="employee-avatar">
@@ -618,7 +634,7 @@ function CalendarPageContent() {
             </div>
 
             <div style={{ position: "relative" }}>
-              {HOURS.map((hour) => (
+              {visibleRange.hourLabels.map((hour) => (
                 <div
                   className="calendar-row"
                   key={hour}
@@ -654,7 +670,12 @@ function CalendarPageContent() {
                     {appointments
                       .filter((appointment) => appointment.employees?.id === employee.id)
                       .map((appointment) => {
-                        const top = calculateAppointmentTop(appointment.start_time);
+                        const top = calculateCalendarItemTop(
+                          appointment.start_time,
+                          selectedDate,
+                          salonTimeZone,
+                          visibleRange.startMinute,
+                        );
                         const height = calculateAppointmentHeight(appointment.start_time, appointment.end_time);
                         const isSelected = selectedAppointment?.id === appointment.id;
 

@@ -4,6 +4,16 @@ import type {
   WorkingHour,
 } from "@/types/workingHour";
 
+export const WORKING_HOURS_CHANGED_EVENT = "rezervo:working-hours-changed";
+export const WORKING_HOURS_VERSION_KEY = "rezervo:working-hours-version";
+
+function notifyWorkingHoursChanged() {
+  if (typeof window === "undefined") return;
+  const version = Date.now().toString();
+  window.localStorage.setItem(WORKING_HOURS_VERSION_KEY, version);
+  window.dispatchEvent(new CustomEvent(WORKING_HOURS_CHANGED_EVENT, { detail: { version } }));
+}
+
 export async function getSalonWorkingHours(
   salonId: string
 ): Promise<WorkingHour[]> {
@@ -94,6 +104,7 @@ export async function upsertWorkingHour(
       throw new Error(error.message);
     }
 
+    notifyWorkingHoursChanged();
     return data;
   }
 
@@ -107,5 +118,6 @@ export async function upsertWorkingHour(
     throw new Error(error.message);
   }
 
+  notifyWorkingHoursChanged();
   return data;
 }

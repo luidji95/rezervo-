@@ -3,12 +3,11 @@ import { z } from "zod";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { createPublicBookingAtomic } from "@/services/appointmentService";
 import { generateAvailableSlots } from "@/services/availabilityService";
+import { getDateKeyInTimeZone } from "@/lib/salonDateTime";
 import {
   normalizeClientEmail,
   normalizeClientPhone,
 } from "@/services/clientService";
-
-const SALON_TIMEZONE = "Europe/Belgrade";
 
 const publicCreateBookingSchema = z.object({
   salonSlug: z.string().trim().min(1),
@@ -33,25 +32,6 @@ const publicCreateBookingSchema = z.object({
       }
     }),
 });
-
-function getDateInTimeZone(date: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-
-  const year = parts.find((part) => part.type === "year")?.value;
-  const month = parts.find((part) => part.type === "month")?.value;
-  const day = parts.find((part) => part.type === "day")?.value;
-
-  if (!year || !month || !day) {
-    throw new Error("Failed to format booking date.");
-  }
-
-  return `${year}-${month}-${day}`;
-}
 
 function getPostgresErrorCode(error: unknown) {
   if (!error || typeof error !== "object" || !("code" in error)) {
@@ -84,7 +64,7 @@ export async function POST(req: Request) {
 
     const { data: salon, error: salonError } = await supabaseServer
       .from("salons")
-      .select("id, booking_enabled, online_booking_enabled, status")
+      .select("id, booking_enabled, online_booking_enabled, status, timezone")
       .eq("slug", salonSlug)
       .single();
 
@@ -177,7 +157,10 @@ export async function POST(req: Request) {
     }
 
     const appointmentStart = new Date(startTime);
-    const bookingDate = getDateInTimeZone(appointmentStart, SALON_TIMEZONE);
+    const bookingDate = getDateKeyInTimeZone(
+      appointmentStart,
+      salon.timezone || "Europe/Belgrade",
+    );
     const availability = await generateAvailableSlots(
       {
         salonId: salon.id,

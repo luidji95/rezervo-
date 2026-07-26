@@ -10,26 +10,19 @@ import {
   getTodayDateKey,
   zonedDateTimeToUtc,
 } from "@/lib/salonDateTime";
+import {
+  availabilityRangesOverlap,
+  isSlotAllowedByCurrentTime,
+} from "@/services/availabilitySlotCore";
 
 type SupabaseClientLike = typeof supabase;
-
-const MIN_NOTICE_MINUTES = 30;
 
 function combineDateAndTime(date: string, time: string, timeZone: string): Date {
   return zonedDateTimeToUtc(date, time, timeZone);
 }
 
 function addMinutes(date: Date, minutes: number): Date {
-  return new Date(date.getTime() + minutes * 60 * 1000);
-}
-
-function overlaps(
-  startA: Date,
-  endA: Date,
-  startB: Date,
-  endB: Date
-): boolean {
-  return startA < endB && endA > startB;
+  return new Date(date.getTime() + minutes * 60_000);
 }
 
 function shouldSkipPastSlot(
@@ -37,20 +30,7 @@ function shouldSkipPastSlot(
   selectedDate: string,
   timeZone: string,
 ): boolean {
-  const now = new Date();
-  const today = getTodayDateKey(timeZone, now);
-
-  if (selectedDate < today) {
-    return true;
-  }
-
-  if (selectedDate > today) {
-    return false;
-  }
-
-  const minimumBookableTime = addMinutes(now, MIN_NOTICE_MINUTES);
-
-  return slotStart < minimumBookableTime;
+  return !isSlotAllowedByCurrentTime({ slotStart, selectedDate, timeZone });
 }
 
 // =========================================================
@@ -240,23 +220,25 @@ export async function generateAvailableSlots(
       const conflictsWithBreak =
         breakStart &&
         breakEnd &&
-        overlaps(currentSlotStart, currentSlotEnd, breakStart, breakEnd);
+        availabilityRangesOverlap(
+          { start: currentSlotStart, end: currentSlotEnd },
+          { start: breakStart, end: breakEnd },
+        );
 
       const conflictsWithClosure = relevantClosures.some((closure) =>
-        overlaps(
-          currentSlotStart,
-          currentSlotEnd,
-          new Date(closure.starts_at),
-          new Date(closure.ends_at)
+        availabilityRangesOverlap(
+          { start: currentSlotStart, end: currentSlotEnd },
+          { start: new Date(closure.starts_at), end: new Date(closure.ends_at) },
         )
       );
 
       const conflictsWithAppointment = relevantAppointments.some((appointment) =>
-        overlaps(
-          currentSlotStart,
-          currentSlotEnd,
-          new Date(appointment.start_time),
-          new Date(appointment.end_time)
+        availabilityRangesOverlap(
+          { start: currentSlotStart, end: currentSlotEnd },
+          {
+            start: new Date(appointment.start_time),
+            end: new Date(appointment.end_time),
+          },
         )
       );
 

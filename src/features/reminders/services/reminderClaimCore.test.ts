@@ -76,3 +76,22 @@ test("maps a valid response without changing the claim contract", async () => {
   assert.equal(result[0].deliveryId, "delivery-id");
   assert.equal(result[0].claimToken, "claim-token");
 });
+
+test("returns an empty successful result and forwards the bounded batch contract", async () => {
+  const receivedArgs: Record<string, unknown>[] = [];
+  const result = await claimDueAppointmentRemindersCore({
+    client: {
+      rpc: async (_name, args) => {
+        receivedArgs.push(args);
+        return { data: [], error: null };
+      },
+    },
+    batchSize: 1,
+    now: new Date("2026-07-26T10:00:00.000Z"),
+    leaseMinutes: 10,
+  });
+
+  assert.deepEqual(result, []);
+  assert.equal(receivedArgs[0]?.p_batch_size, 1);
+  assert.equal(receivedArgs[0]?.p_lease_minutes, 10);
+});

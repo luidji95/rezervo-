@@ -15,6 +15,7 @@ import {
 
 import type { Employee } from "@/types/employee";
 import type { Closure } from "@/types/closure";
+import { useEntitlements } from "@/features/billing/hooks/useEntitlements";
 
 import {
   closureSchema,
@@ -43,6 +44,8 @@ function formatDateTime(value: string) {
 
 export default function ClosuresManager() {
   const { currentSalon, salonLoading } = useSalon();
+  const { entitlements, loading: entitlementLoading } = useEntitlements();
+  const canManage = entitlements?.effectiveCapabilities.canManageBusinessData === true;
 
   const [closures, setClosures] = useState<Closure[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -135,6 +138,7 @@ export default function ClosuresManager() {
             <button
               type="button"
               className="btn-save"
+              disabled={entitlementLoading || !canManage}
               onClick={() => setIsAdding(true)}
             >
               <Plus size={16} />
@@ -202,6 +206,7 @@ export default function ClosuresManager() {
                     type="button"
                     className="closure-delete-btn"
                     onClick={() => handleDeleteClosure(closure.id)}
+                    disabled={entitlementLoading || !canManage}
                   >
                     <Trash2 size={17} />
                   </button>

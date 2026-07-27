@@ -6,6 +6,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useSalon } from "@/context/SalonContext";
+import { useEntitlements } from "@/features/billing/hooks/useEntitlements";
 import {
   getEmployeeWorkingHours,
   getSalonWorkingHours,
@@ -71,6 +72,8 @@ function formatClosureTime(closure: Closure) {
 
 export default function WorkingHoursManager() {
   const { currentSalon, salonLoading } = useSalon();
+  const { entitlements, loading: entitlementLoading } = useEntitlements();
+  const canManage = entitlements?.effectiveCapabilities.canManageBusinessData === true;
 
   const [salonWorkingHours, setSalonWorkingHours] = useState<WorkingHour[]>([]);
   const [employeeWorkingHours, setEmployeeWorkingHours] = useState<WorkingHour[]>([]);
@@ -289,6 +292,7 @@ export default function WorkingHoursManager() {
                   existingHour={displayedHour}
                   isUsingSalonDefault={isUsingSalonDefault}
                   onSaved={refreshWorkingHours}
+                  disabled={entitlementLoading || !canManage}
                 />
               );
             })}
@@ -394,6 +398,7 @@ type WorkingDayRowProps = {
   existingHour: WorkingHour | undefined;
   isUsingSalonDefault: boolean;
   onSaved: () => Promise<void>;
+  disabled: boolean;
 };
 
 function WorkingDayRow({
@@ -404,6 +409,7 @@ function WorkingDayRow({
   existingHour,
   isUsingSalonDefault,
   onSaved,
+  disabled,
 }: WorkingDayRowProps) {
   const {
     register,
@@ -496,7 +502,7 @@ function WorkingDayRow({
       <button
         type="submit"
         className="working-hours-save-btn"
-        disabled={isSubmitting}
+        disabled={disabled || isSubmitting}
       >
         {isSubmitting ? "Čuvanje..." : "Sačuvaj"}
       </button>

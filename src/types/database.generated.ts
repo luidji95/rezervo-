@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -1975,6 +1975,36 @@ export type Database = {
           retained_clients: number
         }[]
       }
+      create_closure_v1: {
+        Args: {
+          p_employee_id: string
+          p_ends_at: string
+          p_is_full_day: boolean
+          p_reason: string
+          p_salon_id: string
+          p_starts_at: string
+          p_title: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          employee_id: string | null
+          ends_at: string
+          id: string
+          is_full_day: boolean
+          reason: string | null
+          salon_id: string
+          starts_at: string
+          title: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "closures"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_employee_appointment_atomic: {
         Args: {
           p_customer_email: string
@@ -2223,6 +2253,7 @@ export type Database = {
           mode: string
         }[]
       }
+      delete_closure_v1: { Args: { p_closure_id: string }; Returns: string }
       delete_employee_safely_v1: {
         Args: { p_employee_id: string }
         Returns: string
@@ -2479,6 +2510,48 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      set_salon_onboarding_state_v1: {
+        Args: { p_completed: boolean; p_salon_id: string; p_step: number }
+        Returns: {
+          address_line: string | null
+          booking_enabled: boolean
+          business_type: Database["public"]["Enums"]["business_type"]
+          city: string | null
+          country: string
+          cover_image_url: string | null
+          created_at: string
+          default_currency: string
+          description: string | null
+          email: string | null
+          facebook_url: string | null
+          id: string
+          instagram_url: string | null
+          latitude: number | null
+          logo_url: string | null
+          longitude: number | null
+          name: string
+          onboarding_completed: boolean
+          onboarding_step: number
+          online_booking_enabled: boolean
+          owner_id: string
+          phone: string | null
+          postal_code: string | null
+          public_booking_url: string | null
+          short_description: string | null
+          slug: string
+          status: Database["public"]["Enums"]["salon_status"]
+          tiktok_url: string | null
+          timezone: string
+          updated_at: string
+          website_url: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "salons"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       set_service_active_state_v1: {
         Args: { p_is_active: boolean; p_service_id: string }
         Returns: {
@@ -2578,6 +2651,59 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      update_onboarding_salon_v1: {
+        Args: {
+          p_address_line?: string
+          p_business_type: Database["public"]["Enums"]["business_type"]
+          p_description?: string
+          p_email?: string
+          p_instagram_url?: string
+          p_name: string
+          p_phone?: string
+          p_salon_id: string
+          p_slug: string
+          p_website_url?: string
+        }
+        Returns: {
+          address_line: string | null
+          booking_enabled: boolean
+          business_type: Database["public"]["Enums"]["business_type"]
+          city: string | null
+          country: string
+          cover_image_url: string | null
+          created_at: string
+          default_currency: string
+          description: string | null
+          email: string | null
+          facebook_url: string | null
+          id: string
+          instagram_url: string | null
+          latitude: number | null
+          logo_url: string | null
+          longitude: number | null
+          name: string
+          onboarding_completed: boolean
+          onboarding_step: number
+          online_booking_enabled: boolean
+          owner_id: string
+          phone: string | null
+          postal_code: string | null
+          public_booking_url: string | null
+          short_description: string | null
+          slug: string
+          status: Database["public"]["Enums"]["salon_status"]
+          tiktok_url: string | null
+          timezone: string
+          updated_at: string
+          website_url: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "salons"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       update_owner_appointment_details_v1: {
         Args: {
           p_appointment_id: string
@@ -2647,6 +2773,58 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "clients"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_salon_profile_v1: {
+        Args: {
+          p_address_line?: string
+          p_city?: string
+          p_description?: string
+          p_email?: string
+          p_instagram_url?: string
+          p_name: string
+          p_phone?: string
+          p_salon_id: string
+          p_website_url?: string
+        }
+        Returns: {
+          address_line: string | null
+          booking_enabled: boolean
+          business_type: Database["public"]["Enums"]["business_type"]
+          city: string | null
+          country: string
+          cover_image_url: string | null
+          created_at: string
+          default_currency: string
+          description: string | null
+          email: string | null
+          facebook_url: string | null
+          id: string
+          instagram_url: string | null
+          latitude: number | null
+          logo_url: string | null
+          longitude: number | null
+          name: string
+          onboarding_completed: boolean
+          onboarding_step: number
+          online_booking_enabled: boolean
+          owner_id: string
+          phone: string | null
+          postal_code: string | null
+          public_booking_url: string | null
+          short_description: string | null
+          slug: string
+          status: Database["public"]["Enums"]["salon_status"]
+          tiktok_url: string | null
+          timezone: string
+          updated_at: string
+          website_url: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "salons"
           isOneToOne: true
           isSetofReturn: false
         }
@@ -2739,6 +2917,37 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "employee_services"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      upsert_working_hour_v1: {
+        Args: {
+          p_break_ends_at?: string
+          p_break_starts_at?: string
+          p_closes_at: string
+          p_day_of_week: number
+          p_employee_id: string
+          p_is_working_day?: boolean
+          p_opens_at: string
+          p_salon_id: string
+        }
+        Returns: {
+          break_ends_at: string | null
+          break_starts_at: string | null
+          closes_at: string
+          created_at: string
+          day_of_week: number
+          employee_id: string | null
+          id: string
+          is_working_day: boolean
+          opens_at: string
+          salon_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "working_hours"
           isOneToOne: true
           isSetofReturn: false
         }

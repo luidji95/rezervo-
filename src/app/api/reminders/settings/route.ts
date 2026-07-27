@@ -59,6 +59,9 @@ export async function PATCH(request: Request) {
   try {
     if (!await canManageSalonReminders(auth.user.id, salonId)) return response("FORBIDDEN", 403);
     const entitlements = await resolveSalonEntitlements({ authenticatedUserId: auth.user.id, salonId });
+    if (!entitlements.effectiveCapabilities.canManageBusinessData) {
+      return response("SALON_WRITE_ACCESS_REQUIRED", 403);
+    }
     const policyError = getReminderSettingsPolicyError({
       enabled: parsed.data.enabled,
       canUseSmsReminders: entitlements.effectiveCapabilities.canUseSmsReminders,

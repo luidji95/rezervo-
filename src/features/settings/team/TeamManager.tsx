@@ -13,6 +13,7 @@ import {
 import { useSalon } from "@/context/SalonContext";
 import { useAuthorization } from "@/context/AuthorizationContext";
 import { useAuth } from "@/context/AuthContext";
+import { useEntitlements } from "@/features/billing/hooks/useEntitlements";
 import {
   getSalonEmployees,
   linkEmployeeToCurrentOwner,
@@ -100,6 +101,8 @@ export default function TeamManager() {
   const { currentSalon, salonLoading } = useSalon();
   const { user, loading: authLoading } = useAuth();
   const { currentRole, loading: authorizationLoading } = useAuthorization();
+  const { entitlements, loading: entitlementLoading } = useEntitlements();
+  const canManage = entitlements?.effectiveCapabilities.canManageBusinessData === true;
   const [members, setMembers] = useState<SalonMember[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [profiles, setProfiles] = useState<TeamProfile[]>([]);
@@ -462,7 +465,7 @@ export default function TeamManager() {
                       <button
                         type="button"
                         className="settings-primary-btn team-invite-btn"
-                        disabled={!invitationStatusesLoaded}
+                        disabled={!invitationStatusesLoaded || entitlementLoading || !canManage}
                         onClick={() => {
                           setInviteMessage(null);
                           setEmployeeToInvite(employee);

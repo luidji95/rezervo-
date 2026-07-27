@@ -18,30 +18,27 @@ export async function getSalonClosures(salonId: string): Promise<Closure[]> {
 export async function createClosure(
   payload: CreateClosurePayload
 ): Promise<Closure> {
-  const { data, error } = await supabase
-    .from("closures")
-    .insert({
-      salon_id: payload.salon_id,
-      employee_id: payload.employee_id ?? null,
-      title: payload.title,
-      reason: payload.reason ?? null,
-      starts_at: payload.starts_at,
-      ends_at: payload.ends_at,
-      is_full_day: payload.is_full_day,
-      created_by: payload.created_by ?? null,
-    })
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc("create_closure_v1", {
+    p_salon_id: payload.salon_id,
+    p_employee_id: payload.employee_id ?? null,
+    p_title: payload.title,
+    p_reason: payload.reason ?? null,
+    p_starts_at: payload.starts_at,
+    p_ends_at: payload.ends_at,
+    p_is_full_day: payload.is_full_day,
+  });
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return data;
+  return data as Closure;
 }
 
 export async function deleteClosure(id: string): Promise<void> {
-  const { error } = await supabase.from("closures").delete().eq("id", id);
+  const { error } = await supabase.rpc("delete_closure_v1", {
+    p_closure_id: id,
+  });
 
   if (error) {
     throw new Error(error.message);

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getAuthenticatedRequestUser } from "@/lib/server/requestAuth";
 import { emailSchema } from "@/lib/validation/commonSchemas";
+import { resolveSalonEntitlements } from "@/features/billing/services/entitlementService";
 
 const inviteEmployeeSchema = z
   .object({
@@ -23,6 +24,7 @@ type InviteErrorCode =
   | "ALREADY_INVITED"
   | "ALREADY_MEMBER"
   | "EMAIL_ALREADY_USED"
+  | "SALON_WRITE_ACCESS_REQUIRED"
   | "INVITE_FAILED";
 
 function errorResponse(
@@ -120,6 +122,18 @@ export async function POST(request: Request) {
       return errorResponse(
         "FORBIDDEN",
         "Samo vlasnik salona može poslati poziv.",
+        403,
+      );
+    }
+
+    const entitlements = await resolveSalonEntitlements({
+      authenticatedUserId: caller.id,
+      salonId,
+    });
+    if (!entitlements.effectiveCapabilities.canManageBusinessData) {
+      return errorResponse(
+        "SALON_WRITE_ACCESS_REQUIRED",
+        "VaÅ¡ nalog trenutno ima pristup samo za pregled.",
         403,
       );
     }

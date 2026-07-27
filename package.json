@@ -35,6 +35,7 @@
     "test:appointment-mutation-ui": "node --experimental-strip-types --test src/features/appointments/services/appointmentMutationError.test.ts",
     "test:business-data": "docker exec -i supabase_db_rezervo psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/tests/business_data_mutation_contract.sql",
     "test:business-data-ui": "node --experimental-strip-types --test src/features/business-data/services/businessDataMutationError.test.ts",
+    "test:salon-write-access": "docker exec -i supabase_db_rezervo psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/tests/salon_settings_mutation_contract.sql",
     "test:plan-catalog": "node --experimental-strip-types --test src/features/billing/services/planCatalog.test.ts",
     "seed:dry-run": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts dry-run",
     "seed:small": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts seed --profile small",

@@ -174,12 +174,18 @@ export async function saveOnboardingSalon({
   };
 
   if (salonId) {
-    const { data, error } = await supabase
-      .from("salons")
-      .update(payload)
-      .eq("id", salonId)
-      .select(ONBOARDING_SALON_SELECT)
-      .single();
+    const { data, error } = await supabase.rpc("update_onboarding_salon_v1", {
+      p_salon_id: salonId,
+      p_name: name,
+      p_slug: slug,
+      p_business_type: businessType,
+      p_phone: phone || null,
+      p_email: email || null,
+      p_address_line: addressLine || null,
+      p_website_url: websiteUrl || null,
+      p_instagram_url: instagramUrl || null,
+      p_description: description || null,
+    });
 
     if (error) {
       throw error;
@@ -217,15 +223,9 @@ export async function saveOnboardingSalon({
 }
 
 export async function completeOnboardingSetup(salonId: string) {
-  const { data, error } = await supabase
-    .from("salons")
-    .update({
-      onboarding_completed: true,
-      onboarding_step: 5,
-    })
-    .eq("id", salonId)
-    .select(ONBOARDING_SALON_SELECT)
-    .single();
+  const { data, error } = await supabase.rpc("set_salon_onboarding_state_v1", {
+    p_salon_id: salonId, p_completed: true, p_step: 5,
+  });
 
   if (error) {
     throw error;
@@ -238,15 +238,9 @@ export async function updateOnboardingProgress(
   salonId: string,
   onboardingStep: number
 ) {
-  const { data, error } = await supabase
-    .from("salons")
-    .update({
-      onboarding_completed: false,
-      onboarding_step: onboardingStep,
-    })
-    .eq("id", salonId)
-    .select(ONBOARDING_SALON_SELECT)
-    .single();
+  const { data, error } = await supabase.rpc("set_salon_onboarding_state_v1", {
+    p_salon_id: salonId, p_completed: false, p_step: onboardingStep,
+  });
 
   if (error) {
     throw error;
@@ -310,21 +304,11 @@ export async function updateCurrentSalon({
   addressLine,
   description,
 }: UpdateSalonInput) {
-  const { data, error } = await supabase
-    .from("salons")
-    .update({
-      name,
-      phone,
-      email,
-      website_url: websiteUrl || null,
-      instagram_url: instagramUrl || null,
-      city: city || null,
-      address_line: addressLine,
-      description: description || null,
-    })
-    .eq("id", salonId)
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc("update_salon_profile_v1", {
+    p_salon_id: salonId, p_name: name, p_phone: phone, p_email: email,
+    p_website_url: websiteUrl || null, p_instagram_url: instagramUrl || null,
+    p_city: city || null, p_address_line: addressLine, p_description: description || null,
+  });
 
   if (error) {
     throw error;

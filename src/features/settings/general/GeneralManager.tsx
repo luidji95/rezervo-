@@ -11,6 +11,7 @@ import { updateCurrentSalon } from "@/services/salonService";
 import { getSalonWorkingHours } from "@/services/workingService";
 import type { WorkingHour } from "@/types/workingHour";
 import { generalSchema, type GeneralFormData } from "./generalSchema";
+import { useEntitlements } from "@/features/billing/hooks/useEntitlements";
 
 type Salon = NonNullable<ReturnType<typeof useSalon>["currentSalon"]>;
 
@@ -42,6 +43,8 @@ export default function GeneralManager({
   onChangeTab?: (tab: "working-hours") => void;
 }) {
   const { currentSalon, salonLoading, refetchSalon } = useSalon();
+  const { entitlements, loading: entitlementLoading } = useEntitlements();
+  const canManage = entitlements?.effectiveCapabilities.canManageBusinessData === true;
 
   const [isEditing, setIsEditing] = useState(false);
   const [message, setMessage] = useState("");
@@ -187,6 +190,7 @@ useEffect(() => {
                 type="button"
                 className="settings-secondary-btn"
                 onClick={() => setIsEditing(true)}
+                disabled={entitlementLoading || !canManage}
               >
                 Izmeni
               </button>
@@ -248,6 +252,7 @@ useEffect(() => {
             </form>
           )}
 
+          {!entitlementLoading && !canManage && <p className="card-sub">PodeÅ¡avanja su dostupna samo za pregled dok paket nije aktivan.</p>}
           {message && <p className="settings-save-message standalone">{message}</p>}
         </section>
 

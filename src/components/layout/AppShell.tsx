@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import NotificationBell from "@/components/layout/NotificationBell";
+import { useEntitlements } from "@/features/billing/hooks/useEntitlements";
 import { useAuthorization } from "@/context/AuthorizationContext";
 import {
   hasPermission,
@@ -114,6 +115,8 @@ export default function AppShell({ children }: AppShellProps) {
     loading: authorizationLoading,
   } = useAuthorization();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const { entitlements, loading: entitlementsLoading } = useEntitlements();
+  const businessReadOnly = !entitlementsLoading && entitlements?.isReadOnly === true;
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
 
@@ -311,7 +314,15 @@ export default function AppShell({ children }: AppShellProps) {
           </div>
         </header>
 
-        <main className="page-content">{children}</main>
+        <main className="page-content">
+          {businessReadOnly && (
+            <div className="subscription-read-only-banner" role="status">
+              <span>VaÅ¡ nalog trenutno ima pristup samo za pregled. Aktivirajte paket da biste menjali podatke salona.</span>
+              <Link href="/settings?tab=billing">Pogledaj paket</Link>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
     </div>
   );

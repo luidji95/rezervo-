@@ -68,56 +68,21 @@ export async function getAllWorkingHoursForSalon(
 export async function upsertWorkingHour(
   payload: CreateWorkingHourPayload
 ): Promise<WorkingHour> {
-  let existingQuery = supabase
-    .from("working_hours")
-    .select("id")
-    .eq("salon_id", payload.salon_id)
-    .eq("day_of_week", payload.day_of_week);
-
-  if (payload.employee_id) {
-    existingQuery = existingQuery.eq("employee_id", payload.employee_id);
-  } else {
-    existingQuery = existingQuery.is("employee_id", null);
-  }
-
-  const { data: existing, error: existingError } = await existingQuery.maybeSingle();
-
-  if (existingError) {
-    throw new Error(existingError.message);
-  }
-
-  if (existing?.id) {
-    const { data, error } = await supabase
-      .from("working_hours")
-      .update({
-        opens_at: payload.opens_at,
-        closes_at: payload.closes_at,
-        break_starts_at: payload.break_starts_at ?? null,
-        break_ends_at: payload.break_ends_at ?? null,
-        is_working_day: payload.is_working_day,
-      })
-      .eq("id", existing.id)
-      .select()
-      .single();
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    notifyWorkingHoursChanged();
-    return data;
-  }
-
-  const { data, error } = await supabase
-    .from("working_hours")
-    .insert(payload)
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc("upsert_working_hour_v1", {
+    p_salon_id: payload.salon_id,
+    p_employee_id: payload.employee_id ?? null,
+    p_day_of_week: payload.day_of_week,
+    p_opens_at: payload.opens_at,
+    p_closes_at: payload.closes_at,
+    p_break_starts_at: payload.break_starts_at ?? null,
+    p_break_ends_at: payload.break_ends_at ?? null,
+    p_is_working_day: payload.is_working_day,
+  });
 
   if (error) {
     throw new Error(error.message);
   }
 
   notifyWorkingHoursChanged();
-  return data;
+  return data as WorkingHour;
 }

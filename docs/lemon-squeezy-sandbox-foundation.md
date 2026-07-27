@@ -1,6 +1,6 @@
 # Lemon Squeezy sandbox foundation (Phase 7B.1)
 
-Status: local/disposable implementation; checkout synchronization is not implemented
+Status: sandbox foundation deployed; checkout remains disabled pending explicit test credentials and mappings; synchronization is not implemented
 Official API contract checked: 2026-07-27
 
 ## Scope and safety boundary

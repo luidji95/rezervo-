@@ -1,12 +1,14 @@
 import { supabase } from "@/lib/supabase/client";
 import type { UpdateSalonInput } from "@/types/salon";
 
-type CreateSalonInput = {
-  name: string;
-  phone: string;
-  city: string;
-  addressLine: string;
-  ownerId: string;
+type PrimarySalonBootstrapRow = {
+  salon_id: string;
+  was_created: boolean;
+  salon_name: string;
+  salon_slug: string;
+  onboarding_completed: boolean;
+  onboarding_step: number;
+  trial_ends_at: string;
 };
 
 type SaveOnboardingSalonInput = {
@@ -21,9 +23,6 @@ type SaveOnboardingSalonInput = {
   instagramUrl: string;
   description: string;
 };
-
-const ONBOARDING_SALON_SELECT =
-  "id, name, slug, onboarding_completed, onboarding_step";
 
 const CURRENT_SALON_SELECT = `
   id,
@@ -103,47 +102,31 @@ export async function generateUniqueSalonSlug(
   }
 }
 
-export async function createSalonWithOwner({
-  name,
-  phone,
-  city,
-  addressLine,
-  ownerId,
-}: CreateSalonInput) {
-  const slug = await generateUniqueSalonSlug(name);
-
-  const { data: salon, error: salonError } = await supabase
-    .from("salons")
-    .insert({
-      owner_id: ownerId,
-      name,
-      slug,
-      phone,
-      city,
-      address_line: addressLine,
-      onboarding_completed: true,
-      onboarding_step: 1,
+async function createPrimarySalonOnce(input: Omit<SaveOnboardingSalonInput, "salonId" | "ownerId">) {
+  const { data, error } = await supabase
+    .rpc("create_primary_salon_once_v1", {
+      p_name: input.name,
+      p_slug_candidate: generateSlug(input.name),
+      p_business_type: input.businessType,
+      p_phone: input.phone || null,
+      p_email: input.email || null,
+      p_address_line: input.addressLine || null,
+      p_website_url: input.websiteUrl || null,
+      p_instagram_url: input.instagramUrl || null,
+      p_description: input.description || null,
     })
-    .select("id, name, slug, onboarding_completed, onboarding_step")
     .single();
-
-  if (salonError) {
-    throw salonError;
-  }
-
-  const { error: memberError } = await supabase.from("salon_members").insert({
-    salon_id: salon.id,
-    profile_id: ownerId,
-    role: "owner",
-    status: "active",
-    joined_at: new Date().toISOString(),
-  });
-
-  if (memberError) {
-    throw memberError;
-  }
-
-  return salon;
+  if (error) throw error;
+  const row = data as PrimarySalonBootstrapRow;
+  return {
+    id: row.salon_id,
+    name: row.salon_name,
+    slug: row.salon_slug,
+    onboarding_completed: row.onboarding_completed,
+    onboarding_step: row.onboarding_step,
+    was_created: row.was_created,
+    trial_ends_at: row.trial_ends_at,
+  };
 }
 
 export async function saveOnboardingSalon({
@@ -158,22 +141,10 @@ export async function saveOnboardingSalon({
   instagramUrl,
   description,
 }: SaveOnboardingSalonInput) {
-  const slug = await generateUniqueSalonSlug(name, salonId);
-  const payload = {
-    name,
-    slug,
-    business_type: businessType,
-    phone: phone || null,
-    email: email || null,
-    address_line: addressLine || null,
-    website_url: websiteUrl || null,
-    instagram_url: instagramUrl || null,
-    description: description || null,
-    onboarding_completed: true,
-    onboarding_step: 1,
-  };
+  void ownerId;
 
   if (salonId) {
+    const slug = await generateUniqueSalonSlug(name, salonId);
     const { data, error } = await supabase.rpc("update_onboarding_salon_v1", {
       p_salon_id: salonId,
       p_name: name,
@@ -193,33 +164,7 @@ export async function saveOnboardingSalon({
 
     return data;
   }
-
-  const { data: salon, error: salonError } = await supabase
-    .from("salons")
-    .insert({
-      owner_id: ownerId,
-      ...payload,
-    })
-    .select(ONBOARDING_SALON_SELECT)
-    .single();
-
-  if (salonError) {
-    throw salonError;
-  }
-
-  const { error: memberError } = await supabase.from("salon_members").insert({
-    salon_id: salon.id,
-    profile_id: ownerId,
-    role: "owner",
-    status: "active",
-    joined_at: new Date().toISOString(),
-  });
-
-  if (memberError) {
-    throw memberError;
-  }
-
-  return salon;
+  return createPrimarySalonOnce({ name, businessType, phone, email, addressLine, websiteUrl, instagramUrl, description });
 }
 
 export async function completeOnboardingSetup(salonId: string) {

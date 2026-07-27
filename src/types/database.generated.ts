@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -1597,7 +1597,7 @@ export type Database = {
           {
             foreignKeyName: "salons_owner_id_fkey"
             columns: ["owner_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
@@ -2140,6 +2140,28 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      create_primary_salon_once_v1: {
+        Args: {
+          p_address_line?: string
+          p_business_type: Database["public"]["Enums"]["business_type"]
+          p_description?: string
+          p_email?: string
+          p_instagram_url?: string
+          p_name: string
+          p_phone?: string
+          p_slug_candidate: string
+          p_website_url?: string
+        }
+        Returns: {
+          onboarding_completed: boolean
+          onboarding_step: number
+          salon_id: string
+          salon_name: string
+          salon_slug: string
+          trial_ends_at: string
+          was_created: boolean
+        }[]
       }
       create_public_booking_atomic: {
         Args: {

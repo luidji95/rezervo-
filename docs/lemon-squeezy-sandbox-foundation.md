@@ -100,6 +100,21 @@ No Lemon Squeezy test account, test API key, Store ID or Starter/Pro test varian
 
 Before 7B.2, an explicitly authorized operator must verify separately for Starter and Pro: test-mode marker, Rezervo SaaS/store identity, locale/payment methods, 2990/5990 RSD subtotal, tax and total, absence of unexpected USD/FX price, RSD-denominated provider subscription renewal, and dashboard variant currency. If either price is unstable or displayed in USD, stop and revisit the provider decision without changing the Rezervo catalogue.
 
+## Sandbox acceptance result (Phase 7B.1A)
+
+Acceptance preflight was repeated on 2026-07-27. No Lemon Squeezy test API key, test Store ID, Starter/Pro test product or variant identifiers, or authenticated Lemon Squeezy/Vercel operator session was available to the execution environment. Only variable presence was inspected; no value was printed or persisted.
+
+- Store/KYC status: **status could not be verified**.
+- Test-object assurance: not available; no remote request was made with an unknown or potentially live object.
+- Starter checkout proof: not executed; currency, subtotal, tax, total, interval, locale, payment methods, test marker and merchant identity remain unverified.
+- Pro checkout proof: not executed; the same fields remain unverified.
+- RSD and renewal result: unverified. A checkout URL alone would not satisfy acceptance.
+- Provider idempotency and invalid-variant checks: remote checks not executed; local DB concurrency, mock rejection and reconciliation tests pass.
+- Return URL authority: application and lifecycle tests confirm that return/cancel query parameters perform no subscription mutation, but no provider success return was generated.
+- Production safety state: migration history remains at `202607270017`; provider mappings and checkout sessions remain empty; plan, subscription and override fingerprints are unchanged; the public endpoint returns `BILLING_CHECKOUT_DISABLED`.
+
+The Lemon Squeezy recommendation therefore remains conditional, not confirmed or rejected. Phase 7B.2 must not start until an operator independently installs test credentials, confirms the test store and monthly Starter/Pro variants, and completes the hosted checkout, tax and renewal-currency evidence described above. Secrets and identifiers must not be supplied through chat or committed files.
+
 ## Next phase
 
 Phase 7B.2 owns raw-body signature verification, test/live event isolation, webhook event ledger, idempotent lifecycle reconciliation and any subscription mutation. Checkout return parameters remain non-authoritative. No webhook endpoint or synchronization exists in 7B.1.

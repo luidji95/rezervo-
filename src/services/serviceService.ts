@@ -4,6 +4,7 @@ import type {
   Service,
   UpdateServiceInput,
 } from "@/types/service";
+import { throwBusinessDataMutationError } from "@/features/business-data/services/businessDataMutationError";
 
 const SERVICE_SELECT = `
   id,
@@ -73,11 +74,11 @@ export async function createService({
     is_public: isPublic,
   };
 
-  const { data, error } = await supabase
-    .from("services")
-    .insert(payload)
-    .select(SERVICE_SELECT)
-    .single();
+  const { data, error } = await supabase.rpc("create_service_v1", {
+    p_salon_id: salonId, p_name: name, p_description: description,
+    p_category_name: categoryName, p_duration_minutes: durationMinutes,
+    p_price: priceAmount, p_is_active: isActive, p_is_public: isPublic,
+  });
 
   if (error) {
     logServiceOperationError({
@@ -85,7 +86,7 @@ export async function createService({
       payload,
       error,
     });
-    throw error;
+    throwBusinessDataMutationError(error);
   }
 
   return data as Service;
@@ -125,12 +126,11 @@ export async function updateService({
     ...(typeof isPublic === "boolean" ? { is_public: isPublic } : {}),
   };
 
-  const { data, error } = await supabase
-    .from("services")
-    .update(payload)
-    .eq("id", serviceId)
-    .select(SERVICE_SELECT)
-    .single();
+  const { data, error } = await supabase.rpc("update_service_v1", {
+    p_service_id: serviceId, p_name: name, p_description: description,
+    p_category_name: categoryName, p_duration_minutes: durationMinutes,
+    p_price: priceAmount, p_is_active: isActive, p_is_public: isPublic,
+  });
 
   if (error) {
     logServiceOperationError({
@@ -139,17 +139,14 @@ export async function updateService({
       payload,
       error,
     });
-    throw error;
+    throwBusinessDataMutationError(error);
   }
 
   return data as Service;
 }
 
 export async function deleteService(serviceId: string): Promise<void> {
-  const { error } = await supabase
-    .from("services")
-    .delete()
-    .eq("id", serviceId);
+  const { error } = await supabase.rpc("delete_service_safely_v1", { p_service_id: serviceId });
 
   if (error) {
     logServiceOperationError({
@@ -158,7 +155,7 @@ export async function deleteService(serviceId: string): Promise<void> {
       payload: { id: serviceId },
       error,
     });
-    throw error;
+    throwBusinessDataMutationError(error);
   }
 }
 
@@ -189,50 +186,10 @@ export async function deleteServiceSafely({
   serviceId: string;
   salonId: string;
 }): Promise<DeleteServiceSafelyResult> {
-  const hasHistory = await serviceHasAppointmentHistory(serviceId);
-
-  if (hasHistory) {
-    const payload = {
-      is_active: false,
-      is_public: false,
-    };
-
-    const { error } = await supabase
-      .from("services")
-      .update(payload)
-      .eq("id", serviceId)
-      .eq("salon_id", salonId);
-
-    if (error) {
-      logServiceOperationError({
-        operation: "update",
-        serviceId,
-        payload,
-        error,
-      });
-      throw error;
-    }
-
-    return { mode: "soft" };
-  }
-
-  const { error } = await supabase
-    .from("services")
-    .delete()
-    .eq("id", serviceId)
-    .eq("salon_id", salonId);
-
-  if (error) {
-    logServiceOperationError({
-      operation: "delete",
-      serviceId,
-      payload: { id: serviceId, salon_id: salonId },
-      error,
-    });
-    throw error;
-  }
-
-  return { mode: "hard" };
+  void salonId;
+  const { data, error } = await supabase.rpc("delete_service_safely_v1", { p_service_id: serviceId });
+  if (error) throwBusinessDataMutationError(error);
+  return { mode: (data?.[0]?.mode ?? "soft") as "hard" | "soft" };
 }
 
 export async function restoreService({
@@ -242,24 +199,18 @@ export async function restoreService({
   serviceId: string;
   salonId: string;
 }): Promise<void> {
-  const payload = {
-    is_active: true,
-    is_public: true,
-  };
-
-  const { error } = await supabase
-    .from("services")
-    .update(payload)
-    .eq("id", serviceId)
-    .eq("salon_id", salonId);
+  void salonId;
+  const { error } = await supabase.rpc("set_service_active_state_v1", {
+    p_service_id: serviceId, p_is_active: true,
+  });
 
   if (error) {
     logServiceOperationError({
       operation: "update",
       serviceId,
-      payload,
+      payload: { is_active: true },
       error,
     });
-    throw error;
+    throwBusinessDataMutationError(error);
   }
 }

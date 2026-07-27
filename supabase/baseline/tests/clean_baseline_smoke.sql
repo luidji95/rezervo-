@@ -142,7 +142,7 @@ begin
       '72000000-0000-4000-8000-000000000001',
       '72000000-0000-4000-8000-000000000002'
     )) <> 2 then raise exception 'ANON_PUBLIC_SALON_READ_FAILED'; end if;
-  if exists (select 1 from public.clients where id = '75000000-0000-4000-8000-000000000001') then
+  if has_table_privilege('anon', 'public.clients', 'select') then
     raise exception 'ANON_PRIVATE_CLIENT_READ_ALLOWED';
   end if;
 end;

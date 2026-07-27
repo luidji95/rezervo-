@@ -17,6 +17,7 @@ function pageWindow(current: number, total: number): Array<number | "ellipsis"> 
 }
 
 type Props = {
+  canMutate: boolean;
   clients: ClientPageItem[]; selectedClient: ClientPageItem | null; searchValue: string;
   status: ClientsStatus; sort: ClientsSort; page: number; totalPages: number; totalCount: number;
   onSearchChange: (value: string) => void; onStatusChange: (value: ClientsStatus) => void;
@@ -56,7 +57,7 @@ export function ClientTable(props: Props) {
         <div className="client-avatar">{client.fullName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "KL"}</div>
         <div className="client-name-cell"><strong>{client.fullName}</strong><span>{client.phone || client.email || "Kontakt nije unet"}</span></div>
         <span>{client.completedVisits}</span><span>{client.lastCompletedVisit ? formatClientDate(client.lastCompletedVisit) : "Nema poseta"}</span><span>{formatMoney(client.completedRevenue)}</span>
-        <div className="client-actions-cell"><button type="button" className="client-icon-btn" aria-label="Pregled klijenta" onClick={(event) => { event.stopPropagation(); props.onSelectClient(client); }}><Eye size={15} /></button><button type="button" className="client-icon-btn" aria-label="Izmeni klijenta" onClick={(event) => { event.stopPropagation(); props.onEditClient(client); }}><Pencil size={15} /></button><button type="button" className="client-icon-btn danger" aria-label="Obriši klijenta" onClick={(event) => { event.stopPropagation(); props.onDeleteClient(client.id); }}><Trash2 size={15} /></button></div>
+        <div className="client-actions-cell"><button type="button" className="client-icon-btn" aria-label="Pregled klijenta" onClick={(event) => { event.stopPropagation(); props.onSelectClient(client); }}><Eye size={15} /></button><button type="button" disabled={!props.canMutate} className="client-icon-btn" aria-label="Izmeni klijenta" onClick={(event) => { event.stopPropagation(); props.onEditClient(client); }}><Pencil size={15} /></button><button type="button" disabled={!props.canMutate} className="client-icon-btn danger" aria-label="Obriši klijenta" onClick={(event) => { event.stopPropagation(); props.onDeleteClient(client.id); }}><Trash2 size={15} /></button></div>
       </div>)}
     </div>
 
@@ -68,7 +69,7 @@ export function ClientTable(props: Props) {
           <span className="clients-mobile-card__metrics"><span><small>Posete</small><strong>{client.completedVisits}</strong></span><span><small>Promet</small><strong>{formatMoney(client.completedRevenue)}</strong></span></span>
           <span className="clients-mobile-card__meta"><span><small>Omiljena usluga</small>{client.favoriteService?.name ?? "Nema podataka"}</span><span><small>Poslednja poseta</small>{client.lastCompletedVisit ? formatClientDate(client.lastCompletedVisit) : "Nema poseta"}</span></span>
         </button>
-        <div className="clients-mobile-card__actions"><button type="button" onClick={() => props.onSelectClient(client)}>Detalji</button><button type="button" onClick={() => props.onEditClient(client)}>Izmeni</button><button type="button" className="danger" onClick={() => props.onDeleteClient(client.id)}>Obriši</button></div>
+        <div className="clients-mobile-card__actions"><button type="button" onClick={() => props.onSelectClient(client)}>Detalji</button><button type="button" disabled={!props.canMutate} onClick={() => props.onEditClient(client)}>Izmeni</button><button type="button" disabled={!props.canMutate} className="danger" onClick={() => props.onDeleteClient(client.id)}>Obriši</button></div>
       </article>)}
     </div>
 

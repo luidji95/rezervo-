@@ -149,6 +149,7 @@ test("read-only Pro retains plan capabilities but disables effective operations"
     canCreateEmployees: false,
     canCreateAppointments: false,
     canUsePublicBooking: false,
+    canManageBusinessData: false,
   });
   assert.equal(result.canUseStatistics, false);
   assert.equal(result.maxEmployees, 10);

@@ -10,6 +10,7 @@ import {
 import type { Service } from "@/types/service";
 import { servicesSchema, type ServicesFormData } from "./serviceSchema";
 import { DEFAULT_SERVICE_CATEGORIES, getServiceCategory } from "./serviceUtils";
+import { getBusinessDataMutationMessage } from "@/features/business-data/services/businessDataMutationError";
 
 type AddServiceModalProps = {
   salonId: string;
@@ -108,7 +109,7 @@ export function AddServiceModal({
       await onSaved();
     } catch (error) {
       console.error("Service save failed", error);
-      setSubmitError("Uslugu trenutno nije moguće sačuvati. Pokušajte ponovo.");
+      setSubmitError(getBusinessDataMutationMessage(error, "Uslugu trenutno nije moguće sačuvati. Pokušajte ponovo."));
     } finally {
       setIsSubmitting(false);
     }

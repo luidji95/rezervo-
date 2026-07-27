@@ -7,7 +7,7 @@ import { X } from "lucide-react";
 import { InlineFormAlert } from "@/features/billing/components/InlineFormAlert";
 
 import { createEmployee } from "@/services/employeeService";
-import { assignServiceToEmployee } from "@/services/employeeServiceRelationService";
+import { syncEmployeeServices } from "@/services/employeeServiceRelationService";
 
 import type { Service } from "@/types/service";
 
@@ -83,11 +83,7 @@ export function AddEmployeeModal({
         bio: data.bio || null,
       });
 
-      await Promise.all(
-        selectedServiceIds.map((serviceId) =>
-          assignServiceToEmployee({ salonId, employeeId: employee.id, serviceId })
-        )
-      );
+      await syncEmployeeServices({ salonId, employeeId: employee.id, serviceIds: selectedServiceIds });
       await onCreated();
     } catch (error) {
       console.error("Failed to create employee:", error);

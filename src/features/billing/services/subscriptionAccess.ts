@@ -137,6 +137,7 @@ function effectiveCapabilities(
     canCreateEmployees: full,
     canCreateAppointments: full,
     canUsePublicBooking: full,
+    canManageBusinessData: full,
   };
 }
 

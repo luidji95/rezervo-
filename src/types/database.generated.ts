@@ -1936,6 +1936,10 @@ export type Database = {
         Args: { p_salon_id: string }
         Returns: undefined
       }
+      assert_salon_admin_write_access_v1: {
+        Args: { p_salon_id: string }
+        Returns: undefined
+      }
       claim_due_appointment_reminders: {
         Args: {
           p_batch_size?: number
@@ -2068,6 +2072,45 @@ export type Database = {
           was_created: boolean
         }[]
       }
+      create_owner_client_v1: {
+        Args: {
+          p_email?: string
+          p_full_name: string
+          p_phone?: string
+          p_salon_id: string
+          p_source?: string
+        }
+        Returns: {
+          avatar_url: string | null
+          cancelled_appointments: number
+          completed_appointments: number
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          last_visit_at: string | null
+          marketing_consent: boolean
+          marketing_consent_at: string | null
+          next_appointment_at: string | null
+          no_show_count: number
+          notes: string | null
+          phone: string | null
+          preferred_employee_id: string | null
+          preferred_service_id: string | null
+          salon_id: string
+          source: string | null
+          status: Database["public"]["Enums"]["client_status"]
+          total_appointments: number
+          total_spent: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "clients"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_public_booking_atomic: {
         Args: {
           p_customer_email: string
@@ -2104,13 +2147,96 @@ export type Database = {
           was_created: boolean
         }[]
       }
+      create_service_category_v1: {
+        Args: {
+          p_description?: string
+          p_name: string
+          p_salon_id: string
+          p_sort_order?: number
+        }
+        Returns: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          salon_id: string
+          sort_order: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "service_categories"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_service_v1: {
+        Args: {
+          p_buffer_minutes?: number
+          p_category_id?: string
+          p_category_name: string
+          p_color?: string
+          p_currency?: string
+          p_description: string
+          p_duration_minutes: number
+          p_is_active?: boolean
+          p_is_public?: boolean
+          p_name: string
+          p_price: number
+          p_salon_id: string
+          p_sort_order?: number
+        }
+        Returns: {
+          buffer_minutes: number
+          category_id: string | null
+          category_name: string | null
+          color: string | null
+          created_at: string
+          currency: string
+          description: string | null
+          duration_minutes: number
+          id: string
+          is_active: boolean
+          is_public: boolean
+          name: string
+          price: number
+          salon_id: string
+          sort_order: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "services"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       current_employee_id: {
         Args: { target_salon_id: string }
         Returns: string
       }
+      delete_client_safely_v1: {
+        Args: { p_client_id: string }
+        Returns: {
+          client_id: string
+          mode: string
+        }[]
+      }
       delete_employee_safely_v1: {
         Args: { p_employee_id: string }
         Returns: string
+      }
+      delete_service_category_v1: {
+        Args: { p_category_id: string }
+        Returns: string
+      }
+      delete_service_safely_v1: {
+        Args: { p_service_id: string }
+        Returns: {
+          mode: string
+          service_id: string
+        }[]
       }
       finalize_claimed_reminder_delivery: {
         Args: {
@@ -2247,6 +2373,10 @@ export type Database = {
           period_start: string
         }[]
       }
+      remove_employee_service_assignment_v1: {
+        Args: { p_employee_id: string; p_service_id: string }
+        Returns: string
+      }
       reschedule_owner_appointment_v1: {
         Args: {
           p_appointment_id: string
@@ -2285,6 +2415,42 @@ export type Database = {
           subscription_status: string
         }[]
       }
+      set_client_status_v1: {
+        Args: {
+          p_client_id: string
+          p_status: Database["public"]["Enums"]["client_status"]
+        }
+        Returns: {
+          avatar_url: string | null
+          cancelled_appointments: number
+          completed_appointments: number
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          last_visit_at: string | null
+          marketing_consent: boolean
+          marketing_consent_at: string | null
+          next_appointment_at: string | null
+          no_show_count: number
+          notes: string | null
+          phone: string | null
+          preferred_employee_id: string | null
+          preferred_service_id: string | null
+          salon_id: string
+          source: string | null
+          status: Database["public"]["Enums"]["client_status"]
+          total_appointments: number
+          total_spent: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "clients"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       set_employee_active_state: {
         Args: { p_employee_id: string; p_is_active: boolean }
         Returns: {
@@ -2312,6 +2478,41 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      set_service_active_state_v1: {
+        Args: { p_is_active: boolean; p_service_id: string }
+        Returns: {
+          buffer_minutes: number
+          category_id: string | null
+          category_name: string | null
+          color: string | null
+          created_at: string
+          currency: string
+          description: string | null
+          duration_minutes: number
+          id: string
+          is_active: boolean
+          is_public: boolean
+          name: string
+          price: number
+          salon_id: string
+          sort_order: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "services"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      sync_employee_service_assignments_v1: {
+        Args: {
+          p_employee_id: string
+          p_salon_id: string
+          p_service_ids: string[]
+        }
+        Returns: number
       }
       update_employee_appointment_status: {
         Args: {
@@ -2377,6 +2578,18 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      update_owner_appointment_details_v1: {
+        Args: {
+          p_appointment_id: string
+          p_client_id: string
+          p_customer_note: string
+          p_email: string
+          p_full_name: string
+          p_internal_note: string
+          p_phone: string
+        }
+        Returns: string
+      }
       update_owner_appointment_notes_v1: {
         Args: {
           p_appointment_id: string
@@ -2397,6 +2610,138 @@ export type Database = {
           previous_status: Database["public"]["Enums"]["appointment_status"]
           salon_id: string
         }[]
+      }
+      update_owner_client_v1: {
+        Args: {
+          p_client_id: string
+          p_email?: string
+          p_full_name: string
+          p_notes?: string
+          p_phone?: string
+          p_source?: string
+        }
+        Returns: {
+          avatar_url: string | null
+          cancelled_appointments: number
+          completed_appointments: number
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          last_visit_at: string | null
+          marketing_consent: boolean
+          marketing_consent_at: string | null
+          next_appointment_at: string | null
+          no_show_count: number
+          notes: string | null
+          phone: string | null
+          preferred_employee_id: string | null
+          preferred_service_id: string | null
+          salon_id: string
+          source: string | null
+          status: Database["public"]["Enums"]["client_status"]
+          total_appointments: number
+          total_spent: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "clients"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_service_category_v1: {
+        Args: {
+          p_category_id: string
+          p_description: string
+          p_is_active: boolean
+          p_name: string
+          p_sort_order: number
+        }
+        Returns: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          salon_id: string
+          sort_order: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "service_categories"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      update_service_v1: {
+        Args: {
+          p_buffer_minutes?: number
+          p_category_id?: string
+          p_category_name: string
+          p_color?: string
+          p_currency?: string
+          p_description: string
+          p_duration_minutes: number
+          p_is_active: boolean
+          p_is_public: boolean
+          p_name: string
+          p_price: number
+          p_service_id: string
+          p_sort_order?: number
+        }
+        Returns: {
+          buffer_minutes: number
+          category_id: string | null
+          category_name: string | null
+          color: string | null
+          created_at: string
+          currency: string
+          description: string | null
+          duration_minutes: number
+          id: string
+          is_active: boolean
+          is_public: boolean
+          name: string
+          price: number
+          salon_id: string
+          sort_order: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "services"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      upsert_employee_service_assignment_v1: {
+        Args: {
+          p_custom_duration_minutes?: number
+          p_custom_price?: number
+          p_employee_id: string
+          p_is_active?: boolean
+          p_salon_id: string
+          p_service_id: string
+        }
+        Returns: {
+          created_at: string
+          custom_duration_minutes: number | null
+          custom_price: number | null
+          employee_id: string
+          id: string
+          is_active: boolean
+          salon_id: string
+          service_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "employee_services"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       validate_claimed_reminder_for_send: {
         Args: { p_claim_token: string; p_delivery_id: string; p_now?: string }

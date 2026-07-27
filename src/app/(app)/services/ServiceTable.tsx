@@ -21,6 +21,7 @@ import type {
 } from "./useServicesPageData";
 
 type ServiceTableProps = {
+  canMutate: boolean;
   categories: { name: string; count: number }[];
   services: Service[];
   selectedCategory: string;
@@ -40,6 +41,7 @@ type ServiceTableProps = {
 };
 
 export function ServiceTable({
+  canMutate,
   categories,
   services,
   selectedCategory,
@@ -189,7 +191,7 @@ export function ServiceTable({
                       className="service-row-action danger"
                       onClick={(event) => {
                         event.stopPropagation();
-                        onDeleteService(service);
+                        if (canMutate) onDeleteService(service);
                       }}
                     >
                       <Trash2 size={14} />
@@ -201,7 +203,7 @@ export function ServiceTable({
                       className="service-row-action"
                       onClick={(event) => {
                         event.stopPropagation();
-                        onRestoreService(service);
+                        if (canMutate) onRestoreService(service);
                       }}
                     >
                       <RotateCcw size={14} />
@@ -287,6 +289,7 @@ export function ServiceTable({
                     <button
                       type="button"
                       className="service-row-action danger"
+                      disabled={!canMutate}
                       onClick={() => onDeleteService(service)}
                     >
                       <Trash2 size={15} aria-hidden="true" />
@@ -296,6 +299,7 @@ export function ServiceTable({
                     <button
                       type="button"
                       className="service-row-action"
+                      disabled={!canMutate}
                       onClick={() => onRestoreService(service)}
                     >
                       <RotateCcw size={15} aria-hidden="true" />

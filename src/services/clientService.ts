@@ -4,6 +4,7 @@ import type {
   CreateClientInput,
   UpdateClientInput,
 } from "@/types/client";
+import { throwBusinessDataMutationError } from "@/features/business-data/services/businessDataMutationError";
 
 type SupabaseClientLike = typeof supabase;
 
@@ -108,21 +109,11 @@ export async function createClient({
   email,
   source = "manual",
 }: CreateClientInput): Promise<Client> {
-  const { data, error } = await supabase
-    .from("clients")
-    .insert({
-      salon_id: salonId,
-      full_name: fullName.trim(),
-      phone: phone?.trim() || null,
-      email: email?.trim() || null,
-      source,
-    })
-    .select(CLIENT_SELECT)
-    .single();
-
-  if (error) {
-    throw error;
-  }
+  const { data, error } = await supabase.rpc("create_owner_client_v1", {
+    p_salon_id: salonId, p_full_name: fullName, p_phone: phone,
+    p_email: email, p_source: source ?? "manual",
+  });
+  if (error) throwBusinessDataMutationError(error);
 
   return data as Client;
 }
@@ -134,29 +125,16 @@ export async function updateClient({
   email,
   source,
 }: UpdateClientInput): Promise<Client> {
-  const { data, error } = await supabase
-    .from("clients")
-    .update({
-      full_name: fullName.trim(),
-      phone: phone?.trim() || null,
-      email: email?.trim() || null,
-      source: source || null,
-    })
-    .eq("id", clientId)
-    .select(CLIENT_SELECT)
-    .single();
-
-  if (error) {
-    throw error;
-  }
+  const { data, error } = await supabase.rpc("update_owner_client_v1", {
+    p_client_id: clientId, p_full_name: fullName, p_phone: phone,
+    p_email: email, p_source: source ?? "manual", p_notes: null,
+  });
+  if (error) throwBusinessDataMutationError(error);
 
   return data as Client;
 }
 
 export async function deleteClient(clientId: string): Promise<void> {
-  const { error } = await supabase.from("clients").delete().eq("id", clientId);
-
-  if (error) {
-    throw error;
-  }
+  const { error } = await supabase.rpc("delete_client_safely_v1", { p_client_id: clientId });
+  if (error) throwBusinessDataMutationError(error);
 }

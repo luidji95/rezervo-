@@ -50,6 +50,7 @@ export type EffectiveCapabilities = {
   canCreateEmployees: boolean;
   canCreateAppointments: boolean;
   canUsePublicBooking: boolean;
+  canManageBusinessData: boolean;
 };
 
 export type SalonEntitlements = {

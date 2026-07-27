@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { createClient, updateClient } from "@/services/clientService";
 import type { Client } from "@/types/client";
 import { clientSchema } from "./clientSchema";
+import { getBusinessDataMutationMessage } from "@/features/business-data/services/businessDataMutationError";
 
 type AddClientModalProps = {
   salonId: string;
@@ -28,6 +29,7 @@ export function AddClientModal({
 }: AddClientModalProps) {
   const [errors, setErrors] = useState<ClientFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const modalRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -82,6 +84,7 @@ export function AddClientModal({
     const { fullName, phone, email, source } = parsed.data;
 
     setErrors({});
+    setSubmitError("");
     setIsSubmitting(true);
 
     try {
@@ -104,6 +107,8 @@ export function AddClientModal({
       }
 
       await onSaved();
+    } catch (error) {
+      setSubmitError(getBusinessDataMutationMessage(error, "Klijenta trenutno nije moguće sačuvati. Pokušajte ponovo."));
     } finally {
       setIsSubmitting(false);
     }
@@ -163,6 +168,7 @@ export function AddClientModal({
             </FormField>
           </div>
 
+          {submitError && <p className="clients-error" role="alert">{submitError}</p>}
           <div className="client-modal-actions">
             <button
               type="button"

@@ -14,6 +14,7 @@ import {
 } from "./serviceUtils";
 
 type ServiceDetailsPanelProps = {
+  canMutate: boolean;
   service: Service | null;
   stats: ServiceStats;
   mobileOpen: boolean;
@@ -22,6 +23,7 @@ type ServiceDetailsPanelProps = {
 };
 
 export function ServiceDetailsPanel({
+  canMutate,
   service,
   stats,
   mobileOpen,
@@ -177,6 +179,7 @@ export function ServiceDetailsPanel({
       <button
         type="button"
         className="services-primary-btn full-width"
+        disabled={!canMutate}
         onClick={() => onEditService(service)}
       >
         Izmeni uslugu

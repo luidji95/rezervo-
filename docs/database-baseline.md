@@ -86,6 +86,10 @@ Public booking subscription enforcement follows in
 Appointment gateways and write-grant hardening follow in
 `202607270006_appointment_mutation_gateways.sql` and
 `202607270007_harden_appointment_mutation_grants.sql`.
+Atomic appointment details follow in `202607270008_atomic_appointment_details.sql`.
+Business-data gateways and their compatible write-grant hardening follow in
+`202607270009_business_data_mutation_gateways.sql` and
+`202607270010_harden_business_data_mutation_grants.sql`.
 Clean-environment validation must
 apply the frozen baseline, reference seed, and every migration newer than the
 cutover marker before smoke, RLS, parity and type-generation checks. The frozen

@@ -17,10 +17,13 @@ import { ServiceDetailsPanel } from "./ServiceDetailsPanel";
 import { ServiceTable } from "./ServiceTable";
 import { formatMoney } from "./serviceUtils";
 import { useServicesPageData } from "./useServicesPageData";
+import { useEntitlements } from "@/features/billing/hooks/useEntitlements";
 
 import "./services.css";
 
 export default function ServicesPage() {
+  const { entitlements } = useEntitlements();
+  const canManage = entitlements?.effectiveCapabilities.canManageBusinessData === true;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [deletingService, setDeletingService] = useState<Service | null>(null);
@@ -140,12 +143,14 @@ export default function ServicesPage() {
         <button
           type="button"
           className="services-primary-btn"
+          disabled={!canManage}
           onClick={openCreateModal}
         >
           <Plus size={17} />
           Nova usluga
         </button>
       </header>
+      {!canManage && <p className="services-error" role="status">Vaš nalog trenutno ima pristup samo za pregled. Aktivirajte paket da biste menjali poslovne podatke.</p>}
 
       <section className="service-kpi-grid">
         <KpiCard
@@ -177,6 +182,7 @@ export default function ServicesPage() {
       <div className="services-layout">
         <main className="services-main">
           <ServiceTable
+            canMutate={canManage}
             categories={categories}
             services={filteredServices}
             selectedCategory={selectedCategory}
@@ -202,6 +208,7 @@ export default function ServicesPage() {
 
         <aside className="services-side">
           <ServiceDetailsPanel
+            canMutate={canManage}
             service={selectedService}
             stats={selectedServiceStats}
             mobileOpen={mobileDetailsOpen}

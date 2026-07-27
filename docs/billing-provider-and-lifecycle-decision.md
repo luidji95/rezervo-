@@ -4,6 +4,8 @@ Status: architecture decision, no payment implementation
 Research checked: 2026-07-27  
 Scope: monthly Starter and Pro subscriptions for Serbian salons; Premium and annual billing remain unavailable.
 
+Implementation follow-up: [Lemon Squeezy sandbox foundation](./lemon-squeezy-sandbox-foundation.md).
+
 ## 1. Executive decision
 
 Rezervo should use a **Merchant of Record (MoR) for the MVP**, conditionally selecting **Lemon Squeezy** as the primary provider. Lemon Squeezy explicitly lists Serbia for merchant bank payouts, accepts SaaS after store/KYC review, supports subscriptions, trials, a hosted portal, signed webhooks and RSD as a selling/display currency. Its important caveat is that it processes transactions in USD and converts at a live mid-market rate. Before sandbox implementation is promoted toward live mode, the operator must prove with a Serbian-issued card that a fixed `2990 RSD`/`5990 RSD` recurring price is presented and charged without customer-visible price drift, and obtain written confirmation that the intended Serbian business entity and Rezervo SaaS are eligible.

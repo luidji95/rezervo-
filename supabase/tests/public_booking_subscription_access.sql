@@ -8,12 +8,15 @@ returns void language plpgsql as $$ begin execute p_sql; raise exception 'EXPECT
 exception when others then if sqlerrm='EXPECTED_ERROR_NOT_RAISED:'||p_code or position(p_code in sqlerrm)=0 then raise; end if; end $$;
 
 insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
- ('d1000000-0000-4000-8000-000000000001','booking-owner@example.invalid','{}','{}');
+ ('d1000000-0000-4000-8000-000000000001','booking-owner@example.invalid','{}','{}'),
+ ('d1000000-0000-4000-8000-000000000002','booking-expired-owner@example.invalid','{}','{}'),
+ ('d1000000-0000-4000-8000-000000000003','booking-override-owner@example.invalid','{}','{}'),
+ ('d1000000-0000-4000-8000-000000000004','booking-disabled-owner@example.invalid','{}','{}');
 insert into public.salons(id,owner_id,name,slug,booking_enabled,online_booking_enabled) values
  ('d2000000-0000-4000-8000-000000000001','d1000000-0000-4000-8000-000000000001','Booking Full','booking-full',true,true),
- ('d2000000-0000-4000-8000-000000000002','d1000000-0000-4000-8000-000000000001','Booking Expired','booking-expired',true,true),
- ('d2000000-0000-4000-8000-000000000003','d1000000-0000-4000-8000-000000000001','Booking Override','booking-override',true,true),
- ('d2000000-0000-4000-8000-000000000004','d1000000-0000-4000-8000-000000000001','Booking Disabled','booking-disabled',false,true);
+ ('d2000000-0000-4000-8000-000000000002','d1000000-0000-4000-8000-000000000002','Booking Expired','booking-expired',true,true),
+ ('d2000000-0000-4000-8000-000000000003','d1000000-0000-4000-8000-000000000003','Booking Override','booking-override',true,true),
+ ('d2000000-0000-4000-8000-000000000004','d1000000-0000-4000-8000-000000000004','Booking Disabled','booking-disabled',false,true);
 
 update public.subscriptions set status='trialing',trial_ends_at=now()+interval '1 day' where salon_id='d2000000-0000-4000-8000-000000000001';
 update public.subscriptions set status='expired',trial_ends_at=now()-interval '1 day' where salon_id in ('d2000000-0000-4000-8000-000000000002','d2000000-0000-4000-8000-000000000003');

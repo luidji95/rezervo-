@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -560,6 +560,138 @@ export type Database = {
             columns: ["salon_id"]
             isOneToOne: true
             referencedRelation: "salons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_checkout_sessions: {
+        Row: {
+          actor_profile_id: string
+          checkout_url_hash: string | null
+          completed_at: string | null
+          created_at: string
+          environment: string
+          error_code: string | null
+          expires_at: string | null
+          failed_at: string | null
+          id: string
+          idempotency_key: string
+          provider: string
+          provider_session_id: string | null
+          requested_plan_id: string
+          salon_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          actor_profile_id: string
+          checkout_url_hash?: string | null
+          completed_at?: string | null
+          created_at?: string
+          environment: string
+          error_code?: string | null
+          expires_at?: string | null
+          failed_at?: string | null
+          id?: string
+          idempotency_key: string
+          provider: string
+          provider_session_id?: string | null
+          requested_plan_id: string
+          salon_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          actor_profile_id?: string
+          checkout_url_hash?: string | null
+          completed_at?: string | null
+          created_at?: string
+          environment?: string
+          error_code?: string | null
+          expires_at?: string | null
+          failed_at?: string | null
+          id?: string
+          idempotency_key?: string
+          provider?: string
+          provider_session_id?: string | null
+          requested_plan_id?: string
+          salon_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_checkout_sessions_actor_profile_id_fkey"
+            columns: ["actor_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_checkout_sessions_requested_plan_id_fkey"
+            columns: ["requested_plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_checkout_sessions_salon_id_fkey"
+            columns: ["salon_id"]
+            isOneToOne: false
+            referencedRelation: "salons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_provider_prices: {
+        Row: {
+          amount: number
+          billing_interval: string
+          created_at: string
+          currency: string
+          environment: string
+          id: string
+          is_active: boolean
+          plan_id: string
+          provider: string
+          provider_product_id: string | null
+          provider_variant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          billing_interval: string
+          created_at?: string
+          currency: string
+          environment: string
+          id?: string
+          is_active?: boolean
+          plan_id: string
+          provider: string
+          provider_product_id?: string | null
+          provider_variant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          billing_interval?: string
+          created_at?: string
+          currency?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          plan_id?: string
+          provider?: string
+          provider_product_id?: string | null
+          provider_variant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_provider_prices_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
             referencedColumns: ["id"]
           },
         ]

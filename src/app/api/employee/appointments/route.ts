@@ -58,6 +58,9 @@ function postgresCode(error: unknown) {
 
 function mapRpcError(error: { code?: string; message?: string }) {
   const code = error.message?.trim();
+  if (code === "APPOINTMENT_ACCESS_REQUIRED") {
+    return errorResponse("APPOINTMENT_ACCESS_REQUIRED", "Vaš nalog trenutno ima pristup samo za pregled. Aktivirajte paket da biste menjali termine.", 403);
+  }
   if (code === "SERVICE_NOT_ASSIGNED") {
     return errorResponse("SERVICE_NOT_ASSIGNED", "Usluga nije dostupna.", 404);
   }

@@ -83,6 +83,9 @@ Employee capacity hardening follows in
 `202607270004_employee_capacity_hardening.sql`.
 Public booking subscription enforcement follows in
 `202607270005_public_booking_subscription_access.sql`.
+Appointment gateways and write-grant hardening follow in
+`202607270006_appointment_mutation_gateways.sql` and
+`202607270007_harden_appointment_mutation_grants.sql`.
 Clean-environment validation must
 apply the frozen baseline, reference seed, and every migration newer than the
 cutover marker before smoke, RLS, parity and type-generation checks. The frozen

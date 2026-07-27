@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useSalon } from "@/context/SalonContext";
 import { useAuthorization } from "@/context/AuthorizationContext";
+import { useEntitlements } from "@/features/billing/hooks/useEntitlements";
 
 import {
   getCalendarEmployees,
@@ -14,7 +15,6 @@ import {
   getCalendarAppointments,
   getCalendarAppointmentById,
   getClientAppointmentHistory,
-  updateAppointmentStatus,
   type CalendarAppointment,
   type ClientHistoryAppointment,
 } from "@/services/calendarQueryService";
@@ -26,7 +26,7 @@ import { Service } from "@/types/service";
 import { getSalonServices } from "@/services/serviceService";
 
 // DODATO: Uvoz servisa za kreiranje novog termina i tipa forme
-import { rescheduleAppointment, updateAppointmentDetails, createAppointment } from "@/services/appointmentService";
+import { createOwnerAppointment as createAppointment, rescheduleOwnerAppointment as rescheduleAppointment, updateOwnerAppointmentDetails as updateAppointmentDetails, updateOwnerAppointmentStatus as updateAppointmentStatus } from "@/features/appointments/services/ownerAppointmentMutationService";
 import { CreateAppointmentFormInput } from "@/types/appointment";
 import {
   EmployeeAppointmentError,
@@ -110,6 +110,9 @@ function CalendarPageContent() {
   const salonTimeZone = currentSalon?.timezone || DEFAULT_SALON_TIME_ZONE;
   const searchParams = useSearchParams();
   const linkedAppointmentId = searchParams.get("appointment");
+  const { entitlements } = useEntitlements();
+  const subscriptionReadOnly = entitlements?.effectiveCapabilities.canCreateAppointments === false;
+  const canMutateAppointments = entitlements?.effectiveCapabilities.canCreateAppointments === true;
 
   // State menadžment
   const [selectedDate, setSelectedDate] = useState(() =>
@@ -288,7 +291,10 @@ function CalendarPageContent() {
     appointmentId: string,
     status: "confirmed" | "completed" | "cancelled" | "no_show"
   ) => {
-    if (!currentSalon) return;
+    if (!currentSalon || !canMutateAppointments) {
+      setError("Vaš nalog trenutno ima pristup samo za pregled. Aktivirajte paket da biste menjali termine.");
+      return;
+    }
     try {
       if (isEmployeeReadOnly) {
         await updateOwnAppointmentStatus(appointmentId, status);
@@ -337,7 +343,7 @@ function CalendarPageContent() {
     newEnd: string,
     newEmployeeId: string
   ) => {
-    if (!currentSalon || isEmployeeReadOnly) return;
+    if (!currentSalon || isEmployeeReadOnly || !canMutateAppointments) return;
 
     try {
       await rescheduleAppointment(appointmentId, newStart, newEnd, newEmployeeId);
@@ -367,7 +373,7 @@ function CalendarPageContent() {
     internalNote: string;
     customerNote: string;
   }) => {
-    if (!currentSalon || !selectedAppointment || isEmployeeReadOnly) return;
+    if (!currentSalon || !selectedAppointment || isEmployeeReadOnly || !canMutateAppointments) return;
     const clientId = selectedAppointment.clients?.id;
 
     if (!clientId) {
@@ -395,7 +401,7 @@ function CalendarPageContent() {
 
   // DODATO: Operativni handler za upis NOVOG termina u bazu podataka (Supabase)
   const handleCreateAppointmentConfirm = async (formData: CreateAppointmentFormInput) => {
-    if (!currentSalon || isEmployeeReadOnly) return;
+    if (!currentSalon || isEmployeeReadOnly || !canMutateAppointments) return;
 
     try {
       // Pozivamo tvoj kreirani servis iz appointmentService.ts koji odrađuje insert
@@ -514,7 +520,7 @@ function CalendarPageContent() {
         onNextDay={handleNextDay}
         onToday={handleToday}
         onCreateClick={() => setIsCreateAppointmentModalOpen(true)}
-        canCreateAppointment={currentRole === "owner" || currentRole === "employee"}
+        canCreateAppointment={canMutateAppointments && (currentRole === "owner" || currentRole === "employee")}
       />
 
       {isEmployeeReadOnly && (
@@ -522,6 +528,7 @@ function CalendarPageContent() {
           Možete kreirati termine za sebe i menjati njihov status. Uređivanje i pomeranje nisu dostupni.
         </p>
       )}
+      {subscriptionReadOnly && <p className="calendar-readonly-notice">Vaš nalog trenutno ima pristup samo za pregled. Aktivirajte paket da biste menjali termine.</p>}
 
       {appointmentsLoading && <p>Loading appointments...</p>}
       {employeesLoading && <p>Loading employees...</p>}
@@ -703,13 +710,13 @@ function CalendarPageContent() {
             onStatusChange={handleStatusChange}
             onRescheduleClick={() => setIsRescheduleModalOpen(true)}
             onEditClick={() => setIsEditModalOpen(true)}
-            employeeStatusOnly={isEmployeeReadOnly}
+            employeeStatusOnly={isEmployeeReadOnly || subscriptionReadOnly}
             onClose={() => setSelectedAppointment(null)}
           />
         </div>
       )}
 
-      {!isEmployeeReadOnly && selectedAppointment && (
+      {!isEmployeeReadOnly && !subscriptionReadOnly && selectedAppointment && (
         <RescheduleAppointmentModal
           isOpen={isRescheduleModalOpen}
           onClose={() => setIsRescheduleModalOpen(false)}
@@ -719,7 +726,7 @@ function CalendarPageContent() {
         />
       )}
 
-      {!isEmployeeReadOnly && selectedAppointment && (
+      {!isEmployeeReadOnly && !subscriptionReadOnly && selectedAppointment && (
         <EditAppointmentModal
           key={selectedAppointment.id}
           isOpen={isEditModalOpen}
@@ -730,7 +737,7 @@ function CalendarPageContent() {
       )}
 
       {/* DODATO: Renderovanje CreateAppointmentModal komponente sa prosleđenim podacima */}
-      {!isEmployeeReadOnly && <CreateAppointmentModal
+      {!isEmployeeReadOnly && !subscriptionReadOnly && <CreateAppointmentModal
         isOpen={isCreateAppointmentModalOpen}
         onClose={() => setIsCreateAppointmentModalOpen(false)}
         salonId={currentSalon.id}
@@ -740,7 +747,7 @@ function CalendarPageContent() {
         onSuccess={handleCreateAppointmentConfirm}
       />}
 
-      {isEmployeeReadOnly && isCreateAppointmentModalOpen && (
+      {isEmployeeReadOnly && !subscriptionReadOnly && isCreateAppointmentModalOpen && (
         <EmployeeCreateAppointmentModal
           isOpen
           onClose={() => setIsCreateAppointmentModalOpen(false)}

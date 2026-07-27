@@ -1932,6 +1932,10 @@ export type Database = {
         }
         Returns: string
       }
+      assert_owner_manager_appointment_access_v1: {
+        Args: { p_salon_id: string }
+        Returns: undefined
+      }
       claim_due_appointment_reminders: {
         Args: {
           p_batch_size?: number
@@ -1988,6 +1992,27 @@ export type Database = {
           was_created: boolean
         }[]
       }
+      create_employee_appointment_atomic_scoped_v1: {
+        Args: {
+          p_customer_email: string
+          p_customer_full_name: string
+          p_customer_note: string
+          p_customer_phone: string
+          p_idempotency_key: string
+          p_profile_id: string
+          p_service_id: string
+          p_start_time: string
+        }
+        Returns: {
+          appointment_id: string
+          appointment_start: string
+          appointment_status: Database["public"]["Enums"]["appointment_status"]
+          customer_name: string
+          salon_id: string
+          service_name: string
+          was_created: boolean
+        }[]
+      }
       create_employee_with_entitlement: {
         Args: {
           p_bio?: string
@@ -2023,6 +2048,25 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      create_owner_appointment_atomic_v1: {
+        Args: {
+          p_customer_email: string
+          p_customer_full_name: string
+          p_customer_note: string
+          p_customer_phone: string
+          p_employee_id: string
+          p_idempotency_key: string
+          p_salon_id: string
+          p_service_id: string
+          p_start_time: string
+        }
+        Returns: {
+          appointment_id: string
+          appointment_start: string
+          appointment_status: Database["public"]["Enums"]["appointment_status"]
+          was_created: boolean
+        }[]
       }
       create_public_booking_atomic: {
         Args: {
@@ -2203,6 +2247,18 @@ export type Database = {
           period_start: string
         }[]
       }
+      reschedule_owner_appointment_v1: {
+        Args: {
+          p_appointment_id: string
+          p_employee_id: string
+          p_start_time: string
+        }
+        Returns: {
+          appointment_id: string
+          appointment_start: string
+          salon_id: string
+        }[]
+      }
       resolve_employee_capacity_v1: {
         Args: { p_now?: string; p_salon_id: string }
         Returns: {
@@ -2270,6 +2326,19 @@ export type Database = {
           salon_id: string
         }[]
       }
+      update_employee_appointment_status_scoped_v1: {
+        Args: {
+          p_appointment_id: string
+          p_next_status: Database["public"]["Enums"]["appointment_status"]
+          p_profile_id: string
+        }
+        Returns: {
+          appointment_id: string
+          new_status: Database["public"]["Enums"]["appointment_status"]
+          previous_status: Database["public"]["Enums"]["appointment_status"]
+          salon_id: string
+        }[]
+      }
       update_employee_details_v1: {
         Args: {
           p_bio: string
@@ -2307,6 +2376,27 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      update_owner_appointment_notes_v1: {
+        Args: {
+          p_appointment_id: string
+          p_customer_note: string
+          p_internal_note: string
+        }
+        Returns: string
+      }
+      update_owner_appointment_status_v1: {
+        Args: {
+          p_appointment_id: string
+          p_cancellation_reason?: string
+          p_next_status: Database["public"]["Enums"]["appointment_status"]
+        }
+        Returns: {
+          appointment_id: string
+          new_status: Database["public"]["Enums"]["appointment_status"]
+          previous_status: Database["public"]["Enums"]["appointment_status"]
+          salon_id: string
+        }[]
       }
       validate_claimed_reminder_for_send: {
         Args: { p_claim_token: string; p_delivery_id: string; p_now?: string }

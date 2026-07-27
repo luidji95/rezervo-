@@ -17,6 +17,7 @@ import {
   type EmployeeFormInput,
 } from "./employeeSchema";
 import { useEmployeeDialog } from "./useEmployeeDialog";
+import { getEmployeeMutationMessage } from "@/features/employees/services/employeeMutationPresentation";
 
 type AddEmployeeModalProps = {
   salonId: string;
@@ -92,7 +93,7 @@ export function AddEmployeeModal({
       console.error("Failed to create employee:", error);
       const reachedLimit = error instanceof Error && error.name === "EMPLOYEE_LIMIT_REACHED";
       setLimitError(reachedLimit);
-      setFormError(reachedLimit ? "" : "Zaposlenog trenutno nije moguće sačuvati. Pokušajte ponovo.");
+      setFormError(reachedLimit ? "" : getEmployeeMutationMessage(error, "Zaposlenog trenutno nije moguće sačuvati. Pokušajte ponovo."));
     }
   }
 

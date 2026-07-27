@@ -8,6 +8,7 @@ import {
   normalizeClientEmail,
   normalizeClientPhone,
 } from "@/services/clientService";
+import { hasPublicBookingAccess } from "@/features/public-booking/services/publicBookingAccessService";
 
 const publicCreateBookingSchema = z.object({
   salonSlug: z.string().trim().min(1),
@@ -75,13 +76,26 @@ export async function POST(req: Request) {
       );
     }
 
-    if (
-      salon.status !== "active" ||
-      !salon.booking_enabled ||
-      !salon.online_booking_enabled
-    ) {
+    const { data: existingAppointment, error: idempotencyLookupError } =
+      await supabaseServer.from("appointments")
+        .select("id, salon_id, primary_service_id, employee_id, start_time")
+        .eq("idempotency_key", idempotencyKey).maybeSingle();
+    if (idempotencyLookupError) throw idempotencyLookupError;
+    if (existingAppointment) {
+      const matchesOriginalRequest = existingAppointment.salon_id === salon.id &&
+        existingAppointment.primary_service_id === serviceId &&
+        existingAppointment.employee_id === employeeId &&
+        new Date(existingAppointment.start_time).getTime() === new Date(startTime).getTime();
+      if (!matchesOriginalRequest) return NextResponse.json(
+        { error: "Booking request cannot be repeated.", code: "IDEMPOTENCY_CONFLICT" }, { status: 409 }
+      );
+      return NextResponse.json({ success: true, appointmentId: existingAppointment.id });
+    }
+
+    if (salon.status !== "active" || !salon.booking_enabled ||
+      !salon.online_booking_enabled || !(await hasPublicBookingAccess(salon.id))) {
       return NextResponse.json(
-        { error: "Online booking is disabled for this salon" },
+        { error: "Online booking is currently unavailable.", code: "BOOKING_UNAVAILABLE" },
         { status: 403 }
       );
     }
@@ -120,40 +134,6 @@ export async function POST(req: Request) {
         { error: "Selected booking option is not available." },
         { status: 404 }
       );
-    }
-
-    const { data: existingAppointment, error: idempotencyLookupError } =
-      await supabaseServer
-        .from("appointments")
-        .select(
-          "id, salon_id, primary_service_id, employee_id, start_time"
-        )
-        .eq("idempotency_key", idempotencyKey)
-        .maybeSingle();
-
-    if (idempotencyLookupError) {
-      throw idempotencyLookupError;
-    }
-
-    if (existingAppointment) {
-      const matchesOriginalRequest =
-        existingAppointment.salon_id === salon.id &&
-        existingAppointment.primary_service_id === serviceId &&
-        existingAppointment.employee_id === employeeId &&
-        new Date(existingAppointment.start_time).getTime() ===
-          new Date(startTime).getTime();
-
-      if (!matchesOriginalRequest) {
-        return NextResponse.json(
-          { error: "Invalid idempotency key." },
-          { status: 400 }
-        );
-      }
-
-      return NextResponse.json({
-        success: true,
-        appointmentId: existingAppointment.id,
-      });
     }
 
     const appointmentStart = new Date(startTime);
@@ -227,6 +207,13 @@ export async function POST(req: Request) {
       { status: appointment.wasCreated ? 201 : 200 }
     );
   } catch (error) {
+    const postgresMessage = error && typeof error === "object" && "message" in error && typeof error.message === "string" ? error.message : "";
+    if (postgresMessage.includes("PUBLIC_BOOKING_UNAVAILABLE")) {
+      return NextResponse.json({ error: "Online booking is currently unavailable.", code: "BOOKING_UNAVAILABLE" }, { status: 403 });
+    }
+    if (postgresMessage.includes("IDEMPOTENCY_CONFLICT")) {
+      return NextResponse.json({ error: "Booking request cannot be repeated.", code: "IDEMPOTENCY_CONFLICT" }, { status: 409 });
+    }
     if (getPostgresErrorCode(error) === "23P01") {
       return NextResponse.json(
         {
@@ -244,7 +231,7 @@ export async function POST(req: Request) {
       );
     }
 
-    console.error("PUBLIC_CREATE_BOOKING_ERROR", error);
+    console.error("PUBLIC_CREATE_BOOKING_FAILED", { errorPresent: Boolean(error) });
 
     return NextResponse.json(
       { error: "Failed to create booking" },

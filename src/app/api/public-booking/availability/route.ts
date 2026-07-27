@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { generateAvailableSlots } from "@/services/availabilityService";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { hasPublicBookingAccess } from "@/features/public-booking/services/publicBookingAccessService";
 
 const publicAvailabilitySchema = z.object({
   salonId: z.string().uuid(),
@@ -60,10 +61,11 @@ export async function POST(request: NextRequest) {
     if (
       salon.status !== "active" ||
       !salon.booking_enabled ||
-      !salon.online_booking_enabled
+      !salon.online_booking_enabled ||
+      !(await hasPublicBookingAccess(salonId))
     ) {
       return NextResponse.json(
-        { success: false, error: "Online booking is not available." },
+        { success: false, code: "BOOKING_UNAVAILABLE" },
         { status: 403 }
       );
     }
@@ -130,12 +132,12 @@ export async function POST(request: NextRequest) {
       slots: result.slots,
     });
   } catch (error) {
-    console.error("PUBLIC AVAILABILITY ERROR:", error);
+    console.error("PUBLIC_AVAILABILITY_FAILED", { errorPresent: Boolean(error) });
 
     return NextResponse.json(
       {
         success: false,
-        error: "Failed to load available times.",
+        code: "BOOKING_UNAVAILABLE",
       },
       {
         status: 500,

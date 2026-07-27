@@ -22,8 +22,8 @@ async function loadOverview(userId: string, salonId: string): Promise<ReminderSe
   return {
     settings: { enabled: settings.enabled, channel: "sms", hoursBefore: settings.hoursBefore },
     entitlement: {
-      canUseSmsReminders: entitlements.canUseSmsReminders,
-      maxMonthlyReminders: entitlements.maxMonthlyReminders,
+      canUseSmsReminders: entitlements.effectiveCapabilities.canUseSmsReminders,
+      maxMonthlyReminders: entitlements.planCapabilities.maxMonthlyReminders,
     },
     runtime: { ready: getReminderRuntimeConfig().smsRuntimeEnabled },
     usage: usage ? {
@@ -61,7 +61,7 @@ export async function PATCH(request: Request) {
     const entitlements = await resolveSalonEntitlements({ authenticatedUserId: auth.user.id, salonId });
     const policyError = getReminderSettingsPolicyError({
       enabled: parsed.data.enabled,
-      canUseSmsReminders: entitlements.canUseSmsReminders,
+      canUseSmsReminders: entitlements.effectiveCapabilities.canUseSmsReminders,
       runtimeReady: getReminderRuntimeConfig().smsRuntimeEnabled,
     });
     if (policyError) return response(policyError, 403);

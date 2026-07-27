@@ -26,6 +26,19 @@ const employeeSelect = `
   updated_at
 `;
 
+async function employeeMutation(method: "PATCH" | "DELETE", body: object) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("UNAUTHORIZED");
+  const response = await fetch("/api/employees", { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify(body) });
+  const result = await response.json().catch(() => null) as { success?: boolean; employee?: Employee; mode?: "hard" | "soft"; code?: string; message?: string } | null;
+  if (!response.ok || !result?.success) {
+    const error = new Error(result?.message ?? "EMPLOYEE_MUTATION_FAILED");
+    error.name = result?.code ?? "EMPLOYEE_MUTATION_FAILED";
+    throw error;
+  }
+  return result;
+}
+
 export async function createEmployee({
   salonId,
   fullName,
@@ -83,45 +96,17 @@ export async function updateEmployee({
   isBookable,
   isPublic,
 }: UpdateEmployeeInput): Promise<Employee> {
-  let query = supabase
-    .from("employees")
-    .update({
-      full_name: fullName,
-      display_name: displayName,
-      position,
-      phone,
-      email,
-      bio,
-      ...(typeof isActive === "boolean" ? { is_active: isActive } : {}),
-      ...(typeof isBookable === "boolean"
-        ? { is_bookable: isBookable }
-        : {}),
-      ...(typeof isPublic === "boolean" ? { is_public: isPublic } : {}),
-    })
-    .eq("id", employeeId);
-
-  if (salonId) {
-    query = query.eq("salon_id", salonId);
+  void salonId;
+  const details = await employeeMutation("PATCH", { action: "update_details", employeeId, fullName, displayName, position, phone, email, bio, isBookable: isBookable ?? null, isPublic: isPublic ?? null });
+  if (typeof isActive === "boolean" && details.employee?.is_active !== isActive) {
+    const active = await employeeMutation("PATCH", { action: "set_active", employeeId, isActive });
+    return active.employee as Employee;
   }
-
-  const { data, error } = await query.select(employeeSelect).single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data as Employee;
+  return details.employee as Employee;
 }
 
 export async function deleteEmployee(employeeId: string): Promise<void> {
-  const { error } = await supabase
-    .from("employees")
-    .delete()
-    .eq("id", employeeId);
-
-  if (error) {
-    throw error;
-  }
+  await employeeMutation("DELETE", { employeeId });
 }
 
 export type DeleteEmployeeSafelyResult = {
@@ -142,53 +127,14 @@ export async function deleteEmployeeSafely({
   employeeId: string;
   salonId: string;
 }): Promise<DeleteEmployeeSafelyResult> {
-  const now = new Date().toISOString();
-  const { data: futureAppointments, error: futureError } = await supabase
-    .from("appointments")
-    .select("id")
-    .eq("salon_id", salonId)
-    .eq("employee_id", employeeId)
-    .in("status", ["pending", "confirmed"])
-    .gte("start_time", now)
-    .limit(1);
-
-  if (futureError) throw futureError;
-  if (futureAppointments?.length) {
-    throw new EmployeeHasFutureAppointmentsError();
+  void salonId;
+  try {
+    const result = await employeeMutation("DELETE", { employeeId });
+    return { mode: result.mode ?? "soft" };
+  } catch (error) {
+    if (error instanceof Error && error.name === "EMPLOYEE_HAS_FUTURE_APPOINTMENTS") throw new EmployeeHasFutureAppointmentsError();
+    throw error;
   }
-
-  const { data: appointmentHistory, error: historyError } = await supabase
-    .from("appointments")
-    .select("id")
-    .eq("salon_id", salonId)
-    .eq("employee_id", employeeId)
-    .limit(1);
-
-  if (historyError) throw historyError;
-
-  if (appointmentHistory?.length) {
-    const { error } = await supabase
-      .from("employees")
-      .update({
-        is_active: false,
-        is_bookable: false,
-        is_public: false,
-      })
-      .eq("id", employeeId)
-      .eq("salon_id", salonId);
-
-    if (error) throw error;
-    return { mode: "soft" };
-  }
-
-  const { error } = await supabase
-    .from("employees")
-    .delete()
-    .eq("id", employeeId)
-    .eq("salon_id", salonId);
-
-  if (error) throw error;
-  return { mode: "hard" };
 }
 
 export async function restoreEmployee({
@@ -198,13 +144,8 @@ export async function restoreEmployee({
   employeeId: string;
   salonId: string;
 }): Promise<void> {
-  const { error } = await supabase
-    .from("employees")
-    .update({ is_active: true })
-    .eq("id", employeeId)
-    .eq("salon_id", salonId);
-
-  if (error) throw error;
+  void salonId;
+  await employeeMutation("PATCH", { action: "set_active", employeeId, isActive: true });
 }
 
 export class OwnerEmployeeAlreadyLinkedError extends Error {
@@ -221,56 +162,12 @@ export async function linkEmployeeToCurrentOwner({
   employeeId: string;
   salonId: string;
 }): Promise<Employee> {
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    throw new Error("Prijava je potrebna za povezivanje zaposlenog.");
+  void salonId;
+  try {
+    const result = await employeeMutation("PATCH", { action: "link_current_owner", employeeId });
+    return result.employee as Employee;
+  } catch (error) {
+    if (error instanceof Error && error.name === "EMPLOYEE_ALREADY_LINKED") throw new OwnerEmployeeAlreadyLinkedError();
+    throw error;
   }
-
-  const { data: salon, error: salonError } = await supabase
-    .from("salons")
-    .select("id, owner_id")
-    .eq("id", salonId)
-    .eq("owner_id", user.id)
-    .maybeSingle();
-
-  if (salonError) throw salonError;
-  if (!salon) {
-    throw new Error("Samo vlasnik salona može povezati svoj nalog.");
-  }
-
-  const { data: existingLink, error: existingLinkError } = await supabase
-    .from("employees")
-    .select("id")
-    .eq("salon_id", salonId)
-    .eq("profile_id", user.id)
-    .maybeSingle();
-
-  if (existingLinkError) throw existingLinkError;
-  if (existingLink && existingLink.id !== employeeId) {
-    throw new OwnerEmployeeAlreadyLinkedError();
-  }
-
-  const { data, error } = await supabase
-    .from("employees")
-    .update({ profile_id: user.id })
-    .eq("id", employeeId)
-    .eq("salon_id", salonId)
-    .is("profile_id", null)
-    .select(employeeSelect)
-    .maybeSingle();
-
-  if (error?.code === "23505") {
-    throw new OwnerEmployeeAlreadyLinkedError();
-  }
-
-  if (error) throw error;
-  if (!data) {
-    throw new Error("Zaposleni je već povezan sa drugim nalogom.");
-  }
-
-  return data as Employee;
 }

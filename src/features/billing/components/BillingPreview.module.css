@@ -2,3 +2,4 @@
 @media(max-width:1024px){.overview{grid-template-columns:1fr}.usage{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:12px}.usageIcon{grid-row:1/4}.usage>span:nth-child(2),.usage strong,.usage small,.usageSkeleton{grid-column:2;margin-top:0}.planGrid{grid-template-columns:1fr}.planCard>p{min-height:0}}
 @media(max-width:640px){.overview,.plans{padding:16px}.titleRow,.sectionHeading{align-items:flex-start;flex-direction:column}.planTop{flex-direction:column}.planTop>div{justify-content:flex-start}.dateNotice{width:100%}.loading{grid-template-columns:1fr}.loading span:last-child{grid-column:auto}.paymentNotice{padding:14px}.planCard button{width:100%}}
 @media(prefers-reduced-motion:reduce){.loading span,.usageSkeleton{animation:none}}
+.planPrice{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px;margin-top:12px}.planPrice strong{font-size:20px}.planPrice span,.planPrice small{color:#64748b;font-size:10px}.planPrice small{flex-basis:100%}

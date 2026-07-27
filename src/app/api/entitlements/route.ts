@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { EntitlementError, resolveSalonEntitlements } from "@/features/billing/services/entitlementService";
+import { buildEntitlementApiSuccess, getEntitlementApiErrorStatus } from "@/features/billing/services/entitlementApiContract";
 import { getAuthenticatedRequestUser } from "@/lib/server/requestAuth";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +17,10 @@ export async function GET(request: Request) {
   }
   try {
     const entitlements = await resolveSalonEntitlements({ authenticatedUserId: auth.user.id, salonId });
-    return NextResponse.json({ success: true, entitlements }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(buildEntitlementApiSuccess(entitlements), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const code = error instanceof EntitlementError ? error.code : "ENTITLEMENTS_LOAD_FAILED";
-    const status = code === "FORBIDDEN" ? 403 : 500;
+    const status = getEntitlementApiErrorStatus(code);
     return NextResponse.json({ success: false, code }, { status });
   }
 }
-

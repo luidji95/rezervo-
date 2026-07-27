@@ -64,7 +64,7 @@ export function useStatistics() {
 
   useEffect(() => {
     if (!currentSalon || currentRole !== "owner" || entitlementState.loading) return;
-    if (!entitlementState.entitlements?.canUseStatistics) {
+    if (!entitlementState.entitlements?.effectiveCapabilities.canUseStatistics) {
       Promise.resolve().then(() => setLoading(false));
       return;
     }
@@ -98,7 +98,7 @@ export function useStatistics() {
       window.clearTimeout(request);
       controller.abort();
     };
-  }, [currentRole, currentSalon, entitlementState.entitlements?.canUseStatistics, entitlementState.loading, period, requestVersion, router]);
+  }, [currentRole, currentSalon, entitlementState.entitlements?.effectiveCapabilities.canUseStatistics, entitlementState.loading, period, requestVersion, router]);
 
   return {
     data,

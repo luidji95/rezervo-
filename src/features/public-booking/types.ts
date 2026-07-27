@@ -74,4 +74,9 @@ export type PublicBookingResult = CreatePublicBookingResult & {
 export type PublicSalonPageData = {
   salon: PublicSalon;
   services: PublicService[];
+  bookingAvailable: boolean;
+};
+
+export type PublicBookingAvailabilityState = {
+  available: boolean;
 };

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import { PublicSalonHeader } from "@/features/public-booking/components/PublicSalonHeader";
 import { PublicBookingSelection } from "@/features/public-booking/components/PublicBookingSelection";
-import { getPublicSalonPageData } from "@/features/public-booking/services/publicBookingService";
+import { getPublicSalonPageData } from "@/features/public-booking/services/publicBookingServerService";
 import "./public-booking.css";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -46,7 +46,7 @@ export default async function PublicSalonPage({ params }: Props) {
     <main className="public-booking-page">
       <div className="public-booking-container">
         <PublicSalonHeader salon={data.salon} />
-        <PublicBookingSelection salonId={data.salon.id} salonName={data.salon.name} salonSlug={data.salon.slug} salonTimeZone={data.salon.timezone} services={data.services} />
+        {data.bookingAvailable ? <PublicBookingSelection salonId={data.salon.id} salonName={data.salon.name} salonSlug={data.salon.slug} salonTimeZone={data.salon.timezone} services={data.services} /> : <section className="public-booking-state" role="status"><h1>Online zakazivanje trenutno nije dostupno.</h1><p>Za informacije o terminima kontaktirajte salon.</p></section>}
         <footer className="public-booking-footer"><span>Rezervacije omogućava</span><strong>Rezervo</strong></footer>
       </div>
     </main>

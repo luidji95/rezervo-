@@ -17,6 +17,7 @@ import {
   type EmployeeFormInput,
 } from "./employeeSchema";
 import { useEmployeeDialog } from "./useEmployeeDialog";
+import { getEmployeeMutationMessage } from "@/features/employees/services/employeeMutationPresentation";
 
 type EmployeeEditModalProps = {
   employee: Employee;
@@ -82,7 +83,7 @@ export function EmployeeEditModal({
       await onSaved();
     } catch (error) {
       console.error("Failed to update employee:", error);
-      setFormError("Izmene trenutno nije moguće sačuvati. Pokušajte ponovo.");
+      setFormError(getEmployeeMutationMessage(error, "Izmene trenutno nije moguće sačuvati. Pokušajte ponovo."));
     }
   }
 

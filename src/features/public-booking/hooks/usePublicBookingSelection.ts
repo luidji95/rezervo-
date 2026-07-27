@@ -7,6 +7,7 @@ import {
   getPublicAvailability,
   getPublicEmployeesForService,
   PublicBookingConflictError,
+  PublicBookingUnavailableError,
 } from "../services/publicBookingService";
 import type {
   PublicAvailabilitySlot,
@@ -253,6 +254,9 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string) {
           lastSlotRequestKeyRef.current = null;
           await selectDate(selectedDate);
           setBookingError(conflictMessage);
+        } else if (error instanceof PublicBookingUnavailableError) {
+          setBookingError("Online zakazivanje trenutno nije dostupno.");
+          setSelectedSlot(null);
         } else {
           console.error("Failed to create public booking:", error);
           setBookingError(

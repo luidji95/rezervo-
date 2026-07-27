@@ -20,6 +20,7 @@ import {
   restoreEmployee,
 } from "@/services/employeeService";
 import type { Employee } from "@/types/employee";
+import { getEmployeeMutationMessage } from "@/features/employees/services/employeeMutationPresentation";
 
 import "./employees.css";
 
@@ -35,6 +36,7 @@ export default function EmployeesPage() {
   const [restoringEmployeeId, setRestoringEmployeeId] = useState<string | null>(
     null
   );
+  const [restoreError, setRestoreError] = useState("");
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
 
   const {
@@ -61,7 +63,7 @@ export default function EmployeesPage() {
     setStatusFilter,
     statusFilter,
   } = useEmployeesPageData();
-  const employeeLimit = entitlements?.maxEmployees ?? null;
+  const employeeLimit = entitlements?.planCapabilities.maxEmployees ?? null;
   const isEmployeeLimitReached = employeeLimit !== null && activeEmployeeCount >= employeeLimit;
 
   function handleSelectEmployee(employee: Employee) {
@@ -104,10 +106,12 @@ export default function EmployeesPage() {
 
     try {
       setRestoringEmployeeId(employee.id);
+      setRestoreError("");
       await restoreEmployee({ employeeId: employee.id, salonId });
       await loadData();
     } catch (error) {
       console.error("Failed to restore employee:", error);
+      setRestoreError(getEmployeeMutationMessage(error, "Zaposlenog trenutno nije moguće ponovo aktivirati."));
     } finally {
       setRestoringEmployeeId(null);
     }
@@ -169,6 +173,8 @@ export default function EmployeesPage() {
           Novi zaposleni
         </button>
       </header>
+
+      {restoreError && <p className="employees-error" role="alert">{restoreError}</p>}
 
       <section className="employee-kpi-grid">
         <KpiCard

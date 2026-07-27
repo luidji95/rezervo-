@@ -23,6 +23,8 @@ select public.sync_employee_service_assignments_v1(
   array[(select id from public.services where salon_id='f2000000-0000-4000-8000-000000000001')]::uuid[]
 );
 select pg_temp.assert_true((select count(*)=1 from public.employee_services where employee_id='f3000000-0000-4000-8000-000000000001' and is_active),'ASSIGNMENT_SYNC_FAILED');
+select (public.update_service_v1((select id from public.services where salon_id='f2000000-0000-4000-8000-000000000001'),'Contract Service Updated',null,'Hair',45,1700,true,true)).id;
+select pg_temp.assert_true((select buffer_minutes=5 and sort_order=1 from public.services where salon_id='f2000000-0000-4000-8000-000000000001'),'SERVICE_OMITTED_FIELDS_WERE_RESET');
 select pg_temp.expect_error($q$select public.sync_employee_service_assignments_v1('f2000000-0000-4000-8000-000000000001','f3000000-0000-4000-8000-000000000001',array[(select id from public.services where salon_id='f2000000-0000-4000-8000-000000000001'),(select id from public.services where salon_id='f2000000-0000-4000-8000-000000000001')]::uuid[])$q$,'INVALID_INPUT');
 select pg_temp.expect_error($q$select (public.create_owner_client_v1('f2000000-0000-4000-8000-000000000002','Cross Tenant',null,null,'manual')).id$q$,'FORBIDDEN');
 reset role;

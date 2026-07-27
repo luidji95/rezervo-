@@ -40,6 +40,7 @@
     "test:primary-salon-bootstrap": "docker exec -i supabase_db_rezervo psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/tests/primary_salon_bootstrap_contract.sql",
     "test:primary-salon-concurrency": "node scripts/test-primary-salon-concurrency.mjs",
     "test:plan-catalog": "node --experimental-strip-types --test src/features/billing/services/planCatalog.test.ts",
+    "test:pricing": "node --experimental-strip-types --test src/features/pricing/services/publicPlanCatalogCore.test.ts src/features/pricing/services/acquisitionRouting.test.ts src/features/billing/services/billingPricingPresentation.test.ts",
     "seed:dry-run": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts dry-run",
     "seed:small": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts seed --profile small",
     "seed:medium": "node --env-file-if-exists=.env.local tools/production-simulation/cli.ts seed --profile medium",

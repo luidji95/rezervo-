@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { LandingPage } from "@/features/landing/LandingPage";
 import "@/features/landing/landing.css";
+import { getPublicPlanCatalog } from "@/features/pricing/services/publicPlanCatalog";
 
 export const metadata: Metadata = {
   title: "Rezervo | Salon Management Software",
@@ -12,6 +13,6 @@ export const metadata: Metadata = {
   },
 };
 
-export default function HomePage() {
-  return <LandingPage />;
+export default async function HomePage() {
+  return <LandingPage plans={await getPublicPlanCatalog()} />;
 }

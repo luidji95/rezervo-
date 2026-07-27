@@ -43,5 +43,5 @@ export function formatPlanPrice(value: string | number | null, currency: string)
 }
 
 export function getTrialPlanPriceMessage(plan: BillingPlanCatalogItem): string {
-  return `Cena nakon probnog perioda: ${formatPlanPrice(plan.monthlyPrice, plan.currency)} mesečno. Kartica nije dodata.`;
+  return `Cena Pro paketa nakon probnog perioda: ${formatPlanPrice(plan.monthlyPrice, plan.currency)} mesečno. Kartica nije dodata, a checkout još nije dostupan.`;
 }

@@ -23,5 +23,5 @@ test("catalog exposes Premium as unavailable without removing it", () => {
 
 test("trial billing copy uses canonical Pro price and does not imply payment", () => {
   const [pro] = normalizePlanCatalog([{ slug: "pro", name: "Pro", monthly_price: "5990", yearly_price: null, currency: "RSD", max_employees: 10, is_active: true }]);
-  assert.equal(getTrialPlanPriceMessage(pro), "Cena nakon probnog perioda: 5.990 RSD mesečno. Kartica nije dodata.");
+  assert.equal(getTrialPlanPriceMessage(pro), "Cena Pro paketa nakon probnog perioda: 5.990 RSD mesečno. Kartica nije dodata, a checkout još nije dostupan.");
 });

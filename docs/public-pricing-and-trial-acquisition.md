@@ -21,3 +21,15 @@ The Billing tab is informational. It uses the existing authenticated entitlement
 Production smoke for this phase is read-only: verify `/`, `/pricing`, CTA hrefs, registration copy and responsive rendering without creating an Auth user, salon or trial. Operators must confirm the Supabase Auth Site URL and redirect allowlist contain the deployed HTTPS login URL; this phase does not mutate dashboard configuration.
 
 Phase 7B owns checkout/payment-provider integration, actual plan selection or switching, billing lifecycle mutations, invoices/payment methods and any SMS credit model.
+
+## Production URL and deployment contract
+
+The canonical public MVP URL is `https://rezervo-app-gamma.vercel.app`. It serves the current `origin/main` application and is public, while immutable Vercel deployment URLs remain protected. `NEXT_PUBLIC_APP_URL` is the single explicit application URL override. When it is absent, server metadata uses Vercel's `VERCEL_PROJECT_PRODUCTION_URL`; local development falls back to `http://localhost:3000`.
+
+Supabase Auth Site URL must match the canonical public URL. Its exact redirect allowlist retains local development and contains `/auth/login` for email confirmation plus `/auth/accept-invite` for invitations on both the production and localhost origins. Existing `/auth/callback` entries are retained until a separate auth-route cleanup confirms they are unused.
+
+The two Vercel integrations named `rezervo` and `rezervo-app` currently build the same Git repository and `main` commit. The public `rezervo-app-gamma.vercel.app` alias is the canonical acquisition surface; the other integration is treated as a duplicate until an authenticated Vercel project audit can confirm project IDs, domain ownership and safe alias removal. Do not delete either project or move aliases without that audit.
+
+Production acceptance smoke is read-only: request `/`, `/pricing`, `/auth/register`, `/auth/login` and `/auth/accept-invite`; verify the canonical RSD catalogue, metadata, safe CTA query parameters and absence of checkout/provider UI. Never create an Auth user, salon or trial for this smoke.
+
+The onboarding route redirect remains an AuthorizationContext UX guard. It is not a security boundary: `create_primary_salon_once_v1()` derives ownership from `auth.uid()`, is idempotent, the named owner constraint prevents a second primary salon, and direct authenticated salon bootstrap inserts are denied. A future architecture phase may introduce a server-readable Supabase cookie session, middleware/server route guards and server-side authorization bootstrap; that work is intentionally outside this MVP rollout.

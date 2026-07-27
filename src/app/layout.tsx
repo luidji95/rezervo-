@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Providers } from "@/providers/Providers";
+import { getAppUrl } from "@/lib/appUrl";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(getAppUrl()),
   title: "Rezervo",
   description: "Salon booking management platform",
 };

@@ -35,8 +35,6 @@ export async function rescheduleOwnerAppointment(appointmentId:string,newStart:s
 }
 
 export async function updateOwnerAppointmentDetails(appointmentId:string,clientId:string,data:{fullName:string;phone:string;email:string;internalNote:string;customerNote:string}){
-  const clientResult=await supabase.from("clients").update({full_name:data.fullName.trim(),phone:data.phone?.trim()||null,email:data.email?.trim()||null}).eq("id",clientId);
-  if(clientResult.error) throw new Error("Podatke klijenta trenutno nije moguće sačuvati.");
-  const {error}=await supabase.rpc("update_owner_appointment_notes_v1",{p_appointment_id:appointmentId,p_internal_note:data.internalNote||"",p_customer_note:data.customerNote||""});
+  const {error}=await supabase.rpc("update_owner_appointment_details_v1",{p_appointment_id:appointmentId,p_client_id:clientId,p_full_name:data.fullName,p_phone:data.phone||"",p_email:data.email||"",p_internal_note:data.internalNote||"",p_customer_note:data.customerNote||""});
   if(error) throw new Error(getAppointmentMutationMessage(error));return {success:true};
 }

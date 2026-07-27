@@ -8,6 +8,7 @@ through narrow RPCs. Browser roles have SELECT-only table access.
 - Owner/manager status: `update_owner_appointment_status_v1`
 - Owner/manager reschedule: `reschedule_owner_appointment_v1`
 - Owner/manager notes: `update_owner_appointment_notes_v1`
+- Owner/manager client/details modal: `update_owner_appointment_details_v1`
 - Employee create/status retain their existing service-role RPCs with a new
   canonical access gate.
 

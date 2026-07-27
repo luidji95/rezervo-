@@ -8,6 +8,7 @@ import { useAuthorization } from "@/context/AuthorizationContext";
 import AppShell from "@/components/layout/AppShell";
 import { hasPermission } from "@/features/authorization/permissions";
 import { getRoutePermission } from "@/features/authorization/routePermissions";
+import { getAppRouteRedirect } from "@/features/authorization/authorizationResolution";
 
 import { SalonProvider } from "@/context/SalonContext";
 
@@ -27,6 +28,7 @@ export default function AppLayout({
     currentEmployee,
     permissions,
     loading: authorizationLoading,
+    resolution,
     error: authorizationError,
   } = useAuthorization();
   const hasRouteAccess = hasPermission(
@@ -36,28 +38,11 @@ export default function AppLayout({
 
   useEffect(() => {
     if (authLoading || authorizationLoading || authorizationError) return;
-
-    if (!user) {
-      router.replace("/auth/login");
-      return;
-    }
-
-    if (!currentSalon) {
-      router.replace("/onboarding");
-      return;
-    }
-
-    if (currentRole === "owner" && !currentSalon.onboarding_completed) {
-      router.replace("/onboarding");
-      return;
-    }
+    const destination = getAppRouteRedirect({ resolution, hasRouteAccess });
+    if (destination) router.replace(destination);
 
     if (currentRole === "employee" && !currentEmployee) {
       return;
-    }
-
-    if (!hasRouteAccess) {
-      router.replace("/dashboard");
     }
   }, [
     authLoading,
@@ -67,6 +52,7 @@ export default function AppLayout({
     currentEmployee,
     currentSalon,
     hasRouteAccess,
+    resolution,
     router,
     user,
   ]);

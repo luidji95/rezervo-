@@ -1,11 +1,12 @@
 ﻿"use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 import { useSalon } from "@/context/SalonContext";
 import { useAuthorization } from "@/context/AuthorizationContext";
 import { EmployeeDashboard } from "@/features/dashboard/components/EmployeeDashboard";
+import { loadOwnerDashboardSections } from "@/features/dashboard/services/ownerDashboardLoader";
 import { getDashboardStats, type DashboardStats } from "@/services/dashboardStatsService";
 import { getTodaySchedule, getUpcomingAppointments } from "@/services/dashboardAppointmentsService";
 import { getPopularServices, getTopClients, type PopularService, type TopClient } from "@/services/dashboardAnalyticsService";
@@ -119,6 +120,8 @@ function OwnerDashboard() {
   const [topClients, setTopClients] = useState<TopClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const inFlightRef = useRef<Promise<void> | null>(null);
+  const hasLoadedRef = useRef(false);
 
   const salonTimeZone = currentSalon?.timezone || DEFAULT_SALON_TIME_ZONE;
   const today = getTodayDateKey(salonTimeZone);
@@ -145,34 +148,45 @@ function OwnerDashboard() {
     timeZone: salonTimeZone,
   }).format(new Date());
 
-  const loadDashboardData = useCallback(async () => {
-    if (!currentSalon) return;
+  const loadDashboardData = useCallback(() => {
+    if (!currentSalon) return Promise.resolve();
+    if (inFlightRef.current) return inFlightRef.current;
 
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     setError(null);
+    const request = loadOwnerDashboardSections({
+      stats: () => getDashboardStats(currentSalon.id, salonTimeZone),
+      todaySchedule: () => getTodaySchedule(currentSalon.id, today, salonTimeZone),
+      upcomingAppointments: () => getUpcomingAppointments(currentSalon.id),
+      employees: () => getCalendarEmployees(currentSalon.id),
+      popularServices: () => getPopularServices(currentSalon.id),
+      topClients: () => getTopClients(currentSalon.id),
+    }).then((result) => {
+      if (result.stats.status === "fulfilled") setStats(result.stats.value);
+      if (result.todaySchedule.status === "fulfilled") setTodaySchedule(result.todaySchedule.value);
+      if (result.upcomingAppointments.status === "fulfilled") setUpcomingAppointments(result.upcomingAppointments.value);
+      if (result.employees.status === "fulfilled") setEmployees(result.employees.value);
+      if (result.popularServices.status === "fulfilled") setPopularServices(result.popularServices.value);
+      if (result.topClients.status === "fulfilled") setTopClients(result.topClients.value);
 
-    try {
-      const [statsData, todayScheduleData, upcomingData, employeesData, popularData, topClientsData] =
-        await Promise.all([
-          getDashboardStats(currentSalon.id, salonTimeZone),
-          getTodaySchedule(currentSalon.id, today, salonTimeZone),
-          getUpcomingAppointments(currentSalon.id),
-          getCalendarEmployees(currentSalon.id),
-          getPopularServices(currentSalon.id),
-          getTopClients(currentSalon.id),
-        ]);
-
-      setStats(statsData);
-      setTodaySchedule(todayScheduleData);
-      setUpcomingAppointments(upcomingData);
-      setEmployees(employeesData);
-      setPopularServices(popularData);
-      setTopClients(topClientsData);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error loading dashboard data.");
-    } finally {
+      const failed = Object.entries(result).filter(([, section]) => section.status === "rejected");
+      if (failed.length > 0) {
+        console.warn("OWNER_DASHBOARD_PARTIAL_LOAD", {
+          sections: Object.entries(result).flatMap(([name, section]) =>
+            section.status === "rejected"
+              ? [{ name, code: section.errorCode, durationMs: Math.round(section.durationMs) }]
+              : [],
+          ),
+        });
+        setError("Deo podataka trenutno nije dostupan.");
+      }
+    }).finally(() => {
+      hasLoadedRef.current = true;
       setLoading(false);
-    }
+      if (inFlightRef.current === request) inFlightRef.current = null;
+    });
+    inFlightRef.current = request;
+    return request;
   }, [currentSalon, salonTimeZone, today]);
 
   useEffect(() => {
@@ -182,16 +196,12 @@ function OwnerDashboard() {
 
     refreshDashboard();
     window.addEventListener("rezervo:appointment-status-changed", refreshDashboard);
-    window.addEventListener("storage", refreshDashboard);
-    window.addEventListener("focus", refreshDashboard);
 
     return () => {
       window.removeEventListener(
         "rezervo:appointment-status-changed",
         refreshDashboard
       );
-      window.removeEventListener("storage", refreshDashboard);
-      window.removeEventListener("focus", refreshDashboard);
     };
   }, [loadDashboardData]);
 
@@ -203,16 +213,20 @@ function OwnerDashboard() {
     return <p>No salon selected.</p>;
   }
 
-  if (error) {
-    return <p>{error}</p>;
-  }
-
   return (
     <main className="dashboard-page">
       <header>
         <h1>Rezervo Dashboard</h1>
         <p>Pregled ključnih metrika i narednih termina za {currentSalon.name}.</p>
       </header>
+      {error && (
+        <div className="dashboard-partial-error" role="status">
+          <span>{error}</span>
+          <button type="button" onClick={() => void loadDashboardData()}>
+            Pokušaj ponovo
+          </button>
+        </div>
+      )}
 
       <section className="dashboard-top-kpi">
         <article className="dashboard-card dashboard-kpi-card">

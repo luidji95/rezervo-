@@ -505,3 +505,24 @@
 @media (max-width: 460px) {
   .employee-dashboard__kpis { grid-template-columns: 1fr; }
 }
+.dashboard-partial-error {
+  margin: 0;
+  border: 1px solid #fde68a;
+  border-radius: 12px;
+  padding: 10px 14px;
+  color: #92400e;
+  background: #fffbeb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-partial-error button {
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}

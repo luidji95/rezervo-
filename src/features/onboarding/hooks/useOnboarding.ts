@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,18 +11,19 @@ import {
   type OnboardingFormData,
 } from "@/app/onboarding/onboardingSchema";
 import { useAuth } from "@/context/AuthContext";
-import {
-  getCurrentSalon,
-  saveOnboardingSalon,
-} from "@/services/salonService";
+import { useAuthorization } from "@/context/AuthorizationContext";
+import { saveOnboardingSalon } from "@/services/salonService";
+import { completeOnboardingAndNavigate } from "@/features/onboarding/services/onboardingCompletionCore";
 
 export function useOnboarding() {
   const { user, loading } = useAuth();
+  const { currentSalon, refetchAuthorization, resolution } = useAuthorization();
   const router = useRouter();
-
   const [checkingSalon, setCheckingSalon] = useState(true);
   const [existingSalonId, setExistingSalonId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const redirectStartedRef = useRef(false);
+  const submitStartedRef = useRef(false);
 
   const form = useForm<OnboardingFormData>({
     resolver: zodResolver(onboardingSchema),
@@ -37,94 +38,108 @@ export function useOnboarding() {
       description: "",
     },
   });
-
   const { reset } = form;
 
   useEffect(() => {
-    const checkAccess = async () => {
-      if (loading) return;
-
-      if (!user) {
-        router.replace("/auth/login");
-        return;
-      }
-
-      try {
-        const salon = await getCurrentSalon(user.id);
-
-        if (salon?.onboarding_completed) {
-          router.replace("/dashboard");
-          return;
-        }
-
-        if (salon) {
-          const businessType =
-            SALON_BUSINESS_TYPE_VALUES.find(
-              (value) => value === salon.business_type
-            ) ?? "barbershop";
-
-          setExistingSalonId(salon.id);
-          reset({
-            name: salon.name ?? "",
-            businessType,
-            phone: salon.phone ?? "",
-            email: salon.email ?? "",
-            addressLine: salon.address_line ?? "",
-            websiteUrl: salon.website_url ?? "",
-            instagramUrl: salon.instagram_url ?? "",
-            description: salon.description ?? "",
-          });
-        }
-
-        setCheckingSalon(false);
-      } catch (error) {
-        console.error("Failed to check salon:", error);
-
-        setSubmitError("Could not verify your salon setup.");
-        setCheckingSalon(false);
-      }
+    if (loading || resolution === "loading") return;
+    let ignore = false;
+    const commit = (callback: () => void) => {
+      queueMicrotask(() => {
+        if (!ignore) callback();
+      });
     };
 
-    checkAccess();
-  }, [
-    loading,
-    reset,
-    router,
-    user,
-  ]);
+    if (!user || resolution === "unauthenticated") {
+      if (!redirectStartedRef.current) {
+        redirectStartedRef.current = true;
+        router.replace("/auth/login");
+      }
+      return () => { ignore = true; };
+    }
+
+    if (resolution === "error") {
+      commit(() => {
+        setSubmitError("Could not verify your salon setup.");
+        setCheckingSalon(false);
+      });
+      return () => { ignore = true; };
+    }
+
+    if (resolution === "loaded_with_completed_onboarding") {
+      if (!redirectStartedRef.current) {
+        redirectStartedRef.current = true;
+        router.replace("/dashboard");
+      }
+      return () => { ignore = true; };
+    }
+
+    if (currentSalon) {
+      const businessType =
+        SALON_BUSINESS_TYPE_VALUES.find(
+          (value) => value === currentSalon.business_type,
+        ) ?? "barbershop";
+      commit(() => {
+        setExistingSalonId(currentSalon.id);
+        reset({
+          name: currentSalon.name ?? "",
+          businessType,
+          phone: currentSalon.phone ?? "",
+          email: currentSalon.email ?? "",
+          addressLine: currentSalon.address_line ?? "",
+          websiteUrl: currentSalon.website_url ?? "",
+          instagramUrl: currentSalon.instagram_url ?? "",
+          description: currentSalon.description ?? "",
+        });
+        setCheckingSalon(false);
+      });
+    } else {
+      commit(() => setCheckingSalon(false));
+    }
+    return () => { ignore = true; };
+  }, [currentSalon, loading, reset, resolution, router, user]);
 
   const onSubmitBasicInfo = async (data: OnboardingFormData) => {
-    if (!user) return;
-
+    if (!user || submitStartedRef.current) return;
+    submitStartedRef.current = true;
     setSubmitError(null);
+    let salonSaved = false;
 
     try {
-      await saveOnboardingSalon({
-        salonId: existingSalonId ?? undefined,
-        ownerId: user.id,
-        name: data.name,
-        businessType: data.businessType,
-        phone: data.phone,
-        email: data.email,
-        addressLine: data.addressLine,
-        websiteUrl: data.websiteUrl,
-        instagramUrl: data.instagramUrl,
-        description: data.description,
+      await completeOnboardingAndNavigate({
+        save: () => saveOnboardingSalon({
+          salonId: existingSalonId ?? undefined,
+          ownerId: user.id,
+          name: data.name,
+          businessType: data.businessType,
+          phone: data.phone,
+          email: data.email,
+          addressLine: data.addressLine,
+          websiteUrl: data.websiteUrl,
+          instagramUrl: data.instagramUrl,
+          description: data.description,
+        }),
+        onSaved: (salon) => {
+          salonSaved = true;
+          setExistingSalonId(salon.id);
+        },
+        refreshAuthorization: refetchAuthorization,
+        navigate: () => {
+          redirectStartedRef.current = true;
+          router.replace("/dashboard");
+        },
       });
-      router.replace("/dashboard");
     } catch (error) {
-      console.error("Failed to save salon:", error);
-
-      setSubmitError("Something went wrong while saving your salon.");
+      console.error("Failed to finish onboarding:", {
+        code: error instanceof Error ? error.name : "UNKNOWN_ERROR",
+      });
+      setSubmitError(
+        salonSaved
+          ? "Salon je sačuvan, ali stanje aplikacije nije osveženo. Pokušajte ponovo."
+          : "Salon trenutno nije moguće sačuvati. Pokušajte ponovo.",
+      );
+      submitStartedRef.current = false;
     }
   };
 
-  return {
-    checkingSalon,
-    form,
-    loading,
-    onSubmitBasicInfo,
-    submitError,
-    user,
-  };
+  return { checkingSalon, form, loading, onSubmitBasicInfo, submitError, user };
 }

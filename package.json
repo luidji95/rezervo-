@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test:reminders": "node --experimental-strip-types --test src/features/reminders/services/reminderEligibilityService.test.ts",
     "test:calendar": "node --experimental-strip-types --test src/features/calendar/calendarTimeRange.test.ts",
+    "test:app-routing": "node --experimental-strip-types --test src/features/authorization/authorizationResolution.test.ts src/features/onboarding/services/onboardingCompletionCore.test.ts src/features/dashboard/services/ownerDashboardLoader.test.ts",
     "test:availability": "node --experimental-strip-types --test src/services/availabilitySlotCore.test.ts",
     "test:sms-provider": "node --experimental-strip-types --test src/features/reminders/providers/infobipSmsProviderCore.test.ts",
     "test:reminder-worker": "node --experimental-strip-types --test src/features/reminders/services/appointmentReminderTemplate.test.ts src/features/reminders/services/reminderWorkerCore.test.ts src/features/reminders/services/developmentReminderWorkerGuard.test.ts src/features/reminders/services/reminderClaimCore.test.ts src/features/reminders/services/reminderClaimSqlRegression.test.ts src/features/reminders/services/reminderWorkerDiagnostics.test.ts",

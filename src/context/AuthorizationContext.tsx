@@ -16,6 +16,10 @@ import type {
   AuthorizationSnapshot,
 } from "@/features/authorization/types";
 import { getPermissions } from "@/features/authorization/permissions";
+import {
+  resolveAuthorizationState,
+  type AuthorizationResolution,
+} from "@/features/authorization/authorizationResolution";
 
 const EMPTY_AUTHORIZATION: AuthorizationSnapshot = {
   currentProfile: null,
@@ -29,8 +33,9 @@ const EMPTY_AUTHORIZATION: AuthorizationSnapshot = {
 
 type AuthorizationContextValue = AuthorizationSnapshot & {
   loading: boolean;
+  resolution: AuthorizationResolution;
   error: string | null;
-  refetchAuthorization: () => Promise<void>;
+  refetchAuthorization: () => Promise<AuthorizationSnapshot>;
 };
 
 const AuthorizationContext = createContext<AuthorizationContextValue | null>(
@@ -50,7 +55,7 @@ export function AuthorizationProvider({ children }: { children: ReactNode }) {
       setAuthorization(EMPTY_AUTHORIZATION);
       setError(null);
       setResolvedUserId(null);
-      return;
+      return EMPTY_AUTHORIZATION;
     }
 
     setIsRefreshing(true);
@@ -60,11 +65,13 @@ export function AuthorizationProvider({ children }: { children: ReactNode }) {
       const snapshot = await loadAuthorizationSnapshot(user.id);
       setAuthorization(snapshot);
       setResolvedUserId(user.id);
+      return snapshot;
     } catch (authorizationError) {
       console.error("Failed to load authorization:", authorizationError);
       setAuthorization(EMPTY_AUTHORIZATION);
       setResolvedUserId(user.id);
       setError("Nije moguće učitati pristup salonu. Pokušajte ponovo.");
+      throw authorizationError;
     } finally {
       setIsRefreshing(false);
     }
@@ -110,15 +117,24 @@ export function AuthorizationProvider({ children }: { children: ReactNode }) {
 
   const loading =
     authLoading || isRefreshing || Boolean(user && resolvedUserId !== user.id);
+  const resolution = resolveAuthorizationState({
+    loading,
+    error,
+    userExists: Boolean(user),
+    salonExists: Boolean(authorization.currentSalon),
+    onboardingCompleted: Boolean(authorization.currentSalon?.onboarding_completed),
+    role: authorization.currentRole,
+  });
 
   const value = useMemo(
     () => ({
       ...authorization,
       loading,
+      resolution,
       error,
       refetchAuthorization,
     }),
-    [authorization, error, loading, refetchAuthorization],
+    [authorization, error, loading, refetchAuthorization, resolution],
   );
 
   return (

@@ -12,7 +12,7 @@ import type { CurrentSalon } from "@/services/salonService";
 type SalonContextValue = {
   currentSalon: CurrentSalon;
   salonLoading: boolean;
-  refetchSalon: () => Promise<void>;
+  refetchSalon: () => Promise<unknown>;
 };
 
 const SalonContext = createContext<SalonContextValue | null>(null);

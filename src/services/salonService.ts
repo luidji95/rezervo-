@@ -173,8 +173,6 @@ export async function saveOnboardingSalon({
     onboarding_step: 1,
   };
 
-  console.log("Salon payload:", payload);
-
   if (salonId) {
     const { data, error } = await supabase
       .from("salons")
@@ -184,13 +182,6 @@ export async function saveOnboardingSalon({
       .single();
 
     if (error) {
-      console.log("Supabase error full:", JSON.stringify(error, null, 2));
-      console.log("Supabase error parts:", {
-        message: error?.message,
-        details: error?.details,
-        hint: error?.hint,
-        code: error?.code,
-      });
       throw error;
     }
 
@@ -207,13 +198,6 @@ export async function saveOnboardingSalon({
     .single();
 
   if (salonError) {
-    console.log("Supabase error full:", JSON.stringify(salonError, null, 2));
-    console.log("Supabase error parts:", {
-      message: salonError?.message,
-      details: salonError?.details,
-      hint: salonError?.hint,
-      code: salonError?.code,
-    });
     throw salonError;
   }
 

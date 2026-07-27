@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
 import Link from "next/link";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useAuth } from "@/context/AuthContext";
+import { useAuthorization } from "@/context/AuthorizationContext";
+import { getPostLoginPath } from "@/features/authorization/services/authorizationService";
+import { getAcquisitionPlanMessage, parseAcquisitionPlan, sanitizeNextPath } from "@/features/pricing/services/acquisitionRouting";
 
 import { registerUser } from "@/services/authService";
 
@@ -18,19 +21,27 @@ import {
   type RegisterFormValues,
 } from "@/features/auth/schemas/authSchema";
 
-export default function RegisterPage() {
+function RegisterContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const { user, loading } = useAuth();
+  const { resolution } = useAuthorization();
+  const safeNext = sanitizeNextPath(searchParams.get("next"));
+  const acquisitionPlan = searchParams.get("source") === "pricing"
+    ? parseAcquisitionPlan(searchParams.get("plan"))
+    : null;
+  const acquisitionMessage = getAcquisitionPlanMessage(acquisitionPlan);
+  const loginHref = safeNext ? `/auth/login?next=${encodeURIComponent(safeNext)}` : "/auth/login";
 
   const [formError, setFormError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
-    if (!loading && user) {
-      router.replace("/onboarding");
+    if (!loading && user && resolution !== "loading") {
+      getPostLoginPath(user.id, safeNext).then((path) => router.replace(path)).catch(() => router.replace("/dashboard"));
     }
-  }, [loading, user, router]);
+  }, [loading, resolution, safeNext, user, router]);
 
   const {
     register,
@@ -54,10 +65,11 @@ export default function RegisterPage() {
       const result = await registerUser({
         email: values.email,
         password: values.password,
+        nextPath: safeNext,
       });
 
       if (result.session && result.user) {
-        router.replace("/onboarding");
+        router.replace(await getPostLoginPath(result.user.id, safeNext));
         return;
       }
 
@@ -91,9 +103,14 @@ export default function RegisterPage() {
         <div className="auth-header">
           <p className="auth-eyebrow">Novi nalog</p>
 
-          <h1>Kreirajte nalog</h1>
+          <h1>Započnite 14-dnevni Pro probni period</h1>
 
-          <p>Napravite nalog i podesite svoj salon.</p>
+          <p>Kartica nije potrebna. Paket birate nakon probnog perioda.</p>
+          {acquisitionMessage && (
+            <p className="auth-plan-context">
+              {acquisitionMessage}
+            </p>
+          )}
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit(onSubmit)}>
@@ -183,10 +200,14 @@ export default function RegisterPage() {
 
         <div className="auth-footer">
           <p>
-            Već imate nalog? <Link href="/auth/login">Prijavite se</Link>
+            Već imate nalog? <Link href={loginHref}>Prijavite se</Link>
           </p>
         </div>
       </section>
     </main>
   );
+}
+
+export default function RegisterPage() {
+  return <Suspense fallback={<main className="auth-page"><p>Učitavanje...</p></main>}><RegisterContent /></Suspense>;
 }

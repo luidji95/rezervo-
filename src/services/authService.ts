@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase/client";
 type RegisterPayload = {
   email: string;
   password: string;
+  nextPath?: string | null;
 };
 
 type LoginPayload = {
@@ -31,12 +32,14 @@ function getAuthErrorMessage(
     : "Registracija trenutno nije moguća. Pokušajte ponovo.";
 }
 
-export async function registerUser({ email, password }: RegisterPayload) {
+export async function registerUser({ email, password, nextPath }: RegisterPayload) {
+  const { sanitizeNextPath } = await import("@/features/pricing/services/acquisitionRouting");
+  const safeNext = sanitizeNextPath(nextPath) ?? "/onboarding";
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      emailRedirectTo: `${window.location.origin}/auth/login`,
+      emailRedirectTo: `${window.location.origin}/auth/login?next=${encodeURIComponent(safeNext)}`,
     },
   });
 

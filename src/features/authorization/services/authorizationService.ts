@@ -148,7 +148,7 @@ export async function loadAuthorizationSnapshot(
   };
 }
 
-export async function getPostLoginPath(userId: string) {
+export async function getPostLoginPath(userId: string, requestedNext?: string | null) {
   const authorization = await loadAuthorizationSnapshot(userId);
 
   if (!authorization.currentSalon) return "/onboarding";
@@ -160,5 +160,6 @@ export async function getPostLoginPath(userId: string) {
     return "/onboarding";
   }
 
-  return "/dashboard";
+  const { resolveSafePostLoginPath } = await import("@/features/pricing/services/acquisitionRouting");
+  return resolveSafePostLoginPath("/dashboard", requestedNext);
 }

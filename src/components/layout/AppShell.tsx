@@ -21,6 +21,7 @@ import {
 
 import NotificationBell from "@/components/layout/NotificationBell";
 import { useEntitlements } from "@/features/billing/hooks/useEntitlements";
+import { UPGRADE_DESTINATION } from "@/features/billing/upgradeNavigation";
 import { useAuthorization } from "@/context/AuthorizationContext";
 import {
   hasPermission,
@@ -317,8 +318,8 @@ export default function AppShell({ children }: AppShellProps) {
         <main className="page-content">
           {businessReadOnly && (
             <div className="subscription-read-only-banner" role="status">
-              <span>VaÅ¡ nalog trenutno ima pristup samo za pregled. Aktivirajte paket da biste menjali podatke salona.</span>
-              <Link href="/settings?tab=billing">Pogledaj paket</Link>
+              <span>Vaš nalog trenutno ima pristup samo za pregled. Pogledajte dostupne pakete.</span>
+              <Link href={UPGRADE_DESTINATION}>Pogledaj pakete</Link>
             </div>
           )}
           {children}

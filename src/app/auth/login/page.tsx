@@ -12,6 +12,7 @@ import { useAuth } from "@/context/AuthContext";
 
 import { loginUser } from "@/services/authService";
 import { getPostLoginPath } from "@/features/authorization/services/authorizationService";
+import { sanitizeNextPath } from "@/features/pricing/services/acquisitionRouting";
 
 import {
   loginSchema,
@@ -23,14 +24,18 @@ function LoginContent() {
   const searchParams = useSearchParams();
 
   const { user, loading } = useAuth();
+  const safeNext = sanitizeNextPath(searchParams.get("next"));
+  const registerHref = safeNext
+    ? `/auth/register?next=${encodeURIComponent(safeNext)}`
+    : "/auth/register";
 
   const [formError, setFormError] = useState("");
 
   const redirectAfterLogin = useCallback(
     async (userId: string) => {
-      router.replace(await getPostLoginPath(userId));
+      router.replace(await getPostLoginPath(userId, safeNext));
     },
-    [router]
+    [router, safeNext]
   );
 
   useEffect(() => {
@@ -155,7 +160,7 @@ function LoginContent() {
         <div className="auth-footer">
           <p>
             Nemate nalog?{" "}
-            <Link href="/auth/register">Registrujte se</Link>
+            <Link href={registerHref}>Registrujte se</Link>
           </p>
         </div>
       </section>

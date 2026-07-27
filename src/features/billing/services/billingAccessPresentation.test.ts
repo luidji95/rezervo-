@@ -14,7 +14,7 @@ const plan = {
 };
 const base = resolveSubscriptionAccess({ subscription: { status: "expired", trialEndsAt: null, currentPeriodEndsAt: null }, plan, now });
 
-for (const [overrideType, expected] of [["internal", "Interni nalog"], ["pilot", "Pilot pristup"]] as const) {
+for (const [overrideType, expected] of [["internal", "Interni nalog"], ["pilot", "Pilot pristup"], ["complimentary", "Besplatan pristup"], ["support", "Support pristup"]] as const) {
   test(`${overrideType} override has billing-safe presentation`, () => {
     const entitlements = resolveEffectiveAccess({
       subscriptionAccess: base,

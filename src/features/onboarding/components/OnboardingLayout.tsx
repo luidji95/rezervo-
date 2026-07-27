@@ -16,7 +16,7 @@ export function OnboardingLayout({
       <section className="onboarding-shell">
         <h1>Kreirajte svoj salon</h1>
 
-        <p>Unesite osnovne informacije i odmah nastavite na dashboard.</p>
+        <p>Kada kreirate salon, počinje vaš 14-dnevni Pro probni period. Kartica nije potrebna, a nakon triala svi podaci ostaju sačuvani.</p>
         <p className="onboarding-user">Prijavljeni ste kao {userEmail}</p>
 
         {submitError && <p className="onboarding-error">{submitError}</p>}

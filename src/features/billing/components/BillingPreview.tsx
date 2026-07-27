@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { CalendarClock, Check, CircleMinus, Clock3, Sparkles, Users } from "lucide-react";
 import { useEntitlements } from "../hooks/useEntitlements";
 import { useBillingUsage } from "../hooks/useBillingUsage";
 import { PLAN_DESCRIPTIONS, PLAN_PRESENTATIONS, type PlanFeaturePresentation } from "../data/planPresentation";
 import { getBillingAccessPresentation } from "../services/billingAccessPresentation";
+import { remainingTrialDays } from "../services/billingPricingPresentation";
 import { formatPlanPrice, getTrialPlanPriceMessage } from "../services/planCatalog";
 import type { SalonEntitlements } from "../types/entitlements";
 import styles from "./BillingPreview.module.css";
@@ -18,15 +20,11 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("sr-Latn-RS", { dateStyle: "long" }).format(new Date(value));
 }
 
-function remainingTrialDays(value: string) {
-  return Math.max(0, Math.ceil((new Date(value).getTime() - Date.now()) / 86_400_000));
-}
-
 function FeatureRow({ feature, entitlements, current }: { feature: PlanFeaturePresentation; entitlements: SalonEntitlements; current: boolean }) {
   const availability = current && feature.entitlementKey ? (entitlements.planCapabilities[feature.entitlementKey] ? "included" : "not_included") : feature.availability;
   const comingSoon = availability === "coming_soon";
   const included = availability === "included";
-  return <li><span className={included ? styles.included : comingSoon ? styles.soon : styles.excluded}>{included ? <Check size={15} /> : comingSoon ? <Clock3 size={15} /> : <CircleMinus size={15} />}</span><span>{feature.label}</span><small>{included ? "Uključeno" : comingSoon ? "Uskoro" : "Nije uključeno"}</small></li>;
+  return <li><span aria-hidden className={included ? styles.included : comingSoon ? styles.soon : styles.excluded}>{included ? <Check size={15} /> : comingSoon ? <Clock3 size={15} /> : <CircleMinus size={15} />}</span><span>{feature.label}</span><small>{included ? "Uključeno" : comingSoon ? "Uskoro" : "Nije uključeno"}</small></li>;
 }
 
 export function BillingPreview() {
@@ -52,7 +50,7 @@ export function BillingPreview() {
       <div className={styles.overviewMain}><div className={styles.eyebrow}><Sparkles size={16} /> Trenutna pretplata</div><div className={styles.titleRow}><h2 id="billing-current-title">{entitlements.planName}{entitlements.accessReason === "active_trial" ? " probni period" : ""}</h2><span className={`${styles.status} ${styles[status.tone]}`}>{status.label}</span></div><p>{planDescription}</p>
         {entitlements.accessReason === "active_trial" && entitlements.trialEndsAt && <div className={styles.dateNotice}><CalendarClock size={17} /><div><strong>Preostalo još {trialDays} {trialDays === 1 ? "dan" : "dana"}</strong><span>Probni period traje do {formatDate(entitlements.trialEndsAt)}.</span></div></div>}
         {entitlements.accessReason === "active_trial" && currentCatalogPlan && <p className={styles.periodDate}>{getTrialPlanPriceMessage(currentCatalogPlan)}</p>}
-        {entitlements.isReadOnly && <p className={styles.periodDate}>Pristup funkcijama paketa je trenutno ograničen.</p>}
+        {entitlements.isReadOnly && <p className={styles.periodDate}>Nalog je trenutno u režimu pregleda. Svi podaci ostaju sačuvani.</p>}
         {entitlements.isLegacyActive && <p className={styles.periodDate}>Aktivan pristup bez definisanog obračunskog perioda.</p>}
         {accessPresentation.paymentMessage && <p className={styles.periodDate}>{accessPresentation.paymentMessage}</p>}
         {accessPresentation.accessEndsAt && <p className={styles.periodDate}>Pristup važi do {formatDate(accessPresentation.accessEndsAt)}.</p>}
@@ -65,9 +63,9 @@ export function BillingPreview() {
       const current = plan.code === entitlements.planCode;
       const catalogPlan = usageState.plans?.find((item) => item.code === plan.code);
       const comingSoon = catalogPlan ? !catalogPlan.isAvailable : Boolean(plan.comingSoon);
-      return <article key={plan.code} className={`${styles.planCard} ${current ? styles.current : ""}`}><div className={styles.planTop}><h3>{catalogPlan?.name ?? plan.name}</h3><div>{current && <span className={styles.currentBadge}>Trenutni paket</span>}{comingSoon && <span className={styles.soonBadge}>Uskoro</span>}</div></div>{catalogPlan && <div className={styles.planPrice}><strong>{formatPlanPrice(catalogPlan.monthlyPrice, catalogPlan.currency)}</strong><span>/mesečno</span>{catalogPlan.maxEmployees !== null && <small>Do {catalogPlan.maxEmployees} aktivnih zaposlenih</small>}</div>}<p>{plan.description}</p><ul>{plan.features.map((feature) => <FeatureRow key={feature.label} feature={feature} entitlements={entitlements} current={current} />)}</ul><button type="button" disabled>{current ? "Trenutni paket" : comingSoon ? "AI paket je u pripremi" : "Online nadogradnja uskoro"}</button></article>;
+      return <article key={plan.code} className={`${styles.planCard} ${current ? styles.current : ""}`}><div className={styles.planTop}><h3>{catalogPlan?.name ?? plan.name}</h3><div>{current && <span className={styles.currentBadge}>Trenutni paket</span>}{comingSoon && <span className={styles.soonBadge}>Uskoro</span>}</div></div>{catalogPlan && <div className={styles.planPrice}><strong>{plan.code === "premium" ? "od " : ""}{formatPlanPrice(catalogPlan.monthlyPrice, catalogPlan.currency)}</strong><span>/mesečno</span>{catalogPlan.maxEmployees !== null && <small>Do {catalogPlan.maxEmployees} aktivnih zaposlenih</small>}</div>}<p>{plan.description}</p><ul>{plan.features.map((feature) => <FeatureRow key={feature.label} feature={feature} entitlements={entitlements} current={current} />)}</ul><button type="button" disabled>{current ? "Trenutni paket" : comingSoon ? "Premium je u pripremi" : "Online nadogradnja uskoro"}</button></article>;
     })}</div></section>
 
-    <section className={styles.paymentNotice}><Clock3 size={20} /><div><h2>Online upravljanje paketom je u pripremi</h2><p>Trenutni pristup i paket prikazani su iz stvarnih subscription podataka. Rezervo trenutno ne čuva karticu i ne prikazuje izmišljene naplate ili račune.</p></div></section>
+    <section className={styles.paymentNotice}><Clock3 size={20} /><div><h2>Online upravljanje paketom je u pripremi</h2><p>Trenutni pristup i paket prikazani su iz stvarnih subscription podataka. Rezervo trenutno ne čuva karticu i ne prikazuje izmišljene naplate ili račune.</p><Link href="/pricing">Pogledajte javno poređenje paketa</Link></div></section>
   </div>;
 }

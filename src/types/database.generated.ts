@@ -2587,6 +2587,28 @@ export type Database = {
         }
         Returns: number
       }
+      sync_working_hours_v1: {
+        Args: { p_employee_id: string; p_hours: Json; p_salon_id: string }
+        Returns: {
+          break_ends_at: string | null
+          break_starts_at: string | null
+          closes_at: string
+          created_at: string
+          day_of_week: number
+          employee_id: string | null
+          id: string
+          is_working_day: boolean
+          opens_at: string
+          salon_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "working_hours"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       update_employee_appointment_status: {
         Args: {
           p_appointment_id: string

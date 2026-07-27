@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 
 import { updateOnboardingProgress } from "@/services/salonService";
-import { upsertWorkingHour } from "@/services/workingService";
+import { syncWorkingHours } from "@/services/workingService";
 
 import type { WorkingHourFormDay } from "../types/onboarding";
 import { buildWorkingHourDays } from "../utils/onboardingMappers";
@@ -57,9 +57,10 @@ export function useWorkingHoursStep({
     setIsSavingWorkingHours(true);
 
     try {
-      await Promise.all(
-        workingHourDays.map((day) =>
-          upsertWorkingHour({
+      await syncWorkingHours(
+        existingSalonId,
+        null,
+        workingHourDays.map((day) => ({
             salon_id: existingSalonId,
             employee_id: null,
             day_of_week: day.dayOfWeek,
@@ -68,8 +69,7 @@ export function useWorkingHoursStep({
             break_starts_at: day.breakStartsAt || null,
             break_ends_at: day.breakEndsAt || null,
             is_working_day: day.isWorkingDay,
-          })
-        )
+          }))
       );
 
       await updateOnboardingProgress(existingSalonId, 3);
@@ -94,4 +94,3 @@ export function useWorkingHoursStep({
     workingHourDays,
   };
 }
-

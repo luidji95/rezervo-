@@ -95,6 +95,7 @@ keeps omitted buffer/presentation fields unchanged during service edits.
 Salon/settings mutation gateways and the compatible direct-write hardening follow
 in `202607270012_salon_settings_mutation_gateways.sql` and
 `202607270013_harden_salon_settings_mutation_grants.sql`.
+Atomic onboarding batches follow in `202607270014_atomic_working_hours_batch.sql`.
 Clean-environment validation must
 apply the frozen baseline, reference seed, and every migration newer than the
 cutover marker before smoke, RLS, parity and type-generation checks. The frozen

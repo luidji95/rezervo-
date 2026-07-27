@@ -86,3 +86,25 @@ export async function upsertWorkingHour(
   notifyWorkingHoursChanged();
   return data as WorkingHour;
 }
+
+export async function syncWorkingHours(
+  salonId: string,
+  employeeId: string | null,
+  hours: CreateWorkingHourPayload[],
+): Promise<WorkingHour[]> {
+  const { data, error } = await supabase.rpc("sync_working_hours_v1", {
+    p_salon_id: salonId,
+    p_employee_id: employeeId,
+    p_hours: hours.map((hour) => ({
+      day_of_week: hour.day_of_week,
+      opens_at: hour.opens_at,
+      closes_at: hour.closes_at,
+      break_starts_at: hour.break_starts_at ?? null,
+      break_ends_at: hour.break_ends_at ?? null,
+      is_working_day: hour.is_working_day,
+    })),
+  });
+  if (error) throw new Error(error.message);
+  notifyWorkingHoursChanged();
+  return (data ?? []) as WorkingHour[];
+}

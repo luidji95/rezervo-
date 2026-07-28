@@ -2305,6 +2305,10 @@ export type Database = {
         Args: { p_now?: string; p_webhook_event_id: string }
         Returns: { error_code: string; outcome: string }[]
       }
+      process_billing_subscription_updated_v1: {
+        Args: { p_now?: string; p_webhook_event_id: string }
+        Returns: { error_code: string; outcome: string }[]
+      }
       accept_team_invitation: {
         Args: { p_invitation_id: string; p_profile_id: string }
         Returns: {

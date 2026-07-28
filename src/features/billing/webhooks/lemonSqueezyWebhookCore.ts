@@ -7,12 +7,6 @@ import { BillingWebhookError } from "./billingWebhookErrors.ts";
 export const LEMON_SQUEEZY_SUBSCRIPTION_EVENTS = new Set([
   "subscription_created",
   "subscription_updated",
-  "subscription_cancelled",
-  "subscription_resumed",
-  "subscription_expired",
-  "subscription_paused",
-  "subscription_unpaused",
-  "subscription_plan_changed",
 ]);
 
 const nonBlankString = z.string().refine((value) => value.trim().length > 0);
@@ -109,6 +103,15 @@ export interface BillingWebhookEventRepository {
   }>;
   processSubscriptionCreated(eventId: string): Promise<{
     outcome: "processed" | "already_processed" | "stale_ignored" | "manual_review";
+  }>;
+  processSubscriptionUpdated(eventId: string): Promise<{
+    outcome:
+      | "processed"
+      | "already_processed"
+      | "already_applied"
+      | "stale_ignored"
+      | "manual_review"
+      | "dependency_pending";
   }>;
 }
 
@@ -322,6 +325,24 @@ export async function ingestLemonSqueezyWebhook(input: {
       }
       return { status: processed.outcome };
     } catch {
+      throw new BillingWebhookError("BILLING_WEBHOOK_STORAGE_FAILED", 503);
+    }
+  }
+  if (
+    parsed.data.meta.event_name === "subscription_updated" &&
+    stored.storedStatus === "received"
+  ) {
+    try {
+      const processed = await input.repository.processSubscriptionUpdated(stored.id);
+      if (processed.outcome === "dependency_pending") {
+        throw new BillingWebhookError("BILLING_WEBHOOK_STORAGE_FAILED", 503);
+      }
+      if (processed.outcome === "already_processed") {
+        return { status: "duplicate" as const };
+      }
+      return { status: processed.outcome };
+    } catch (error) {
+      if (error instanceof BillingWebhookError) throw error;
       throw new BillingWebhookError("BILLING_WEBHOOK_STORAGE_FAILED", 503);
     }
   }

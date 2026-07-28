@@ -119,6 +119,16 @@ class MemoryRepository implements BillingWebhookEventRepository {
     await Promise.resolve();
     return { outcome: "processed" as const };
   }
+
+  async processSubscriptionUpdated() {
+    this.processorCalls += 1;
+    if (this.storedStatus === "processed") {
+      return { outcome: "already_processed" as const };
+    }
+    this.storedStatus = "processed";
+    await Promise.resolve();
+    return { outcome: "processed" as const };
+  }
 }
 
 async function expectCode(action: () => Promise<unknown>, code: string) {
@@ -273,6 +283,9 @@ test("duplicate subscription_created retries a received durable event", async ()
       processorCalls += 1;
       return { outcome: "processed" };
     },
+    async processSubscriptionUpdated() {
+      return { outcome: "processed" };
+    },
   };
   assert.deepEqual(
     await ingestLemonSqueezyWebhook({
@@ -405,6 +418,7 @@ test("repository failures remain a sanitized storage error", async () => {
       repository: {
         async insertEvent() { throw new Error("private database detail"); },
         async processSubscriptionCreated() { return { outcome: "processed" as const }; },
+        async processSubscriptionUpdated() { return { outcome: "processed" as const }; },
       },
     }),
     "BILLING_WEBHOOK_STORAGE_FAILED",
@@ -417,7 +431,7 @@ test("sequential and parallel duplicate deliveries create one row", async () => 
   const input = { rawBody, signature: sign(rawBody), webhookSecret: secret, repository };
   const first = await ingestLemonSqueezyWebhook(input);
   const second = await ingestLemonSqueezyWebhook(input);
-  assert.deepEqual(first, { status: "received" });
+  assert.deepEqual(first, { status: "processed" });
   assert.deepEqual(second, { status: "duplicate" });
 
   const parallelBody = paymentPayload("subscription_payment_success");
@@ -567,7 +581,7 @@ test("parallel semantic resend and unsupported resend create one row each", asyn
     ingestLemonSqueezyWebhook({ rawBody: original, signature: sign(original), webhookSecret: secret, repository }),
     ingestLemonSqueezyWebhook({ rawBody: resend, signature: sign(resend), webhookSecret: secret, repository }),
   ]);
-  assert.deepEqual(results.map((result) => result.status).sort(), ["duplicate", "received"]);
+  assert.deepEqual(results.map((result) => result.status).sort(), ["duplicate", "processed"]);
 
   const ignoredOriginal = payload("order_created", true, "ignored-a");
   const ignoredResend = payload("order_created", true, "ignored-b");
@@ -614,4 +628,54 @@ test("ingestion does not mutate business state or checkout sessions", async () =
   const rawBody = payload("subscription_cancelled");
   await ingestLemonSqueezyWebhook({ rawBody, signature: sign(rawBody), webhookSecret: secret, repository });
   assert.deepEqual(businessState, before);
+});
+
+test("duplicate subscription_updated retries received state and dependency stays retryable", async () => {
+  let updatedCalls = 0;
+  const rawBody = payload("subscription_updated");
+  const repository: BillingWebhookEventRepository = {
+    async insertEvent() {
+      return { outcome: "duplicate", id: "updated-event", storedStatus: "received" };
+    },
+    async processSubscriptionCreated() { return { outcome: "processed" }; },
+    async processSubscriptionUpdated(eventId) {
+      assert.equal(eventId, "updated-event");
+      updatedCalls += 1;
+      return { outcome: "dependency_pending" };
+    },
+  };
+  await expectCode(
+    () => ingestLemonSqueezyWebhook({
+      rawBody,
+      signature: sign(rawBody),
+      webhookSecret: secret,
+      repository,
+    }),
+    "BILLING_WEBHOOK_STORAGE_FAILED",
+  );
+  assert.equal(updatedCalls, 1);
+});
+
+test("granular subscription events are ignored without facts or processor calls", async () => {
+  for (const eventName of [
+    "subscription_cancelled",
+    "subscription_resumed",
+    "subscription_expired",
+    "subscription_paused",
+    "subscription_unpaused",
+    "subscription_plan_changed",
+  ]) {
+    const repository = new MemoryRepository();
+    const rawBody = payload(eventName);
+    const result = await ingestLemonSqueezyWebhook({
+      rawBody,
+      signature: sign(rawBody),
+      webhookSecret: secret,
+      repository,
+    });
+    assert.deepEqual(result, { status: "ignored" });
+    assert.equal(repository.rows[0]?.subscriptionFacts, null);
+    assert.equal(repository.rows[0]?.processingStatus, "ignored");
+    assert.equal(repository.processorCalls, 0);
+  }
 });

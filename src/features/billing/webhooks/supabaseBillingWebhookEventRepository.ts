@@ -80,4 +80,23 @@ export class SupabaseBillingWebhookEventRepository
       outcome: "processed" | "already_processed" | "stale_ignored" | "manual_review";
     };
   }
+
+  async processSubscriptionUpdated(eventId: string) {
+    const { data, error } = await supabaseServer
+      .rpc("process_billing_subscription_updated_v1", {
+        p_webhook_event_id: eventId,
+      })
+      .single();
+    const row = data as { outcome: string; error_code: string | null } | null;
+    const outcomes = [
+      "processed", "already_processed", "already_applied", "stale_ignored",
+      "manual_review", "dependency_pending",
+    ] as const;
+    if (error || !row || !outcomes.includes(row.outcome as typeof outcomes[number])) {
+      throw new Error("BILLING_WEBHOOK_STORAGE_FAILED");
+    }
+    return { outcome: row.outcome } as {
+      outcome: typeof outcomes[number];
+    };
+  }
 }

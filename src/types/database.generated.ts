@@ -668,6 +668,7 @@ export type Database = {
           plan_id: string
           provider: string
           provider_product_id: string | null
+          provider_store_id: string | null
           provider_variant_id: string
           updated_at: string
         }
@@ -682,6 +683,7 @@ export type Database = {
           plan_id: string
           provider: string
           provider_product_id?: string | null
+          provider_store_id?: string | null
           provider_variant_id: string
           updated_at?: string
         }
@@ -696,6 +698,7 @@ export type Database = {
           plan_id?: string
           provider?: string
           provider_product_id?: string | null
+          provider_store_id?: string | null
           provider_variant_id?: string
           updated_at?: string
         }
@@ -782,11 +785,18 @@ export type Database = {
           custom_salon_id: string | null
           facts_schema_version: number
           provider_created_at: string | null
+          provider_cancelled: boolean | null
           provider_customer_id: string | null
+          provider_ends_at: string | null
           provider_order_id: string | null
+          provider_pause_mode: string | null
+          provider_pause_resumes_at: string | null
           provider_product_id: string | null
+          provider_renews_at: string | null
           provider_status: string | null
+          provider_store_id: string | null
           provider_subscription_id: string
+          provider_trial_ends_at: string | null
           provider_updated_at: string | null
           provider_variant_id: string | null
           test_mode: boolean
@@ -802,11 +812,18 @@ export type Database = {
           custom_salon_id?: string | null
           facts_schema_version?: number
           provider_created_at?: string | null
+          provider_cancelled?: boolean | null
           provider_customer_id?: string | null
+          provider_ends_at?: string | null
           provider_order_id?: string | null
+          provider_pause_mode?: string | null
+          provider_pause_resumes_at?: string | null
           provider_product_id?: string | null
+          provider_renews_at?: string | null
           provider_status?: string | null
+          provider_store_id?: string | null
           provider_subscription_id: string
+          provider_trial_ends_at?: string | null
           provider_updated_at?: string | null
           provider_variant_id?: string | null
           test_mode: boolean
@@ -822,11 +839,18 @@ export type Database = {
           custom_salon_id?: string | null
           facts_schema_version?: number
           provider_created_at?: string | null
+          provider_cancelled?: boolean | null
           provider_customer_id?: string | null
+          provider_ends_at?: string | null
           provider_order_id?: string | null
+          provider_pause_mode?: string | null
+          provider_pause_resumes_at?: string | null
           provider_product_id?: string | null
+          provider_renews_at?: string | null
           provider_status?: string | null
+          provider_store_id?: string | null
           provider_subscription_id?: string
+          provider_trial_ends_at?: string | null
           provider_updated_at?: string | null
           provider_variant_id?: string | null
           test_mode?: boolean
@@ -2006,6 +2030,8 @@ export type Database = {
           id: string
           plan_id: string
           provider_customer_id: string | null
+          provider_last_webhook_event_id: string | null
+          provider_state_updated_at: string | null
           provider_subscription_id: string | null
           salon_id: string
           status: Database["public"]["Enums"]["subscription_status"]
@@ -2024,6 +2050,8 @@ export type Database = {
           id?: string
           plan_id: string
           provider_customer_id?: string | null
+          provider_last_webhook_event_id?: string | null
+          provider_state_updated_at?: string | null
           provider_subscription_id?: string | null
           salon_id: string
           status?: Database["public"]["Enums"]["subscription_status"]
@@ -2042,6 +2070,8 @@ export type Database = {
           id?: string
           plan_id?: string
           provider_customer_id?: string | null
+          provider_last_webhook_event_id?: string | null
+          provider_state_updated_at?: string | null
           provider_subscription_id?: string | null
           salon_id?: string
           status?: Database["public"]["Enums"]["subscription_status"]
@@ -2055,6 +2085,13 @@ export type Database = {
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_provider_last_webhook_event_id_fkey"
+            columns: ["provider_last_webhook_event_id"]
+            isOneToOne: false
+            referencedRelation: "billing_webhook_events"
             referencedColumns: ["id"]
           },
           {
@@ -2222,6 +2259,51 @@ export type Database = {
           outcome: string
           stored_status: string
         }[]
+      }
+      ingest_billing_webhook_event_v2: {
+        Args: {
+          p_checkout_session_id: string | null
+          p_correlation_error_code: string | null
+          p_correlation_status: string | null
+          p_custom_idempotency_key: string | null
+          p_custom_plan_code: string | null
+          p_custom_salon_id: string | null
+          p_environment: string
+          p_event_name: string
+          p_has_subscription_facts: boolean
+          p_payload_hash: string
+          p_processed_at: string | null
+          p_processing_status: string
+          p_provider: string
+          p_provider_cancelled: boolean | null
+          p_provider_created_at: string | null
+          p_provider_customer_id: string | null
+          p_provider_ends_at: string | null
+          p_provider_object_id: string
+          p_provider_object_type: string
+          p_provider_order_id: string | null
+          p_provider_pause_mode: string | null
+          p_provider_pause_resumes_at: string | null
+          p_provider_product_id: string | null
+          p_provider_renews_at: string | null
+          p_provider_status: string | null
+          p_provider_store_id: string | null
+          p_provider_subscription_id: string | null
+          p_provider_trial_ends_at: string | null
+          p_provider_updated_at: string | null
+          p_provider_variant_id: string | null
+          p_semantic_fingerprint: string
+          p_test_mode: boolean
+        }
+        Returns: {
+          event_id: string
+          outcome: string
+          stored_status: string
+        }[]
+      }
+      process_billing_subscription_created_v1: {
+        Args: { p_now?: string; p_webhook_event_id: string }
+        Returns: { error_code: string; outcome: string }[]
       }
       accept_team_invitation: {
         Args: { p_invitation_id: string; p_profile_id: string }

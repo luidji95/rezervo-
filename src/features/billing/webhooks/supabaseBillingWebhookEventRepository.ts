@@ -12,7 +12,7 @@ export class SupabaseBillingWebhookEventRepository
 {
   async insertEvent(input: BillingWebhookEventInput) {
     const { data, error } = await supabaseServer
-      .rpc("ingest_billing_webhook_event_v1", {
+      .rpc("ingest_billing_webhook_event_v2", {
         p_provider: input.provider,
         p_environment: input.environment,
         p_event_name: input.eventName,
@@ -38,6 +38,13 @@ export class SupabaseBillingWebhookEventRepository
         p_test_mode: input.testMode,
         p_correlation_status: input.subscriptionFacts?.correlationStatus ?? null,
         p_correlation_error_code: input.subscriptionFacts?.correlationErrorCode ?? null,
+        p_provider_store_id: input.subscriptionFacts?.providerStoreId ?? null,
+        p_provider_renews_at: input.subscriptionFacts?.providerRenewsAt ?? null,
+        p_provider_ends_at: input.subscriptionFacts?.providerEndsAt ?? null,
+        p_provider_cancelled: input.subscriptionFacts?.providerCancelled ?? null,
+        p_provider_trial_ends_at: input.subscriptionFacts?.providerTrialEndsAt ?? null,
+        p_provider_pause_mode: input.subscriptionFacts?.providerPauseMode ?? null,
+        p_provider_pause_resumes_at: input.subscriptionFacts?.providerPauseResumesAt ?? null,
       })
       .single();
 
@@ -47,8 +54,30 @@ export class SupabaseBillingWebhookEventRepository
       stored_status: string;
     } | null;
     if (error || !row) throw new Error("BILLING_WEBHOOK_STORAGE_FAILED");
-    if (row.outcome === "duplicate") return { outcome: "duplicate" as const };
-    if (row.outcome !== "inserted") throw new Error("BILLING_WEBHOOK_STORAGE_FAILED");
-    return { outcome: "inserted" as const, id: row.event_id };
+    if (row.outcome !== "duplicate" && row.outcome !== "inserted") {
+      throw new Error("BILLING_WEBHOOK_STORAGE_FAILED");
+    }
+    return {
+      outcome: row.outcome,
+      id: row.event_id,
+      storedStatus: row.stored_status,
+    } as const;
+  }
+
+  async processSubscriptionCreated(eventId: string) {
+    const { data, error } = await supabaseServer
+      .rpc("process_billing_subscription_created_v1", {
+        p_webhook_event_id: eventId,
+      })
+      .single();
+    const row = data as { outcome: string; error_code: string | null } | null;
+    if (error || !row || ![
+      "processed", "already_processed", "stale_ignored", "manual_review",
+    ].includes(row.outcome)) {
+      throw new Error("BILLING_WEBHOOK_STORAGE_FAILED");
+    }
+    return { outcome: row.outcome } as {
+      outcome: "processed" | "already_processed" | "stale_ignored" | "manual_review";
+    };
   }
 }

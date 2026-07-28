@@ -42,6 +42,7 @@ const providerIdSchema = z.union([
 
 const subscriptionAttributesSchema = z.object({
   test_mode: z.boolean(),
+  store_id: providerIdSchema,
   order_id: providerIdSchema,
   customer_id: providerIdSchema,
   product_id: providerIdSchema,
@@ -49,6 +50,14 @@ const subscriptionAttributesSchema = z.object({
   status: nonBlankString,
   created_at: z.iso.datetime({ offset: true }),
   updated_at: z.iso.datetime({ offset: true }),
+  renews_at: z.iso.datetime({ offset: true }).nullable(),
+  ends_at: z.iso.datetime({ offset: true }).nullable(),
+  cancelled: z.boolean(),
+  trial_ends_at: z.iso.datetime({ offset: true }).nullable(),
+  pause: z.object({
+    mode: z.enum(["free", "void"]),
+    resumes_at: z.iso.datetime({ offset: true }).nullable(),
+  }).nullable(),
 }).passthrough();
 
 export type BillingWebhookSubscriptionFactsInput = {
@@ -64,6 +73,13 @@ export type BillingWebhookSubscriptionFactsInput = {
   providerStatus: string;
   providerCreatedAt: string;
   providerUpdatedAt: string;
+  providerStoreId: string;
+  providerRenewsAt: string | null;
+  providerEndsAt: string | null;
+  providerCancelled: boolean;
+  providerTrialEndsAt: string | null;
+  providerPauseMode: "free" | "void" | null;
+  providerPauseResumesAt: string | null;
   testMode: boolean;
   correlationStatus:
     | "ready"
@@ -89,7 +105,14 @@ export type BillingWebhookEventInput = {
 export interface BillingWebhookEventRepository {
   insertEvent(
     input: BillingWebhookEventInput,
-  ): Promise<{ outcome: "inserted"; id: string } | { outcome: "duplicate" }>;
+  ): Promise<{
+    outcome: "inserted" | "duplicate";
+    id: string;
+    storedStatus: string;
+  }>;
+  processSubscriptionCreated(eventId: string): Promise<{
+    outcome: "processed" | "already_processed" | "stale_ignored" | "manual_review";
+  }>;
 }
 
 export function verifyLemonSqueezyWebhookSignature(input: {
@@ -215,6 +238,13 @@ export function normalizeLemonSqueezySubscriptionFacts(
     providerStatus: attributes.data.status,
     providerCreatedAt: attributes.data.created_at,
     providerUpdatedAt: attributes.data.updated_at,
+    providerStoreId: attributes.data.store_id,
+    providerRenewsAt: attributes.data.renews_at,
+    providerEndsAt: attributes.data.ends_at,
+    providerCancelled: attributes.data.cancelled,
+    providerTrialEndsAt: attributes.data.trial_ends_at,
+    providerPauseMode: attributes.data.pause?.mode ?? null,
+    providerPauseResumesAt: attributes.data.pause?.resumes_at ?? null,
     testMode: attributes.data.test_mode,
     correlationStatus,
     correlationErrorCode,
@@ -265,9 +295,7 @@ export async function ingestLemonSqueezyWebhook(input: {
   const subscriptionFacts = supported
     ? normalizeLemonSqueezySubscriptionFacts(parsed.data)
     : null;
-  let stored:
-    | { outcome: "inserted"; id: string }
-    | { outcome: "duplicate" };
+  let stored: Awaited<ReturnType<BillingWebhookEventRepository["insertEvent"]>>;
   try {
     stored = await input.repository.insertEvent({
       provider: "lemonsqueezy",
@@ -286,8 +314,23 @@ export async function ingestLemonSqueezyWebhook(input: {
     throw new BillingWebhookError("BILLING_WEBHOOK_STORAGE_FAILED", 503);
   }
 
-  if (stored.outcome === "duplicate") {
-    return { status: "duplicate" as const };
+  if (
+    parsed.data.meta.event_name === "subscription_created" &&
+    stored.storedStatus === "received"
+  ) {
+    try {
+      const processed = await input.repository.processSubscriptionCreated(stored.id);
+      if (processed.outcome === "already_processed") {
+        return { status: "duplicate" as const };
+      }
+      return { status: processed.outcome };
+    } catch {
+      throw new BillingWebhookError("BILLING_WEBHOOK_STORAGE_FAILED", 503);
+    }
   }
+  if (stored.storedStatus === "manual_review") {
+    return { status: "manual_review" as const };
+  }
+  if (stored.outcome === "duplicate") return { status: "duplicate" as const };
   return { status: processingStatus };
 }

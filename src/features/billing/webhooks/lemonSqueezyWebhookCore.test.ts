@@ -32,6 +32,7 @@ function payload(
       id: "2383060",
       attributes: {
         test_mode: testMode,
+        store_id: 440512,
         order_id: 41001,
         customer_id: "51001",
         product_id: 61001,
@@ -39,6 +40,11 @@ function payload(
         status: "active",
         created_at: "2026-07-28T10:00:00.000Z",
         updated_at: "2026-07-28T10:01:00.000Z",
+        renews_at: "2026-08-28T10:00:00.000Z",
+        ends_at: null,
+        cancelled: false,
+        trial_ends_at: null,
+        pause: null,
         customer_email: "not-persisted@example.test",
         user_name: "Not Persisted",
         billing_address: { line_1: "Not persisted" },
@@ -59,19 +65,27 @@ class MemoryRepository implements BillingWebhookEventRepository {
   readonly rows: BillingWebhookEventInput[] = [];
   private readonly rawHashes = new Set<string>();
   private readonly semanticFingerprints = new Set<string>();
+  private storedStatus = "received";
 
   async insertEvent(input: BillingWebhookEventInput) {
     if (
       this.rawHashes.has(input.payloadHash) ||
       this.semanticFingerprints.has(input.semanticFingerprint)
     ) {
-      return { outcome: "duplicate" as const };
+      return { outcome: "duplicate" as const, id: "event-1", storedStatus: this.storedStatus };
     }
     this.rawHashes.add(input.payloadHash);
     this.semanticFingerprints.add(input.semanticFingerprint);
     this.rows.push(input);
+    this.storedStatus = input.processingStatus;
     await Promise.resolve();
-    return { outcome: "inserted" as const, id: `event-${this.rows.length}` };
+    return { outcome: "inserted" as const, id: `event-${this.rows.length}`, storedStatus: input.processingStatus };
+  }
+
+  async processSubscriptionCreated() {
+    this.storedStatus = "processed";
+    await Promise.resolve();
+    return { outcome: "processed" as const };
   }
 }
 
@@ -146,7 +160,7 @@ test("test events are received, live and invalid payloads are rejected", async (
   const rawBody = payload();
   assert.deepEqual(
     await ingestLemonSqueezyWebhook({ rawBody, signature: sign(rawBody), webhookSecret: secret, repository }),
-    { status: "received" },
+    { status: "processed" },
   );
   assert.equal(repository.rows[0]?.processingStatus, "received");
   assert.equal(repository.rows[0]?.processedAt, null);
@@ -163,6 +177,13 @@ test("test events are received, live and invalid payloads are rejected", async (
     providerStatus: "active",
     providerCreatedAt: "2026-07-28T10:00:00.000Z",
     providerUpdatedAt: "2026-07-28T10:01:00.000Z",
+    providerStoreId: "440512",
+    providerRenewsAt: "2026-08-28T10:00:00.000Z",
+    providerEndsAt: null,
+    providerCancelled: false,
+    providerTrialEndsAt: null,
+    providerPauseMode: null,
+    providerPauseResumesAt: null,
     testMode: true,
     correlationStatus: "ready",
     correlationErrorCode: null,
@@ -183,6 +204,54 @@ test("test events are received, live and invalid payloads are rejected", async (
     "BILLING_WEBHOOK_PAYLOAD_INVALID",
   );
   assert.equal(repository.rows.length, 1);
+});
+
+test("facts v2 normalize provider lifecycle fields without retaining PII", async () => {
+  const repository = new MemoryRepository();
+  const parsed = JSON.parse(payload());
+  parsed.data.attributes.pause = {
+    mode: "free",
+    resumes_at: "2026-08-01T10:00:00.000Z",
+  };
+  const rawBody = JSON.stringify(parsed);
+  await ingestLemonSqueezyWebhook({
+    rawBody,
+    signature: sign(rawBody),
+    webhookSecret: secret,
+    repository,
+  });
+  assert.equal(repository.rows[0]?.subscriptionFacts?.providerStoreId, "440512");
+  assert.equal(repository.rows[0]?.subscriptionFacts?.providerRenewsAt, "2026-08-28T10:00:00.000Z");
+  assert.equal(repository.rows[0]?.subscriptionFacts?.providerCancelled, false);
+  assert.equal(repository.rows[0]?.subscriptionFacts?.providerEndsAt, null);
+  assert.equal(repository.rows[0]?.subscriptionFacts?.providerTrialEndsAt, null);
+  assert.equal(repository.rows[0]?.subscriptionFacts?.providerPauseMode, "free");
+  assert.equal(repository.rows[0]?.subscriptionFacts?.providerPauseResumesAt, "2026-08-01T10:00:00.000Z");
+});
+
+test("duplicate subscription_created retries a received durable event", async () => {
+  let processorCalls = 0;
+  const rawBody = payload();
+  const repository: BillingWebhookEventRepository = {
+    async insertEvent() {
+      return { outcome: "duplicate", id: "durable-event", storedStatus: "received" };
+    },
+    async processSubscriptionCreated(eventId) {
+      assert.equal(eventId, "durable-event");
+      processorCalls += 1;
+      return { outcome: "processed" };
+    },
+  };
+  assert.deepEqual(
+    await ingestLemonSqueezyWebhook({
+      rawBody,
+      signature: sign(rawBody),
+      webhookSecret: secret,
+      repository,
+    }),
+    { status: "processed" },
+  );
+  assert.equal(processorCalls, 1);
 });
 
 test("unsupported signed event is stored as ignored", async () => {
@@ -252,7 +321,10 @@ test("repository failures remain a sanitized storage error", async () => {
       rawBody,
       signature: sign(rawBody),
       webhookSecret: secret,
-      repository: { async insertEvent() { throw new Error("private database detail"); } },
+      repository: {
+        async insertEvent() { throw new Error("private database detail"); },
+        async processSubscriptionCreated() { return { outcome: "processed" as const }; },
+      },
     }),
     "BILLING_WEBHOOK_STORAGE_FAILED",
   );
@@ -309,7 +381,7 @@ test("original and resend webhook IDs produce one semantic event", async () => {
       webhookSecret: secret,
       repository,
     }),
-    { status: "received" },
+    { status: "processed" },
   );
   assert.deepEqual(
     await ingestLemonSqueezyWebhook({

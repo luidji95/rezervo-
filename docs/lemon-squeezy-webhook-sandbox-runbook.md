@@ -69,3 +69,13 @@ Before and after delivery, compare fingerprints/counts for `plans`, `subscriptio
 ## Disable
 
 Set `BILLING_WEBHOOKS_ENABLED=false`, restart/redeploy the sandbox, and confirm the endpoint returns `BILLING_WEBHOOK_DISABLED`. Remove the test secret from an environment that is no longer used. Do not configure a live secret or live webhook in Phase 7B.2A.
+
+## Verified subscription_created processing (facts v2)
+
+New application deliveries use `ingest_billing_webhook_event_v2`. Version 2 facts add the provider store, renewal, cancellation, end, trial and pause state needed by `process_billing_subscription_created_v1`. Version 1 rows remain readable and are never automatically activated.
+
+The processor is sandbox-only and accepts only a correlated, active, non-trial, non-cancelled, non-paused `subscription_created` with a future `renews_at`. It verifies the server-owned checkout, requested Starter/Pro plan and active store/product/variant mapping before atomically updating the existing subscription, completing the checkout and marking the event processed. Billing overrides are not changed and remain authoritative in the access resolver.
+
+A semantic duplicate returns the existing event ID internally. If that event is still `received`, the server retries the processor; an already processed event returns a harmless duplicate response. Deterministic correlation or provider-state conflicts become `manual_review`. Unexpected database errors roll back the processor transaction and leave the event `received` for a later provider resend.
+
+No raw payload, signature, signed provider URL or customer PII is retained. Checkout return query parameters remain UX-only and cannot activate access. Events other than `subscription_created` are not processed by this phase.

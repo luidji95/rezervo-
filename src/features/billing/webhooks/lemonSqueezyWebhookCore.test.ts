@@ -57,12 +57,43 @@ function payload(
   });
 }
 
+function paymentPayload(
+  eventName:
+    | "subscription_payment_success"
+    | "subscription_payment_failed"
+    | "subscription_payment_recovered" = "subscription_payment_success",
+  webhookId = "00000000-0000-4000-8000-00000000000c",
+) {
+  return JSON.stringify({
+    meta: {
+      webhook_id: webhookId,
+      event_name: eventName,
+      custom_data: {
+        checkout_session_id: "10000000-0000-4000-8000-000000000001",
+      },
+    },
+    data: {
+      type: "subscription-invoices",
+      id: "invoice-81001",
+      attributes: {
+        test_mode: true,
+        subscription_id: 2383060,
+        status: "paid",
+        customer_email: "not-persisted@example.test",
+        billing_address: { line_1: "Not persisted" },
+        urls: { invoice_url: "https://provider.example.invalid/private/invoice" },
+      },
+    },
+  });
+}
+
 function sign(rawBody: string) {
   return createHmac("sha256", secret).update(rawBody).digest("hex");
 }
 
 class MemoryRepository implements BillingWebhookEventRepository {
   readonly rows: BillingWebhookEventInput[] = [];
+  processorCalls = 0;
   private readonly rawHashes = new Set<string>();
   private readonly semanticFingerprints = new Set<string>();
   private storedStatus = "received";
@@ -83,6 +114,7 @@ class MemoryRepository implements BillingWebhookEventRepository {
   }
 
   async processSubscriptionCreated() {
+    this.processorCalls += 1;
     this.storedStatus = "processed";
     await Promise.resolve();
     return { outcome: "processed" as const };
@@ -270,6 +302,55 @@ test("unsupported signed event is stored as ignored", async () => {
   assert.equal(repository.rows[0]?.subscriptionFacts, null);
 });
 
+test("signed subscription payment invoice events are durably ignored", async () => {
+  for (const eventName of [
+    "subscription_payment_success",
+    "subscription_payment_failed",
+    "subscription_payment_recovered",
+  ] as const) {
+    const repository = new MemoryRepository();
+    const rawBody = paymentPayload(eventName);
+    assert.deepEqual(
+      await ingestLemonSqueezyWebhook({
+        rawBody,
+        signature: sign(rawBody),
+        webhookSecret: secret,
+        repository,
+        now: () => new Date("2026-07-28T11:00:00.000Z"),
+      }),
+      { status: "ignored" },
+    );
+    assert.equal(repository.rows.length, 1);
+    assert.equal(repository.rows[0]?.eventName, eventName);
+    assert.equal(repository.rows[0]?.providerObjectType, "subscription-invoices");
+    assert.equal(repository.rows[0]?.processingStatus, "ignored");
+    assert.equal(repository.rows[0]?.processedAt, "2026-07-28T11:00:00.000Z");
+    assert.equal(repository.rows[0]?.subscriptionFacts, null);
+    assert.equal(repository.processorCalls, 0);
+    const persisted = JSON.stringify(repository.rows[0]);
+    for (const forbidden of ["not-persisted@example.test", "billing_address", "invoice_url", "private/invoice"]) {
+      assert.equal(persisted.includes(forbidden), false);
+    }
+  }
+});
+
+test("subscription payment resend is a duplicate and never calls processor", async () => {
+  const repository = new MemoryRepository();
+  const original = paymentPayload("subscription_payment_success", "payment-delivery-a");
+  const resend = paymentPayload("subscription_payment_success", "payment-delivery-b");
+  assert.deepEqual(
+    await ingestLemonSqueezyWebhook({ rawBody: original, signature: sign(original), webhookSecret: secret, repository }),
+    { status: "ignored" },
+  );
+  assert.deepEqual(
+    await ingestLemonSqueezyWebhook({ rawBody: resend, signature: sign(resend), webhookSecret: secret, repository }),
+    { status: "duplicate" },
+  );
+  assert.equal(repository.rows.length, 1);
+  assert.equal(repository.rows[0]?.subscriptionFacts, null);
+  assert.equal(repository.processorCalls, 0);
+});
+
 test("legacy and invalid custom data remain durable but never ready", async () => {
   const legacyRepository = new MemoryRepository();
   const legacy = payload("subscription_created", true, "legacy", {
@@ -339,7 +420,7 @@ test("sequential and parallel duplicate deliveries create one row", async () => 
   assert.deepEqual(first, { status: "received" });
   assert.deepEqual(second, { status: "duplicate" });
 
-  const parallelBody = payload("subscription_payment_success");
+  const parallelBody = paymentPayload("subscription_payment_success");
   const parallelInput = {
     rawBody: parallelBody,
     signature: sign(parallelBody),
@@ -350,7 +431,7 @@ test("sequential and parallel duplicate deliveries create one row", async () => 
     ingestLemonSqueezyWebhook(parallelInput),
     ingestLemonSqueezyWebhook(parallelInput),
   ]);
-  assert.deepEqual(results.map((result) => result.status).sort(), ["duplicate", "received"]);
+  assert.deepEqual(results.map((result) => result.status).sort(), ["duplicate", "ignored"]);
   assert.equal(repository.rows.length, 2);
 });
 

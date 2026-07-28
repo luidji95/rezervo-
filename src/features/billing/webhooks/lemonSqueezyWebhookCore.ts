@@ -12,9 +12,6 @@ export const LEMON_SQUEEZY_SUBSCRIPTION_EVENTS = new Set([
   "subscription_expired",
   "subscription_paused",
   "subscription_unpaused",
-  "subscription_payment_failed",
-  "subscription_payment_success",
-  "subscription_payment_recovered",
   "subscription_plan_changed",
 ]);
 

@@ -1,5 +1,10 @@
 begin;
 
+-- Isolate fixture mappings from operator-created sandbox mappings. The outer
+-- rollback restores every pre-existing row after the contract test.
+delete from public.billing_provider_prices
+where provider = 'lemonsqueezy' and environment = 'test';
+
 do $$
 declare
   v_starter uuid;

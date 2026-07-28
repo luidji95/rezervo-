@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -692,6 +692,65 @@ export type Database = {
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_webhook_events: {
+        Row: {
+          created_at: string
+          environment: string
+          error_code: string | null
+          event_name: string
+          id: string
+          payload_hash: string
+          processed_at: string | null
+          processing_status: string
+          provider: string
+          provider_object_id: string
+          provider_object_type: string
+          received_at: string
+          salon_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          environment: string
+          error_code?: string | null
+          event_name: string
+          id?: string
+          payload_hash: string
+          processed_at?: string | null
+          processing_status: string
+          provider: string
+          provider_object_id: string
+          provider_object_type: string
+          received_at?: string
+          salon_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          environment?: string
+          error_code?: string | null
+          event_name?: string
+          id?: string
+          payload_hash?: string
+          processed_at?: string | null
+          processing_status?: string
+          provider?: string
+          provider_object_id?: string
+          provider_object_type?: string
+          received_at?: string
+          salon_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_webhook_events_salon_id_fkey"
+            columns: ["salon_id"]
+            isOneToOne: false
+            referencedRelation: "salons"
             referencedColumns: ["id"]
           },
         ]

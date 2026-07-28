@@ -5,6 +5,7 @@ import test from "node:test";
 import { resolveBillingWebhookConfig } from "./billingWebhookConfigCore.ts";
 import { BillingWebhookError } from "./billingWebhookErrors.ts";
 import {
+  createLemonSqueezySemanticFingerprint,
   ingestLemonSqueezyWebhook,
   verifyLemonSqueezyWebhookSignature,
   type BillingWebhookEventInput,
@@ -13,9 +14,13 @@ import {
 
 const secret = "unit-test-webhook-secret";
 
-function payload(eventName = "subscription_created", testMode = true) {
+function payload(
+  eventName = "subscription_created",
+  testMode = true,
+  webhookId = "00000000-0000-4000-8000-00000000000a",
+) {
   return JSON.stringify({
-    meta: { event_name: eventName, custom_data: { untrusted: "ignored" } },
+    meta: { webhook_id: webhookId, event_name: eventName, custom_data: { untrusted: "ignored" } },
     data: {
       type: "subscriptions",
       id: "test-subscription-object",
@@ -30,13 +35,18 @@ function sign(rawBody: string) {
 
 class MemoryRepository implements BillingWebhookEventRepository {
   readonly rows: BillingWebhookEventInput[] = [];
-  private readonly hashes = new Set<string>();
+  private readonly rawHashes = new Set<string>();
+  private readonly semanticFingerprints = new Set<string>();
 
   async insertEvent(input: BillingWebhookEventInput) {
-    if (this.hashes.has(input.payloadHash)) {
+    if (
+      this.rawHashes.has(input.payloadHash) ||
+      this.semanticFingerprints.has(input.semanticFingerprint)
+    ) {
       return { outcome: "duplicate" as const };
     }
-    this.hashes.add(input.payloadHash);
+    this.rawHashes.add(input.payloadHash);
+    this.semanticFingerprints.add(input.semanticFingerprint);
     this.rows.push(input);
     await Promise.resolve();
     return { outcome: "inserted" as const, id: `event-${this.rows.length}` };
@@ -169,6 +179,173 @@ test("sequential and parallel duplicate deliveries create one row", async () => 
   ]);
   assert.deepEqual(results.map((result) => result.status).sort(), ["duplicate", "received"]);
   assert.equal(repository.rows.length, 2);
+});
+
+test("original and resend webhook IDs produce one semantic event", async () => {
+  const repository = new MemoryRepository();
+  const original = payload(
+    "subscription_created",
+    true,
+    "00000000-0000-4000-8000-00000000000a",
+  );
+  const resend = payload(
+    "subscription_created",
+    true,
+    "00000000-0000-4000-8000-00000000000b",
+  );
+  const originalFingerprint = createLemonSqueezySemanticFingerprint(
+    JSON.parse(original),
+  );
+  const resendFingerprint = createLemonSqueezySemanticFingerprint(
+    JSON.parse(resend),
+  );
+  assert.equal(originalFingerprint, resendFingerprint);
+  assert.notEqual(sign(original), sign(resend));
+  assert.deepEqual(
+    await ingestLemonSqueezyWebhook({
+      rawBody: original,
+      signature: sign(original),
+      webhookSecret: secret,
+      repository,
+    }),
+    { status: "received" },
+  );
+  assert.deepEqual(
+    await ingestLemonSqueezyWebhook({
+      rawBody: resend,
+      signature: sign(resend),
+      webhookSecret: secret,
+      repository,
+    }),
+    { status: "duplicate" },
+  );
+  assert.equal(repository.rows.length, 1);
+});
+
+test("whitespace and object key order do not affect semantic fingerprint", () => {
+  const ordered = {
+    meta: {
+      webhook_id: "delivery-a",
+      event_name: "subscription_updated",
+      custom_data: { salon_id: "salon-a", plan_code: "pro" },
+    },
+    data: {
+      type: "subscriptions",
+      id: "2383060",
+      attributes: {
+        test_mode: true,
+        status: "active",
+        updated_at: "2026-07-28T12:00:00Z",
+      },
+      relationships: { store: { data: { type: "stores", id: "1" } } },
+    },
+  };
+  const reordered = {
+    data: {
+      relationships: { store: { data: { id: "1", type: "stores" } } },
+      attributes: {
+        updated_at: "2026-07-28T12:00:00Z",
+        status: "active",
+        test_mode: true,
+      },
+      id: "2383060",
+      type: "subscriptions",
+    },
+    meta: {
+      custom_data: { plan_code: "pro", salon_id: "salon-a" },
+      event_name: "subscription_updated",
+      webhook_id: "delivery-b",
+    },
+  };
+  const compact = JSON.stringify(ordered);
+  const spaced = JSON.stringify(reordered, null, 2);
+  assert.equal(
+    createLemonSqueezySemanticFingerprint(JSON.parse(compact)),
+    createLemonSqueezySemanticFingerprint(JSON.parse(spaced)),
+  );
+});
+
+test("business changes create distinct semantic fingerprints", () => {
+  const base = {
+    meta: {
+      event_name: "subscription_updated",
+      webhook_id: "delivery-a",
+      custom_data: { salon_id: "salon-a", plan_code: "pro" },
+    },
+    data: {
+      type: "subscriptions",
+      id: "2383060",
+      attributes: {
+        test_mode: true,
+        status: "active",
+        updated_at: "2026-07-28T12:00:00Z",
+        invoice_ids: ["invoice-a", "invoice-b"],
+      },
+    },
+  };
+  const fingerprint = createLemonSqueezySemanticFingerprint(base);
+  const changed = [
+    { ...base, meta: { ...base.meta, event_name: "subscription_cancelled" } },
+    { ...base, meta: { ...base.meta, custom_data: { ...base.meta.custom_data, salon_id: "salon-b" } } },
+    { ...base, data: { ...base.data, id: "2383061" } },
+    { ...base, data: { ...base.data, attributes: { ...base.data.attributes, status: "cancelled" } } },
+    { ...base, data: { ...base.data, attributes: { ...base.data.attributes, updated_at: "2026-07-28T12:01:00Z" } } },
+    { ...base, data: { ...base.data, attributes: { ...base.data.attributes, invoice_ids: ["invoice-b", "invoice-a"] } } },
+  ];
+  for (const candidate of changed) {
+    assert.notEqual(createLemonSqueezySemanticFingerprint(candidate), fingerprint);
+  }
+});
+
+test("semantic fingerprinting does not mutate parsed payload", () => {
+  const parsed = JSON.parse(payload());
+  const before = structuredClone(parsed);
+  createLemonSqueezySemanticFingerprint(parsed);
+  assert.deepEqual(parsed, before);
+  assert.equal(parsed.meta.webhook_id, before.meta.webhook_id);
+});
+
+test("parallel semantic resend and unsupported resend create one row each", async () => {
+  const repository = new MemoryRepository();
+  const original = payload("subscription_updated", true, "delivery-a");
+  const resend = payload("subscription_updated", true, "delivery-b");
+  const results = await Promise.all([
+    ingestLemonSqueezyWebhook({ rawBody: original, signature: sign(original), webhookSecret: secret, repository }),
+    ingestLemonSqueezyWebhook({ rawBody: resend, signature: sign(resend), webhookSecret: secret, repository }),
+  ]);
+  assert.deepEqual(results.map((result) => result.status).sort(), ["duplicate", "received"]);
+
+  const ignoredOriginal = payload("order_created", true, "ignored-a");
+  const ignoredResend = payload("order_created", true, "ignored-b");
+  assert.deepEqual(
+    await ingestLemonSqueezyWebhook({ rawBody: ignoredOriginal, signature: sign(ignoredOriginal), webhookSecret: secret, repository }),
+    { status: "ignored" },
+  );
+  assert.deepEqual(
+    await ingestLemonSqueezyWebhook({ rawBody: ignoredResend, signature: sign(ignoredResend), webhookSecret: secret, repository }),
+    { status: "duplicate" },
+  );
+  assert.equal(repository.rows.length, 2);
+});
+
+test("signature remains bound to raw body rather than canonical JSON", async () => {
+  const repository = new MemoryRepository();
+  const original = payload();
+  const reformatted = JSON.stringify(JSON.parse(original), null, 2);
+  assert.equal(
+    createLemonSqueezySemanticFingerprint(JSON.parse(original)),
+    createLemonSqueezySemanticFingerprint(JSON.parse(reformatted)),
+  );
+  await expectCode(
+    () => ingestLemonSqueezyWebhook({
+      rawBody: reformatted,
+      signature: sign(original),
+      webhookSecret: secret,
+      repository,
+    }),
+    "BILLING_WEBHOOK_SIGNATURE_INVALID",
+  );
+  assert.equal(repository.rows.length, 0);
 });
 
 test("ingestion does not mutate business state or checkout sessions", async () => {

@@ -18,14 +18,17 @@ export const LEMON_SQUEEZY_SUBSCRIPTION_EVENTS = new Set([
   "subscription_plan_changed",
 ]);
 
+const nonBlankString = z.string().refine((value) => value.trim().length > 0);
+
 const envelopeSchema = z.object({
   meta: z.object({
-    event_name: z.string().trim().min(1),
+    event_name: nonBlankString,
+    webhook_id: nonBlankString.optional(),
     custom_data: z.record(z.string(), z.unknown()).optional(),
   }).passthrough(),
   data: z.object({
-    type: z.string().trim().min(1),
-    id: z.string().trim().min(1),
+    type: nonBlankString,
+    id: nonBlankString,
     attributes: z.object({
       test_mode: z.boolean(),
     }).passthrough(),
@@ -39,6 +42,7 @@ export type BillingWebhookEventInput = {
   providerObjectType: string;
   providerObjectId: string;
   payloadHash: string;
+  semanticFingerprint: string;
   processingStatus: "received" | "ignored";
   processedAt: string | null;
 };
@@ -63,6 +67,37 @@ export function verifyLemonSqueezyWebhookSignature(input: {
   const received = Buffer.from(input.signature, "hex");
   if (received.length !== expected.length) return false;
   return timingSafeEqual(received, expected);
+}
+
+type JsonValue = null | boolean | number | string | JsonValue[] | {
+  [key: string]: JsonValue;
+};
+
+function canonicalizeJson(value: JsonValue): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalizeJson).join(",")}]`;
+  }
+  return `{${Object.keys(value)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalizeJson(value[key]!)}`)
+    .join(",")}}`;
+}
+
+export function createLemonSqueezySemanticFingerprint(
+  payload: z.infer<typeof envelopeSchema>,
+) {
+  const semanticMeta = { ...payload.meta };
+  delete semanticMeta.webhook_id;
+  const semanticPayload = {
+    ...payload,
+    meta: semanticMeta,
+  } as JsonValue;
+  return createHash("sha256")
+    .update(canonicalizeJson(semanticPayload))
+    .digest("hex");
 }
 
 export async function ingestLemonSqueezyWebhook(input: {
@@ -117,6 +152,7 @@ export async function ingestLemonSqueezyWebhook(input: {
       providerObjectType: parsed.data.data.type,
       providerObjectId: parsed.data.data.id,
       payloadHash: createHash("sha256").update(input.rawBody).digest("hex"),
+      semanticFingerprint: createLemonSqueezySemanticFingerprint(parsed.data),
       processingStatus,
       processedAt: supported ? null : (input.now?.() ?? new Date()).toISOString(),
     });

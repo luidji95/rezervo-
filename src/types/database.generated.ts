@@ -711,6 +711,7 @@ export type Database = {
           provider_object_type: string
           received_at: string
           salon_id: string | null
+          semantic_fingerprint: string | null
           updated_at: string
         }
         Insert: {
@@ -727,6 +728,7 @@ export type Database = {
           provider_object_type: string
           received_at?: string
           salon_id?: string | null
+          semantic_fingerprint?: string | null
           updated_at?: string
         }
         Update: {
@@ -743,6 +745,7 @@ export type Database = {
           provider_object_type?: string
           received_at?: string
           salon_id?: string | null
+          semantic_fingerprint?: string | null
           updated_at?: string
         }
         Relationships: [

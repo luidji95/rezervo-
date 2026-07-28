@@ -20,6 +20,7 @@ export class SupabaseBillingWebhookEventRepository
         provider_object_type: input.providerObjectType,
         provider_object_id: input.providerObjectId,
         payload_hash: input.payloadHash,
+        semantic_fingerprint: input.semanticFingerprint,
         processing_status: input.processingStatus,
         processed_at: input.processedAt,
       })

@@ -3,6 +3,7 @@ begin;
 do $$
 declare
   v_hash text := repeat('a', 64);
+  v_semantic text := repeat('b', 64);
   v_plans_before text;
   v_subscriptions_before text;
   v_sessions_before text;
@@ -20,6 +21,33 @@ begin
     where n.nspname = 'public' and c.relname = 'billing_webhook_events'
   ) then
     raise exception 'billing_webhook_events table is missing';
+  end if;
+
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'billing_webhook_events'
+      and column_name = 'semantic_fingerprint'
+      and is_nullable = 'YES'
+  ) then
+    raise exception 'nullable semantic fingerprint column is missing';
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'billing_webhook_events_semantic_fingerprint_check'
+  ) then
+    raise exception 'semantic fingerprint check constraint is missing';
+  end if;
+
+  if not exists (
+    select 1 from pg_indexes
+    where schemaname = 'public'
+      and tablename = 'billing_webhook_events'
+      and indexname = 'billing_webhook_events_semantic_unique'
+      and indexdef ilike '%where (semantic_fingerprint is not null)%'
+  ) then
+    raise exception 'partial semantic fingerprint unique index is missing';
   end if;
 
   if not exists (
@@ -72,6 +100,13 @@ begin
     'test-object', v_hash, 'received'
   );
 
+  if not exists (
+    select 1 from public.billing_webhook_events
+    where payload_hash = v_hash and semantic_fingerprint is null
+  ) then
+    raise exception 'pre-019 compatible null semantic fingerprint was rejected';
+  end if;
+
   begin
     insert into public.billing_webhook_events (
       provider, environment, event_name, provider_object_type,
@@ -81,6 +116,27 @@ begin
       'test-object', v_hash, 'received'
     );
     raise exception 'duplicate delivery was accepted';
+  exception when unique_violation then
+    null;
+  end;
+
+  insert into public.billing_webhook_events (
+    provider, environment, event_name, provider_object_type,
+    provider_object_id, payload_hash, semantic_fingerprint, processing_status
+  ) values (
+    'lemonsqueezy', 'test', 'subscription_updated', 'subscriptions',
+    'semantic-object', repeat('c', 64), v_semantic, 'received'
+  );
+
+  begin
+    insert into public.billing_webhook_events (
+      provider, environment, event_name, provider_object_type,
+      provider_object_id, payload_hash, semantic_fingerprint, processing_status
+    ) values (
+      'lemonsqueezy', 'test', 'subscription_updated', 'subscriptions',
+      'semantic-object', repeat('d', 64), v_semantic, 'received'
+    );
+    raise exception 'semantic duplicate was accepted';
   exception when unique_violation then
     null;
   end;

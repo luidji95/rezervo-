@@ -28,17 +28,21 @@ select md5(concat_ws('|',
 
 for (let iteration = 1; iteration <= 3; iteration += 1) {
   const objectId = `concurrency-${randomUUID()}`;
-  const payloadHash = createHash("sha256").update(randomUUID()).digest("hex");
+  const payloadHashes = [randomUUID(), randomUUID()]
+    .map((value) => createHash("sha256").update(value).digest("hex"));
+  const semanticFingerprint = createHash("sha256")
+    .update(`semantic-${randomUUID()}`)
+    .digest("hex");
   const before = await psql(protectedFingerprintSql);
-  const insert = () => psql(`
+  const insert = (payloadHash) => psql(`
     insert into public.billing_webhook_events(
       provider,environment,event_name,provider_object_type,
-      provider_object_id,payload_hash,processing_status
+      provider_object_id,payload_hash,semantic_fingerprint,processing_status
     ) values (
       'lemonsqueezy','test','subscription_updated','subscriptions',
-      '${objectId}','${payloadHash}','received'
+      '${objectId}','${payloadHash}','${semanticFingerprint}','received'
     );`);
-  const results = await Promise.allSettled([insert(), insert()]);
+  const results = await Promise.allSettled(payloadHashes.map(insert));
   if (
     results.filter((result) => result.status === "fulfilled").length !== 1 ||
     results.filter((result) => result.status === "rejected").length !== 1
@@ -48,7 +52,7 @@ for (let iteration = 1; iteration <= 3; iteration += 1) {
   const count = await psql(`
     select count(*) from public.billing_webhook_events
     where provider='lemonsqueezy' and environment='test'
-      and payload_hash='${payloadHash}';`);
+      and semantic_fingerprint='${semanticFingerprint}';`);
   if (count !== "1") {
     throw new Error(`Iteration ${iteration}: expected one event row, got ${count}`);
   }
@@ -56,7 +60,7 @@ for (let iteration = 1; iteration <= 3; iteration += 1) {
   if (before !== after) {
     throw new Error(`Iteration ${iteration}: protected billing state changed`);
   }
-  await psql(`delete from public.billing_webhook_events where payload_hash='${payloadHash}';`);
+  await psql(`delete from public.billing_webhook_events where semantic_fingerprint='${semanticFingerprint}';`);
 }
 
 console.log("Billing webhook DB concurrency passed (3 iterations); protected billing state stayed unchanged.");

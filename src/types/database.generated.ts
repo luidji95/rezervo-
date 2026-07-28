@@ -771,6 +771,77 @@ export type Database = {
           },
         ]
       }
+      billing_webhook_subscription_facts: {
+        Row: {
+          checkout_session_id: string | null
+          correlation_error_code: string | null
+          correlation_status: string
+          created_at: string
+          custom_idempotency_key: string | null
+          custom_plan_code: string | null
+          custom_salon_id: string | null
+          facts_schema_version: number
+          provider_created_at: string | null
+          provider_customer_id: string | null
+          provider_order_id: string | null
+          provider_product_id: string | null
+          provider_status: string | null
+          provider_subscription_id: string
+          provider_updated_at: string | null
+          provider_variant_id: string | null
+          test_mode: boolean
+          webhook_event_id: string
+        }
+        Insert: {
+          checkout_session_id?: string | null
+          correlation_error_code?: string | null
+          correlation_status: string
+          created_at?: string
+          custom_idempotency_key?: string | null
+          custom_plan_code?: string | null
+          custom_salon_id?: string | null
+          facts_schema_version?: number
+          provider_created_at?: string | null
+          provider_customer_id?: string | null
+          provider_order_id?: string | null
+          provider_product_id?: string | null
+          provider_status?: string | null
+          provider_subscription_id: string
+          provider_updated_at?: string | null
+          provider_variant_id?: string | null
+          test_mode: boolean
+          webhook_event_id: string
+        }
+        Update: {
+          checkout_session_id?: string | null
+          correlation_error_code?: string | null
+          correlation_status?: string
+          created_at?: string
+          custom_idempotency_key?: string | null
+          custom_plan_code?: string | null
+          custom_salon_id?: string | null
+          facts_schema_version?: number
+          provider_created_at?: string | null
+          provider_customer_id?: string | null
+          provider_order_id?: string | null
+          provider_product_id?: string | null
+          provider_status?: string | null
+          provider_subscription_id?: string
+          provider_updated_at?: string | null
+          provider_variant_id?: string | null
+          test_mode?: boolean
+          webhook_event_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_webhook_subscription_facts_webhook_event_id_fkey"
+            columns: ["webhook_event_id"]
+            isOneToOne: true
+            referencedRelation: "billing_webhook_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           avatar_url: string | null
@@ -2118,6 +2189,40 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      ingest_billing_webhook_event_v1: {
+        Args: {
+          p_checkout_session_id: string | null
+          p_correlation_error_code: string | null
+          p_correlation_status: string | null
+          p_custom_idempotency_key: string | null
+          p_custom_plan_code: string | null
+          p_custom_salon_id: string | null
+          p_environment: string
+          p_event_name: string
+          p_has_subscription_facts: boolean
+          p_payload_hash: string
+          p_processed_at: string | null
+          p_processing_status: string
+          p_provider: string
+          p_provider_created_at: string | null
+          p_provider_customer_id: string | null
+          p_provider_object_id: string
+          p_provider_object_type: string
+          p_provider_order_id: string | null
+          p_provider_product_id: string | null
+          p_provider_status: string | null
+          p_provider_subscription_id: string | null
+          p_provider_updated_at: string | null
+          p_provider_variant_id: string | null
+          p_semantic_fingerprint: string
+          p_test_mode: boolean
+        }
+        Returns: {
+          event_id: string
+          outcome: string
+          stored_status: string
+        }[]
+      }
       accept_team_invitation: {
         Args: { p_invitation_id: string; p_profile_id: string }
         Returns: {

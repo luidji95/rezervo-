@@ -18,13 +18,35 @@ function payload(
   eventName = "subscription_created",
   testMode = true,
   webhookId = "00000000-0000-4000-8000-00000000000a",
+  customData: Record<string, unknown> = {
+    checkout_session_id: "10000000-0000-4000-8000-000000000001",
+    salon_id: "10000000-0000-4000-8000-000000000002",
+    plan_code: "pro",
+    idempotency_key: "10000000-0000-4000-8000-000000000003",
+  },
 ) {
   return JSON.stringify({
-    meta: { webhook_id: webhookId, event_name: eventName, custom_data: { untrusted: "ignored" } },
+    meta: { webhook_id: webhookId, event_name: eventName, custom_data: customData },
     data: {
       type: "subscriptions",
-      id: "test-subscription-object",
-      attributes: { test_mode: testMode, customer_email: "not-persisted@example.test" },
+      id: "2383060",
+      attributes: {
+        test_mode: testMode,
+        order_id: 41001,
+        customer_id: "51001",
+        product_id: 61001,
+        variant_id: "71001",
+        status: "active",
+        created_at: "2026-07-28T10:00:00.000Z",
+        updated_at: "2026-07-28T10:01:00.000Z",
+        customer_email: "not-persisted@example.test",
+        user_name: "Not Persisted",
+        billing_address: { line_1: "Not persisted" },
+        urls: {
+          customer_portal: "https://provider.example.invalid/private/signed-token",
+          update_payment_method: "https://provider.example.invalid/private/payment-token",
+        },
+      },
     },
   });
 }
@@ -128,6 +150,27 @@ test("test events are received, live and invalid payloads are rejected", async (
   );
   assert.equal(repository.rows[0]?.processingStatus, "received");
   assert.equal(repository.rows[0]?.processedAt, null);
+  assert.deepEqual(repository.rows[0]?.subscriptionFacts, {
+    checkoutSessionId: "10000000-0000-4000-8000-000000000001",
+    customSalonId: "10000000-0000-4000-8000-000000000002",
+    customPlanCode: "pro",
+    customIdempotencyKey: "10000000-0000-4000-8000-000000000003",
+    providerSubscriptionId: "2383060",
+    providerOrderId: "41001",
+    providerCustomerId: "51001",
+    providerProductId: "61001",
+    providerVariantId: "71001",
+    providerStatus: "active",
+    providerCreatedAt: "2026-07-28T10:00:00.000Z",
+    providerUpdatedAt: "2026-07-28T10:01:00.000Z",
+    testMode: true,
+    correlationStatus: "ready",
+    correlationErrorCode: null,
+  });
+  const persistedContract = JSON.stringify(repository.rows[0]);
+  for (const forbidden of ["not-persisted@example.test", "Not Persisted", "signed-token", "payment-token", "billing_address", "urls"]) {
+    assert.equal(persistedContract.includes(forbidden), false);
+  }
 
   const liveBody = payload("subscription_created", false);
   await expectCode(
@@ -155,6 +198,64 @@ test("unsupported signed event is stored as ignored", async () => {
   assert.deepEqual(result, { status: "ignored" });
   assert.equal(repository.rows[0]?.processingStatus, "ignored");
   assert.equal(repository.rows[0]?.processedAt, "2026-07-28T10:00:00.000Z");
+  assert.equal(repository.rows[0]?.subscriptionFacts, null);
+});
+
+test("legacy and invalid custom data remain durable but never ready", async () => {
+  const legacyRepository = new MemoryRepository();
+  const legacy = payload("subscription_created", true, "legacy", {
+    salon_id: "10000000-0000-4000-8000-000000000002",
+    plan_code: "pro",
+    idempotency_key: "10000000-0000-4000-8000-000000000003",
+  });
+  await ingestLemonSqueezyWebhook({ rawBody: legacy, signature: sign(legacy), webhookSecret: secret, repository: legacyRepository });
+  assert.equal(legacyRepository.rows[0]?.subscriptionFacts?.correlationStatus, "legacy_missing_checkout_session");
+  assert.equal(legacyRepository.rows[0]?.subscriptionFacts?.checkoutSessionId, null);
+  assert.equal(legacyRepository.rows[0]?.subscriptionFacts?.correlationErrorCode, null);
+
+  for (const customData of [
+    { plan_code: "pro", idempotency_key: "10000000-0000-4000-8000-000000000003" },
+    { salon_id: "10000000-0000-4000-8000-000000000002", plan_code: "premium", idempotency_key: "10000000-0000-4000-8000-000000000003" },
+    { salon_id: "10000000-0000-4000-8000-000000000002", plan_code: "pro" },
+  ]) {
+    const repository = new MemoryRepository();
+    const rawBody = payload("subscription_created", true, "legacy-invalid", customData);
+    await ingestLemonSqueezyWebhook({ rawBody, signature: sign(rawBody), webhookSecret: secret, repository });
+    assert.equal(repository.rows[0]?.subscriptionFacts?.correlationStatus, "invalid_custom_data");
+  }
+
+  for (const [field, value, code] of [
+    ["checkout_session_id", "not-a-uuid", "checkout_session_id_invalid"],
+    ["salon_id", "not-a-uuid", "custom_salon_id_invalid"],
+    ["plan_code", "premium", "custom_plan_code_invalid"],
+    ["idempotency_key", "not-a-uuid", "custom_idempotency_key_invalid"],
+  ] as const) {
+    const repository = new MemoryRepository();
+    const custom = {
+      checkout_session_id: "10000000-0000-4000-8000-000000000001",
+      salon_id: "10000000-0000-4000-8000-000000000002",
+      plan_code: "pro",
+      idempotency_key: "10000000-0000-4000-8000-000000000003",
+      [field]: value,
+    };
+    const rawBody = payload("subscription_created", true, `invalid-${field}`, custom);
+    await ingestLemonSqueezyWebhook({ rawBody, signature: sign(rawBody), webhookSecret: secret, repository });
+    assert.equal(repository.rows[0]?.subscriptionFacts?.correlationStatus, "invalid_custom_data");
+    assert.equal(repository.rows[0]?.subscriptionFacts?.correlationErrorCode, code);
+  }
+});
+
+test("repository failures remain a sanitized storage error", async () => {
+  const rawBody = payload();
+  await expectCode(
+    () => ingestLemonSqueezyWebhook({
+      rawBody,
+      signature: sign(rawBody),
+      webhookSecret: secret,
+      repository: { async insertEvent() { throw new Error("private database detail"); } },
+    }),
+    "BILLING_WEBHOOK_STORAGE_FAILED",
+  );
 });
 
 test("sequential and parallel duplicate deliveries create one row", async () => {

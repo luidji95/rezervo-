@@ -35,6 +35,43 @@ const envelopeSchema = z.object({
   }).passthrough(),
 }).passthrough();
 
+const providerIdSchema = z.union([
+  nonBlankString,
+  z.number().int().nonnegative(),
+]).transform(String);
+
+const subscriptionAttributesSchema = z.object({
+  test_mode: z.boolean(),
+  order_id: providerIdSchema,
+  customer_id: providerIdSchema,
+  product_id: providerIdSchema,
+  variant_id: providerIdSchema,
+  status: nonBlankString,
+  created_at: z.iso.datetime({ offset: true }),
+  updated_at: z.iso.datetime({ offset: true }),
+}).passthrough();
+
+export type BillingWebhookSubscriptionFactsInput = {
+  checkoutSessionId: string | null;
+  customSalonId: string | null;
+  customPlanCode: "starter" | "pro" | null;
+  customIdempotencyKey: string | null;
+  providerSubscriptionId: string;
+  providerOrderId: string;
+  providerCustomerId: string;
+  providerProductId: string;
+  providerVariantId: string;
+  providerStatus: string;
+  providerCreatedAt: string;
+  providerUpdatedAt: string;
+  testMode: boolean;
+  correlationStatus:
+    | "ready"
+    | "legacy_missing_checkout_session"
+    | "invalid_custom_data";
+  correlationErrorCode: string | null;
+};
+
 export type BillingWebhookEventInput = {
   provider: "lemonsqueezy";
   environment: "test";
@@ -45,6 +82,8 @@ export type BillingWebhookEventInput = {
   semanticFingerprint: string;
   processingStatus: "received" | "ignored";
   processedAt: string | null;
+  testMode: boolean;
+  subscriptionFacts: BillingWebhookSubscriptionFactsInput | null;
 };
 
 export interface BillingWebhookEventRepository {
@@ -100,6 +139,88 @@ export function createLemonSqueezySemanticFingerprint(
     .digest("hex");
 }
 
+const uuidSchema = z.uuid();
+
+function normalizedUuid(value: unknown) {
+  const parsed = uuidSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+export function normalizeLemonSqueezySubscriptionFacts(
+  payload: z.infer<typeof envelopeSchema>,
+): BillingWebhookSubscriptionFactsInput {
+  const attributes = subscriptionAttributesSchema.safeParse(
+    payload.data.attributes,
+  );
+  if (!attributes.success) {
+    throw new BillingWebhookError("BILLING_WEBHOOK_PAYLOAD_INVALID", 400);
+  }
+
+  const custom = payload.meta.custom_data ?? {};
+  const hasCheckoutSessionId = Object.prototype.hasOwnProperty.call(
+    custom,
+    "checkout_session_id",
+  );
+  const checkoutSessionId = normalizedUuid(custom.checkout_session_id);
+  const customSalonId = normalizedUuid(custom.salon_id);
+  const customIdempotencyKey = normalizedUuid(custom.idempotency_key);
+  const customPlanCode =
+    custom.plan_code === "starter" || custom.plan_code === "pro"
+      ? custom.plan_code
+      : null;
+
+  let correlationStatus: BillingWebhookSubscriptionFactsInput["correlationStatus"];
+  let correlationErrorCode: string | null;
+  if (!hasCheckoutSessionId) {
+    if (!customSalonId) {
+      correlationStatus = "invalid_custom_data";
+      correlationErrorCode = "custom_salon_id_invalid";
+    } else if (!customPlanCode) {
+      correlationStatus = "invalid_custom_data";
+      correlationErrorCode = "custom_plan_code_invalid";
+    } else if (!customIdempotencyKey) {
+      correlationStatus = "invalid_custom_data";
+      correlationErrorCode = "custom_idempotency_key_invalid";
+    } else {
+      correlationStatus = "legacy_missing_checkout_session";
+      correlationErrorCode = null;
+    }
+  } else if (!checkoutSessionId) {
+    correlationStatus = "invalid_custom_data";
+    correlationErrorCode = "checkout_session_id_invalid";
+  } else if (!customSalonId) {
+    correlationStatus = "invalid_custom_data";
+    correlationErrorCode = "custom_salon_id_invalid";
+  } else if (!customPlanCode) {
+    correlationStatus = "invalid_custom_data";
+    correlationErrorCode = "custom_plan_code_invalid";
+  } else if (!customIdempotencyKey) {
+    correlationStatus = "invalid_custom_data";
+    correlationErrorCode = "custom_idempotency_key_invalid";
+  } else {
+    correlationStatus = "ready";
+    correlationErrorCode = null;
+  }
+
+  return {
+    checkoutSessionId,
+    customSalonId,
+    customPlanCode,
+    customIdempotencyKey,
+    providerSubscriptionId: payload.data.id,
+    providerOrderId: attributes.data.order_id,
+    providerCustomerId: attributes.data.customer_id,
+    providerProductId: attributes.data.product_id,
+    providerVariantId: attributes.data.variant_id,
+    providerStatus: attributes.data.status,
+    providerCreatedAt: attributes.data.created_at,
+    providerUpdatedAt: attributes.data.updated_at,
+    testMode: attributes.data.test_mode,
+    correlationStatus,
+    correlationErrorCode,
+  };
+}
+
 export async function ingestLemonSqueezyWebhook(input: {
   rawBody: string;
   signature: string | null;
@@ -141,6 +262,9 @@ export async function ingestLemonSqueezyWebhook(input: {
     parsed.data.meta.event_name,
   );
   const processingStatus = supported ? "received" : "ignored";
+  const subscriptionFacts = supported
+    ? normalizeLemonSqueezySubscriptionFacts(parsed.data)
+    : null;
   let stored:
     | { outcome: "inserted"; id: string }
     | { outcome: "duplicate" };
@@ -155,6 +279,8 @@ export async function ingestLemonSqueezyWebhook(input: {
       semanticFingerprint: createLemonSqueezySemanticFingerprint(parsed.data),
       processingStatus,
       processedAt: supported ? null : (input.now?.() ?? new Date()).toISOString(),
+      testMode: parsed.data.data.attributes.test_mode,
+      subscriptionFacts,
     });
   } catch {
     throw new BillingWebhookError("BILLING_WEBHOOK_STORAGE_FAILED", 503);

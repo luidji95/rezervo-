@@ -34,20 +34,25 @@ for (let iteration = 1; iteration <= 3; iteration += 1) {
     .update(`semantic-${randomUUID()}`)
     .digest("hex");
   const before = await psql(protectedFingerprintSql);
+  const checkoutSessionId = randomUUID();
+  const salonId = randomUUID();
+  const idempotencyKey = randomUUID();
   const insert = (payloadHash) => psql(`
-    insert into public.billing_webhook_events(
-      provider,environment,event_name,provider_object_type,
-      provider_object_id,payload_hash,semantic_fingerprint,processing_status
-    ) values (
+    select outcome from public.ingest_billing_webhook_event_v1(
       'lemonsqueezy','test','subscription_updated','subscriptions',
-      '${objectId}','${payloadHash}','${semanticFingerprint}','received'
+      '${objectId}','${payloadHash}','${semanticFingerprint}','received',null,true,
+      '${checkoutSessionId}','${salonId}','pro','${idempotencyKey}',
+      '${objectId}','order-${objectId}','customer-${objectId}',
+      'product-${objectId}','variant-${objectId}','active',
+      '2026-07-28T10:00:00Z','2026-07-28T10:01:00Z',true,'ready',null
     );`);
   const results = await Promise.allSettled(payloadHashes.map(insert));
-  if (
-    results.filter((result) => result.status === "fulfilled").length !== 1 ||
-    results.filter((result) => result.status === "rejected").length !== 1
-  ) {
-    throw new Error(`Iteration ${iteration}: expected one unique-constraint winner`);
+  if (results.some((result) => result.status === "rejected")) {
+    throw new Error(`Iteration ${iteration}: duplicate delivery returned an error`);
+  }
+  const outcomes = results.map((result) => result.value).sort();
+  if (outcomes[0] !== "duplicate" || outcomes[1] !== "inserted") {
+    throw new Error(`Iteration ${iteration}: expected one inserted and one duplicate outcome`);
   }
   const count = await psql(`
     select count(*) from public.billing_webhook_events
@@ -55,6 +60,13 @@ for (let iteration = 1; iteration <= 3; iteration += 1) {
       and semantic_fingerprint='${semanticFingerprint}';`);
   if (count !== "1") {
     throw new Error(`Iteration ${iteration}: expected one event row, got ${count}`);
+  }
+  const factsCount = await psql(`
+    select count(*) from public.billing_webhook_subscription_facts f
+    join public.billing_webhook_events e on e.id=f.webhook_event_id
+    where e.semantic_fingerprint='${semanticFingerprint}';`);
+  if (factsCount !== "1") {
+    throw new Error(`Iteration ${iteration}: expected one facts row, got ${factsCount}`);
   }
   const after = await psql(protectedFingerprintSql);
   if (before !== after) {

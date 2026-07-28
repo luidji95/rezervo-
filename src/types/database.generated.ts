@@ -577,8 +577,10 @@ export type Database = {
           id: string
           idempotency_key: string
           provider: string
+          provider_order_id: string | null
           provider_session_id: string | null
           requested_plan_id: string
+          resulting_subscription_id: string | null
           salon_id: string
           status: string
           updated_at: string
@@ -595,8 +597,10 @@ export type Database = {
           id?: string
           idempotency_key: string
           provider: string
+          provider_order_id?: string | null
           provider_session_id?: string | null
           requested_plan_id: string
+          resulting_subscription_id?: string | null
           salon_id: string
           status?: string
           updated_at?: string
@@ -613,8 +617,10 @@ export type Database = {
           id?: string
           idempotency_key?: string
           provider?: string
+          provider_order_id?: string | null
           provider_session_id?: string | null
           requested_plan_id?: string
+          resulting_subscription_id?: string | null
           salon_id?: string
           status?: string
           updated_at?: string
@@ -632,6 +638,13 @@ export type Database = {
             columns: ["requested_plan_id"]
             isOneToOne: false
             referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_checkout_sessions_resulting_subscription_id_fkey"
+            columns: ["resulting_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
             referencedColumns: ["id"]
           },
           {
@@ -1912,6 +1925,7 @@ export type Database = {
       }
       subscriptions: {
         Row: {
+          billing_environment: string | null
           billing_provider: string | null
           cancel_at_period_end: boolean
           cancelled_at: string | null
@@ -1929,6 +1943,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          billing_environment?: string | null
           billing_provider?: string | null
           cancel_at_period_end?: boolean
           cancelled_at?: string | null
@@ -1946,6 +1961,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          billing_environment?: string | null
           billing_provider?: string | null
           cancel_at_period_end?: boolean
           cancelled_at?: string | null

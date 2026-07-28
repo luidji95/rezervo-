@@ -166,8 +166,22 @@ export class SupabaseBillingCheckoutRepository
       })
       .select(LEDGER_COLUMNS)
       .single();
-    if (error || !data) throw new Error("BILLING_SESSION_INSERT_FAILED");
-    return toLedger(data);
+    if (!error && data) {
+      return {
+        outcome: "created" as const,
+        checkoutSession: {
+          ...toLedger(data),
+          status: "creating" as const,
+        },
+      };
+    }
+    if (error?.code === "23505") {
+      const existing = await this.findByIdempotencyKey(input.idempotencyKey);
+      if (existing) {
+        return { outcome: "existing" as const, checkoutSession: existing };
+      }
+    }
+    throw new Error("BILLING_SESSION_INSERT_FAILED");
   }
 
   async markOpen(input: {

@@ -6,6 +6,7 @@ import { BillingCheckoutError } from "./billingCheckoutErrors.ts";
 import type { CreateCheckoutSessionInput } from "./billingProvider.ts";
 
 const input: CreateCheckoutSessionInput = {
+  checkoutSessionId: "10000000-0000-4000-8000-000000000004",
   salonId: "10000000-0000-4000-8000-000000000001",
   actorProfileId: "10000000-0000-4000-8000-000000000002",
   planCode: "starter",
@@ -50,6 +51,15 @@ test("creates a test checkout from the server-owned variant without a custom pri
   assert.equal(serialized.includes(input.cancelUrl), false);
   assert.equal(serialized.includes('"test_mode":true'), true);
   assert.equal(serialized.includes('"id":"456"'), true);
+  const body = capturedBody as {
+    data: { attributes: { checkout_data: { custom: Record<string, string> } } };
+  };
+  assert.deepEqual(body.data.attributes.checkout_data.custom, {
+    checkout_session_id: input.checkoutSessionId,
+    salon_id: input.salonId,
+    plan_code: input.planCode,
+    idempotency_key: input.idempotencyKey,
+  });
 });
 
 test("sanitizes provider rejection and rejects non-test or malformed mappings", async () => {

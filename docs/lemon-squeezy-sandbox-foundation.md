@@ -16,7 +16,7 @@ Official sources: [API requests](https://docs.lemonsqueezy.com/api/getting-start
 - Base URL is `https://api.lemonsqueezy.com`; checkout creation is `POST /v1/checkouts`.
 - Requests use JSON:API headers and `Authorization: Bearer <server-only API key>`.
 - Store and variant are JSON:API relationships. Product contains variants; the selected subscription variant owns the recurring price.
-- `checkout_data.custom` is returned later in webhook `meta.custom_data`. Rezervo sends only salon ID, plan code and local idempotency key.
+- `checkout_data.custom` is returned later in webhook `meta.custom_data`. New checkouts send the database-generated checkout-session ID as the primary correlation key, plus salon ID, plan code and local idempotency key for validation and diagnostics.
 - `product_options.redirect_url` is the documented post-success destination. The API does not document a distinct cancel URL for created hosted checkouts; the neutral adapter retains `cancelUrl` for provider portability but Lemon Squeezy does not send it.
 - `expires_at` is explicit and may otherwise be null. Rezervo requests a 30-minute expiry.
 - Response `data.id` is the provider checkout/session ID and `data.attributes.url` is the temporary checkout URL. `attributes.test_mode` must be true.
@@ -63,6 +63,8 @@ Migration `202607270017_billing_sandbox_foundation.sql` adds two server-only tab
 `billing_provider_prices` stores plan, provider/environment, monthly currency/amount and provider product/variant IDs. Unique contracts cover one mapping per provider/environment/plan/interval/currency and one variant per provider/environment. A validation trigger accepts only active Starter/Pro and requires exact `monthly_price` and currency parity. No mapping is seeded.
 
 `billing_checkout_sessions` stores salon/actor/requested plan, provider/environment, idempotency key, provider session ID, state, SHA-256 URL hash, expiry/timestamps and sanitized error code. It never stores the checkout URL. States are `creating`, `open`, `completed`, `expired`, `failed`, and `cancelled`; 7B.1 uses creating/open/failed/expired. `completed` is not subscription authority.
+
+Phase 7B.3A extends this ledger with nullable `provider_order_id` and `resulting_subscription_id`, and adds nullable `subscriptions.billing_environment`. Every new checkout is inserted first and its database-generated `billing_checkout_sessions.id` is sent as `meta.custom_data.checkout_session_id`. Webhook ingestion does not yet use that correlation to mutate checkout or subscription state. Older checkout URLs do not contain this field and must never be auto-linked later using only salon ID, plan code, approximate time or another weak heuristic.
 
 Both tables have RLS enabled and no anon/authenticated policies or privileges. `service_role` has table CRUD. Provider/session identifiers and internal actor/error data are available only through server code.
 

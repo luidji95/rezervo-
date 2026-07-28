@@ -4,6 +4,7 @@ export type BillingInterval = "monthly";
 export type CheckoutPlanCode = "starter" | "pro";
 
 export type CreateCheckoutSessionInput = {
+  checkoutSessionId: string;
   salonId: string;
   actorProfileId: string;
   planCode: CheckoutPlanCode;

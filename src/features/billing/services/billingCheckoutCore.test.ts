@@ -48,7 +48,8 @@ class MemoryRepository implements BillingCheckoutRepository {
     for (const row of this.ledgers.values()) if (row.id === id) row.status = "expired";
   }
   async insertCreating(input: { salonId: string; actorProfileId: string; planId: string; idempotencyKey: string }) {
-    if (this.ledgers.has(input.idempotencyKey)) throw new Error("unique");
+    const existing = this.ledgers.get(input.idempotencyKey);
+    if (existing) return { outcome: "existing" as const, checkoutSession: existing };
     const row: BillingCheckoutLedger = {
       id: `ledger-${++this.sequence}`,
       salonId: input.salonId,
@@ -59,7 +60,10 @@ class MemoryRepository implements BillingCheckoutRepository {
       expiresAt: null,
     };
     this.ledgers.set(input.idempotencyKey, row);
-    return row;
+    return {
+      outcome: "created" as const,
+      checkoutSession: { ...row, status: "creating" as const },
+    };
   }
   async markOpen(input: { id: string; expiresAt: string }) {
     for (const row of this.ledgers.values()) if (row.id === input.id) {
@@ -87,10 +91,13 @@ test("owner creates Starter and Pro sessions without changing subscription state
     const repo = new MemoryRepository();
     if (planCode === "pro") repo.mapping = { ...repo.mapping!, planId: "pro-plan", planCode: "pro", planMonthlyPrice: 5990, mappingAmount: 5990 };
     const before = structuredClone(repo.subscriptions.get(salon));
-    const result = await createBillingCheckout({ ...request, planCode }, repo, new MockBillingProvider(), runtime);
+    const provider = new MockBillingProvider();
+    const result = await createBillingCheckout({ ...request, planCode }, repo, provider, runtime);
     assert.equal(result.environment, "test");
     assert.deepEqual(repo.subscriptions.get(salon), before);
     assert.equal(repo.ledgers.get(key)?.status, "open");
+    assert.equal(provider.calls[0]?.checkoutSessionId, "ledger-1");
+    assert.equal("checkoutSessionId" in result, false);
   }
 });
 
@@ -136,7 +143,37 @@ test("same key, double click and two concurrent requests create one provider ses
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
   assert.equal(provider.calls.length, 1);
   assert.equal(repo.ledgers.size, 1);
+  assert.equal(provider.calls[0]?.checkoutSessionId, repo.ledgers.get(key)?.id);
   await expectCode(() => createBillingCheckout(request, repo, provider, runtime), "BILLING_CHECKOUT_IN_PROGRESS");
+});
+
+test("an insert race reuses the database ledger ID and never calls the provider", async () => {
+  const repo = new MemoryRepository();
+  const existing: BillingCheckoutLedger = {
+    id: "database-winner-ledger",
+    salonId: salon,
+    actorProfileId: actor,
+    requestedPlanId: "starter-plan",
+    idempotencyKey: key,
+    status: "creating",
+    expiresAt: null,
+  };
+  let lookupCount = 0;
+  repo.findByIdempotencyKey = async () => {
+    lookupCount += 1;
+    return lookupCount === 1 ? null : existing;
+  };
+  repo.insertCreating = async () => ({
+    outcome: "existing" as const,
+    checkoutSession: existing,
+  });
+  const provider = new MockBillingProvider();
+  await expectCode(
+    () => createBillingCheckout(request, repo, provider, runtime),
+    "BILLING_CHECKOUT_IN_PROGRESS",
+  );
+  assert.equal(provider.calls.length, 0);
+  assert.equal(existing.id, "database-winner-ledger");
 });
 
 test("provider rejection fails the ledger while timeout remains creating for reconciliation", async () => {
@@ -146,6 +183,7 @@ test("provider rejection fails the ledger while timeout remains creating for rec
     "BILLING_PROVIDER_REJECTED",
   );
   assert.equal(rejectedRepo.ledgers.get(key)?.status, "failed");
+  assert.equal(rejectedRepo.ledgers.get(key)?.id, "ledger-1");
 
   const timeoutRepo = new MemoryRepository();
   await expectCode(
@@ -153,6 +191,7 @@ test("provider rejection fails the ledger while timeout remains creating for rec
     "BILLING_RECONCILIATION_REQUIRED",
   );
   assert.equal(timeoutRepo.ledgers.get(key)?.status, "creating");
+  assert.equal(timeoutRepo.ledgers.get(key)?.id, "ledger-1");
 });
 
 test("expired open session permits a new attempt, valid open session is reused as in-progress", async () => {

@@ -26,6 +26,16 @@ export type BillingCheckoutLedger = {
   expiresAt: string | null;
 };
 
+export type InsertCreatingResult =
+  | {
+      outcome: "created";
+      checkoutSession: BillingCheckoutLedger & { status: "creating" };
+    }
+  | {
+      outcome: "existing";
+      checkoutSession: BillingCheckoutLedger;
+    };
+
 export interface BillingCheckoutRepository {
   isSalonOwner(salonId: string, actorProfileId: string): Promise<boolean>;
   hasActiveOverride(salonId: string, now: string): Promise<boolean>;
@@ -42,7 +52,7 @@ export interface BillingCheckoutRepository {
     actorProfileId: string;
     planId: string;
     idempotencyKey: string;
-  }): Promise<BillingCheckoutLedger>;
+  }): Promise<InsertCreatingResult>;
   markOpen(input: {
     id: string;
     providerSessionId: string;
@@ -129,9 +139,9 @@ export async function createBillingCheckout(
     }
   }
 
-  let ledger: BillingCheckoutLedger;
+  let insertion: InsertCreatingResult;
   try {
-    ledger = await repository.insertCreating({
+    insertion = await repository.insertCreating({
       salonId: input.salonId,
       actorProfileId: input.actorProfileId,
       planId: mapping.planId,
@@ -142,10 +152,15 @@ export async function createBillingCheckout(
     if (raced) assertExistingAttemptMatches(raced, input, mapping.planId);
     throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
   }
+  const ledger = insertion.checkoutSession;
+  if (insertion.outcome === "existing") {
+    assertExistingAttemptMatches(ledger, input, mapping.planId);
+  }
 
   const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
   try {
     const result = await provider.createCheckoutSession({
+      checkoutSessionId: ledger.id,
       salonId: input.salonId,
       actorProfileId: input.actorProfileId,
       planCode: input.planCode,

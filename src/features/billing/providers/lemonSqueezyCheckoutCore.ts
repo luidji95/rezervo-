@@ -77,6 +77,7 @@ export class LemonSqueezyCheckoutCore implements BillingProvider {
               checkout_data: {
                 ...(input.customerEmail ? { email: input.customerEmail } : {}),
                 custom: {
+                  checkout_session_id: input.checkoutSessionId,
                   salon_id: input.salonId,
                   plan_code: input.planCode,
                   idempotency_key: input.idempotencyKey,

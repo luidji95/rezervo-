@@ -4,12 +4,17 @@ import Link from "next/link";
 import { CalendarClock, Check, CircleMinus, Clock3, Sparkles, Users } from "lucide-react";
 import { useEntitlements } from "../hooks/useEntitlements";
 import { useBillingUsage } from "../hooks/useBillingUsage";
+import { useBillingCheckout } from "../hooks/useBillingCheckout";
 import { PLAN_DESCRIPTIONS, PLAN_PRESENTATIONS, type PlanFeaturePresentation } from "../data/planPresentation";
 import { getBillingAccessPresentation } from "../services/billingAccessPresentation";
+import { getCheckoutButtonPresentation } from "../services/billingCheckoutPresentation";
 import { remainingTrialDays } from "../services/billingPricingPresentation";
 import { formatPlanPrice, getTrialPlanPriceMessage } from "../services/planCatalog";
 import type { SalonEntitlements } from "../types/entitlements";
 import styles from "./BillingPreview.module.css";
+
+const CHECKOUT_ENABLED =
+  process.env.NEXT_PUBLIC_BILLING_CHECKOUT_ENABLED === "true";
 
 const STATUS: Record<SalonEntitlements["subscriptionStatus"], { label: string; tone: string }> = {
   trialing: { label: "Probni period", tone: "trial" }, active: { label: "Aktivan", tone: "active" },
@@ -30,6 +35,7 @@ function FeatureRow({ feature, entitlements, current }: { feature: PlanFeaturePr
 export function BillingPreview() {
   const entitlementState = useEntitlements();
   const usageState = useBillingUsage();
+  const checkout = useBillingCheckout();
   const entitlements = entitlementState.entitlements;
 
   if (entitlementState.loading) return <div className={styles.loading} aria-label="Učitavanje podataka o paketu" aria-busy="true"><span /><span /><span /></div>;
@@ -59,13 +65,14 @@ export function BillingPreview() {
       <div className={styles.usage}><span className={styles.usageIcon}><Users size={20} /></span><span>Aktivni zaposleni</span>{usageState.loading ? <i className={styles.usageSkeleton} /> : usageState.error || !usageState.usage ? <strong>Podatak trenutno nije dostupan</strong> : <><strong>{usageState.usage.activeEmployees}{entitlements.planCapabilities.maxEmployees === null ? "" : ` / ${entitlements.planCapabilities.maxEmployees}`}</strong>{entitlements.planCapabilities.maxEmployees === null && <small>Bez ograničenja</small>}</>}</div>
     </section>
 
-    <section className={styles.plans} aria-labelledby="billing-plans-title"><div className={styles.sectionHeading}><div><span>Poređenje paketa</span><h2 id="billing-plans-title">Paketi prilagođeni fazi vašeg salona</h2></div><p>Online plaćanje još nije uvedeno. Kartice ispod ne pokreću kupovinu.</p></div><div className={styles.planGrid}>{PLAN_PRESENTATIONS.map((plan) => {
+    <section className={styles.plans} aria-labelledby="billing-plans-title"><div className={styles.sectionHeading}><div><span>Poređenje paketa</span><h2 id="billing-plans-title">Paketi prilagođeni fazi vašeg salona</h2></div><p>{CHECKOUT_ENABLED ? "Test checkout je trenutno uključen. Plaćanje se obrađuje preko Lemon Squeezy test okruženja." : "Online plaćanje još nije uvedeno. Kartice ispod ne pokreću kupovinu."}</p></div>{checkout.error && <p className={styles.checkoutError} role="alert">{checkout.error}</p>}<div className={styles.planGrid}>{PLAN_PRESENTATIONS.map((plan) => {
       const current = plan.code === entitlements.planCode;
       const catalogPlan = usageState.plans?.find((item) => item.code === plan.code);
       const comingSoon = catalogPlan ? !catalogPlan.isAvailable : Boolean(plan.comingSoon);
-      return <article key={plan.code} className={`${styles.planCard} ${current ? styles.current : ""}`}><div className={styles.planTop}><h3>{catalogPlan?.name ?? plan.name}</h3><div>{current && <span className={styles.currentBadge}>Trenutni paket</span>}{comingSoon && <span className={styles.soonBadge}>Uskoro</span>}</div></div>{catalogPlan && <div className={styles.planPrice}><strong>{plan.code === "premium" ? "od " : ""}{formatPlanPrice(catalogPlan.monthlyPrice, catalogPlan.currency)}</strong><span>/mesečno</span>{catalogPlan.maxEmployees !== null && <small>Do {catalogPlan.maxEmployees} aktivnih zaposlenih</small>}</div>}<p>{plan.description}</p><ul>{plan.features.map((feature) => <FeatureRow key={feature.label} feature={feature} entitlements={entitlements} current={current} />)}</ul><button type="button" disabled>{current ? "Trenutni paket" : comingSoon ? "Premium je u pripremi" : "Online nadogradnja uskoro"}</button></article>;
+      const button = getCheckoutButtonPresentation({ planCode: plan.code, currentPlanCode: entitlements.planCode, accessReason: entitlements.accessReason, isBillingExempt: entitlements.isBillingExempt, checkoutEnabled: CHECKOUT_ENABLED, loadingPlan: checkout.loadingPlan });
+      return <article key={plan.code} className={`${styles.planCard} ${current ? styles.current : ""}`}><div className={styles.planTop}><h3>{catalogPlan?.name ?? plan.name}</h3><div>{current && <span className={styles.currentBadge}>Trenutni paket</span>}{comingSoon && <span className={styles.soonBadge}>Uskoro</span>}</div></div>{catalogPlan && <div className={styles.planPrice}><strong>{plan.code === "premium" ? "od " : ""}{formatPlanPrice(catalogPlan.monthlyPrice, catalogPlan.currency)}</strong><span>/mesečno</span>{catalogPlan.maxEmployees !== null && <small>Do {catalogPlan.maxEmployees} aktivnih zaposlenih</small>}</div>}<p>{plan.description}</p><ul>{plan.features.map((feature) => <FeatureRow key={feature.label} feature={feature} entitlements={entitlements} current={current} />)}</ul><button type="button" className={!button.disabled ? styles.checkoutButton : undefined} disabled={button.disabled} aria-busy={checkout.loadingPlan === plan.code} onClick={button.checkoutPlan ? () => void checkout.startCheckout(button.checkoutPlan as "starter" | "pro") : undefined}>{button.label}</button></article>;
     })}</div></section>
 
-    <section className={styles.paymentNotice}><Clock3 size={20} /><div><h2>Online upravljanje paketom je u pripremi</h2><p>Trenutni pristup i paket prikazani su iz stvarnih subscription podataka. Rezervo trenutno ne čuva karticu i ne prikazuje izmišljene naplate ili račune.</p><Link href="/pricing">Pogledajte javno poređenje paketa</Link></div></section>
+    <section className={styles.paymentNotice}><Clock3 size={20} /><div><h2>{CHECKOUT_ENABLED ? "Lemon Squeezy test checkout" : "Online upravljanje paketom je u pripremi"}</h2><p>{CHECKOUT_ENABLED ? "Ovo je test okruženje. Završetak checkouta još ne aktivira pretplatu automatski jer webhook i sinhronizacija subscription statusa nisu uvedeni." : "Trenutni pristup i paket prikazani su iz stvarnih subscription podataka. Rezervo trenutno ne čuva karticu i ne prikazuje izmišljene naplate ili račune."}</p><Link href="/pricing">Pogledajte javno poređenje paketa</Link></div></section>
   </div>;
 }

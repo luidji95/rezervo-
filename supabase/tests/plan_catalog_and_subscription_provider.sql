@@ -38,6 +38,7 @@ do $$ begin
     where s.salon_id='92000000-0000-4000-8000-000000000001'
       and p.slug='pro' and s.status='trialing'
       and s.billing_provider is null
+      and s.billing_environment is null
       and s.provider_customer_id is null and s.provider_subscription_id is null
   ) then raise exception 'NEW_TRIAL_PROVIDER_CONTRACT_FAILED'; end if;
 end $$;
@@ -54,7 +55,7 @@ begin
   if not rejected then raise exception 'NULL_PROVIDER_SUBSCRIPTION_ID_ALLOWED'; end if;
 end $$;
 
-update public.subscriptions set billing_provider='future_provider', provider_customer_id='customer-test', provider_subscription_id=null where salon_id='92000000-0000-4000-8000-000000000001';
+update public.subscriptions set billing_provider='future_provider', billing_environment='test', provider_customer_id='customer-test', provider_subscription_id=null where salon_id='92000000-0000-4000-8000-000000000001';
 update public.subscriptions set provider_subscription_id='subscription-test' where salon_id='92000000-0000-4000-8000-000000000001';
 
 set local role authenticated;

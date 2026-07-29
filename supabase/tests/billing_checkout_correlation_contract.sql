@@ -27,6 +27,12 @@ begin
     where conrelid = 'public.billing_checkout_sessions'::regclass
       and conname = 'billing_checkout_sessions_resulting_subscription_id_fkey'
   ) then raise exception 'RESULTING_SUBSCRIPTION_FK_MISSING'; end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.subscriptions'::regclass
+      and conname = 'subscriptions_provider_metadata_consistent'
+      and pg_get_constraintdef(oid) ilike '%billing_environment IS NOT NULL%'
+  ) then raise exception 'PROVIDER_ENVIRONMENT_NOT_NULL_CONTRACT_MISSING'; end if;
 end;
 $$;
 
@@ -64,6 +70,11 @@ begin
   select id into v_subscription_b from public.subscriptions where salon_id = v_salon_b;
 
   update public.subscriptions
+  set billing_provider = null, billing_environment = null,
+      provider_customer_id = null, provider_subscription_id = null
+  where id = v_subscription_a;
+
+  update public.subscriptions
   set billing_provider = 'lemonsqueezy', billing_environment = 'test',
       provider_customer_id = 'shared-customer', provider_subscription_id = 'subscription-shared'
   where id = v_subscription_a;
@@ -90,10 +101,18 @@ begin
   begin
     update public.subscriptions
     set billing_provider = 'lemonsqueezy', billing_environment = null,
-        provider_customer_id = null, provider_subscription_id = 'missing-environment'
+        provider_customer_id = null, provider_subscription_id = null
     where id = v_subscription_a;
   exception when check_violation then v_rejected := true; end;
-  if not v_rejected then raise exception 'PROVIDER_ID_WITHOUT_ENVIRONMENT_ALLOWED'; end if;
+  if not v_rejected then raise exception 'PROVIDER_WITHOUT_ENVIRONMENT_ALLOWED'; end if;
+
+  v_rejected := false;
+  begin
+    update public.subscriptions
+    set billing_provider = null, billing_environment = 'live', provider_customer_id = null,
+        provider_subscription_id = null where id = v_subscription_a;
+  exception when check_violation then v_rejected := true; end;
+  if not v_rejected then raise exception 'LIVE_ENVIRONMENT_WITHOUT_PROVIDER_ALLOWED'; end if;
 
   v_rejected := false;
   begin

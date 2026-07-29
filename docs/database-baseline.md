@@ -56,6 +56,12 @@ Get-Content supabase/baseline/tests/clean_baseline_smoke.sql -Raw |
   docker exec -i <container> psql -v ON_ERROR_STOP=1 -U postgres -d postgres
 ```
 
+`clean_baseline_smoke.sql` validates the frozen schema in its historical
+cutover state. Final post-cutover grant assertions must not run at this point:
+the frozen baseline still carries the historical `anon` grant on `clients`,
+and migration `202607270010_harden_business_data_mutation_grants.sql` removes
+it later in the ordered migration chain.
+
 For later migrations, read the marker and apply only files newer than it. Do
 not run root `supabase db reset` against the historical chain:
 
@@ -69,6 +75,17 @@ Get-ChildItem supabase/migrations/*.sql |
 Review that list and apply it through the normal migration workflow of the new
 environment. Never mark historical migrations as applied merely to suppress an
 error.
+
+After every post-cutover migration has been applied, run the final security
+smoke separately:
+
+```powershell
+Get-Content supabase/baseline/tests/post_cutover_security_smoke.sql -Raw |
+  docker exec -i <container> psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+```
+
+This post-cutover smoke retains the fail-closed assertion that `anon` cannot
+read `public.clients`; it is intentionally sequenced after migration `010`.
 
 The grant-normalization artifact is bootstrap-only. Supabase local images can
 have direct anon/authenticated function defaults before `schema.sql` is

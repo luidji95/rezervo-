@@ -21,11 +21,12 @@ Provider 404 je samo `provider_not_found`, ne lokalni `expired`. Identity/mappin
 
 ## GitHub Actions operational trigger
 
-Operational foundation koristi manual-only GitHub Actions `workflow_dispatch`. `pg_cron + pg_net` pristup je odbačen za trenutnu Supabase instalaciju zato što `pg_net` request queue privremeno skladišti authorization headere, dok migration rola ne može pouzdano održavati zahtevani ACL nad extension-owned `net` objektima. Rezervo ne pokušava platform-level `REVOKE` i ne menja Vault ili `pg_net` objekte.
+Operational foundation koristi GitHub Actions `workflow_dispatch` i kontrolisani sandbox `schedule`. `pg_cron + pg_net` pristup je odbačen za trenutnu Supabase instalaciju zato što `pg_net` request queue privremeno skladišti authorization headere, dok migration rola ne može pouzdano održavati zahtevani ACL nad extension-owned `net` objektima. Rezervo ne pokušava platform-level `REVOKE` i ne menja Vault ili `pg_net` objekte.
 
-Workflow zahteva jednu GitHub repository/environment promenljivu:
+Workflow zahteva dve GitHub repository/environment promenljive:
 
 - `BILLING_RECONCILIATION_URL` — stabilan `.vercel.app` branch Preview alias sa tačnom reconciliation endpoint putanjom, nikada deployment-specific URL.
+- `BILLING_RECONCILIATION_SCHEDULE_ENABLED` — neosetljiv schedule kill switch; samo tačna vrednost `true` dozvoljava scheduled HTTP poziv.
 
 Potrebne su dve potpuno odvojene GitHub Actions tajne:
 
@@ -34,17 +35,25 @@ Potrebne su dve potpuno odvojene GitHub Actions tajne:
 
 Vercel Authentication ostaje uključena. Workflow šalje zero-body POST sa `Content-Length: 0`; ne šalje JSON, query parametre, Supabase ključ, worker secret ili bypass cookie. Operator mora u autentifikovanom Vercel dashboardu potvrditi da URL predstavlja stabilan branch alias koji prati nove deploymente, jer `.vercel.app` hostname sam po sebi ne dokazuje pouzdano da URL nije deployment-specific.
 
-Workflow je trenutno samo ručni. Nema `schedule`, `push`, `pull_request` ili drugog automatskog triggera.
+Workflow nema `push`, `pull_request` ili drugi repository trigger. Ručni trigger ostaje dostupan nezavisno od schedule kill switcha. Sandbox schedule koristi `17 */6 * * *`: jednom na šest sati u 17. minutu po UTC vremenu. GitHub može započeti izvršavanje sa manjim kašnjenjem tokom opterećenja scheduler-a.
 
 GitHub workflow discovery i execution ref su dva odvojena koraka:
 
 1. Workflow fajl mora postojati na repository default grani da bi `workflow_dispatch` bio dostupan kroz Actions UI, CLI ili API.
 2. Kada je workflow tako dostupan, operator za manual run bira `billing-webhook-sandbox` kao execution branch/ref.
-3. Budući `schedule` takođe zahteva workflow na default grani, ali schedule trigger još nije dodat.
+3. `schedule` takođe izvršava samo workflow verziju dostupnu na default grani.
 
-Bezbedan bootstrap je workflow-only promena: prvo se workflow fajl priprema kao zaseban commit, a zatim se samo taj mali commit prenosi na default granu kroz namenski PR ili cherry-pick. Cela billing grana se ne mergeuje automatski samo radi workflow discovery-ja. Tek kada workflow postoji na default grani, radi se manual acceptance sa `expected_status=503` i izabranim `billing-webhook-sandbox` refom.
+Bezbedan bootstrap je workflow-only promena: prvo se workflow fajl priprema kao zaseban commit na `billing-webhook-sandbox`, a zatim se samo taj mali commit prenosi na default granu kroz namenski PR ili cherry-pick. Documentation/test commit ostaje na billing grani do završnog billing merge-a. Cela billing grana se ne mergeuje automatski samo radi workflow discovery-ja ili schedule-a. Workflow na default grani i dalje poziva stabilan `rezervo-app` branch Preview alias iz GitHub promenljive; stvarni URL se ne hardkoduje.
 
-Prvi acceptance run koristi `expected_status=503` dok je `BILLING_RECONCILIATION_ENABLED=false`. Kasniji kontrolisani test koristi `expected_status=200`. Kill switch ostaje `BILLING_RECONCILIATION_ENABLED=false`, a workflow se dodatno može disable-ovati u GitHub Actions podešavanjima.
+Manual acceptance i dalje podržava `expected_status=503` dok je `BILLING_RECONCILIATION_ENABLED=false`, kao i kontrolisani `expected_status=200` test. Scheduled run interno uvek očekuje HTTP 200; HTTP 503 zato predstavlja operativni failure koji pokazuje da aplikacioni kill switch ili deployment konfiguracija nisu spremni.
+
+Schedule još nije operativno aktivan dok `BILLING_RECONCILIATION_SCHEDULE_ENABLED` nije eksplicitno postavljen na `true` i workflow-only commit nije dostupan na default grani. Tri nivoa gašenja su:
+
+1. `BILLING_RECONCILIATION_SCHEDULE_ENABLED=false` sprečava novi scheduled HTTP poziv.
+2. Workflow se može disable-ovati u GitHub Actions UI-ju.
+3. `BILLING_RECONCILIATION_ENABLED=false` zaustavlja endpoint fail-closed sa HTTP 503 nakon redeploya.
+
+Za hitno gašenje prvo postaviti repository schedule promenljivu na `false`, zatim postaviti aplikacioni flag na `false` i redeployovati, po potrebi disable-ovati workflow, a tek zatim po potrebi rotirati Vercel bypass ili reconciliation secret. Za privremenu pauzu dovoljan je prvi korak. Operator u Actions logu pregleda samo očekivani status i sanitizovani summary (`claimed`, `inSync`, `remoteNewerEquivalent`, `driftDetected`, `manualReview`, `providerUnavailable`, `configurationError`, `claimLost`).
 
 Nikada ne prikazivati ili screenshotovati GitHub secret vrednosti, kompletne request komande, Actions debug secret output ili nefiltriran response. Workflow prikazuje samo HTTP status za očekivani fail-closed rezultat ili osam allowlistovanih agregatnih summary polja za uspešan rezultat.
 
@@ -62,4 +71,4 @@ Jedno reconciliation worker izvršavanje ima fiksni ukupni monotonic execution b
 
 Pre svakog novog claima worker zahteva više od 15 sekundi preostalog vremena: provider timeout contract je 10 sekundi, a dodatnih 5 sekundi rezervisano je za DB finalizaciju i endpoint response. Već claimovan item se ne prekida zbog ukupnog budžeta; njegov provider poziv ostaje ograničen zasebnim provider timeoutom i worker uvek pokušava finalizaciju pre sledeće provere budžeta.
 
-Execution-budget stop nije retry razlog i ne claimuje niti povećava attempt count sledećem itemu. Batch size ostaje nezavisan hard limit, a postojeća pravila za configuration error, rate limit i provider greške ostaju na snazi. Schedule trigger još nije aktivan.
+Execution-budget stop nije retry razlog i ne claimuje niti povećava attempt count sledećem itemu. Batch size ostaje nezavisan hard limit, a postojeća pravila za configuration error, rate limit i provider greške ostaju na snazi. Schedule trigger postoji, ali scheduled HTTP pozivi ostaju isključeni dok repository schedule promenljiva nije tačno `true`.

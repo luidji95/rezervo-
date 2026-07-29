@@ -53,6 +53,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   ]);
   if (salon?.owner_id !== auth.user.id && !membership) return response("FORBIDDEN", 403);
 
+  const { data: accessData, error: accessError } = await supabaseServer.rpc(
+    "resolve_salon_access_v1",
+    { p_salon_id: appointment.salon_id },
+  );
+  const access = (accessData as { has_full_access: boolean }[] | null)?.[0];
+  if (accessError || access?.has_full_access !== true) {
+    return response("APPOINTMENT_ACCESS_REQUIRED", 403);
+  }
+
   const config = eventConfig[parsedBody.data.eventType];
   if (config.requiredStatus && appointment.status !== config.requiredStatus) return response("EVENT_STATUS_MISMATCH", 409);
 

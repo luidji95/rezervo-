@@ -97,6 +97,10 @@ where salon_id='b1000000-0000-4000-8000-000000000001' and full_name='Starter One
 insert into public.team_invitations(salon_id,employee_id,invited_by,email)
 select e.salon_id,e.id,'a1000000-0000-4000-8000-000000000001','invitee@example.invalid'
 from public.employees e where e.salon_id='b1000000-0000-4000-8000-000000000001' and e.full_name='Starter Two';
+create temporary table invitation_capacity_before as
+select count(*)::integer as active_count
+from public.employees
+where salon_id='b1000000-0000-4000-8000-000000000001' and is_active=true;
 select * from public.accept_team_invitation(
   (select id from public.team_invitations where email='invitee@example.invalid'),
   'a1000000-0000-4000-8000-000000000005'
@@ -107,6 +111,12 @@ do $$ declare v_already boolean; begin
     'a1000000-0000-4000-8000-000000000005'
   );
   if not v_already then raise exception 'INVITATION_IDEMPOTENCY_FAILED'; end if;
+end $$;
+do $$ begin
+  if (select active_count from invitation_capacity_before) is distinct from (
+    select count(*)::integer from public.employees
+    where salon_id='b1000000-0000-4000-8000-000000000001' and is_active=true
+  ) then raise exception 'INVITATION_CHANGED_ACTIVE_EMPLOYEE_COUNT'; end if;
 end $$;
 
 -- Browser bypasses are denied; authorized RPC remains tenant-scoped.

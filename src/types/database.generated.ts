@@ -712,6 +712,90 @@ export type Database = {
           },
         ]
       }
+      billing_subscription_reconciliation_checks: {
+        Row: {
+          attempt_count: number
+          checked_at: string | null
+          claim_token: string | null
+          claimed_local_identity_fingerprint: string
+          claimed_provider_state_updated_at: string | null
+          created_at: string
+          error_code: string | null
+          id: string
+          lease_until: string | null
+          local_provider_state_updated_at: string | null
+          next_attempt_at: string | null
+          outcome: string | null
+          remote_cancelled: boolean | null
+          remote_ends_at: string | null
+          remote_provider_updated_at: string | null
+          remote_renews_at: string | null
+          remote_state_fingerprint: string | null
+          remote_status: string | null
+          run_id: string
+          started_at: string | null
+          status: string
+          subscription_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          checked_at?: string | null
+          claim_token?: string | null
+          claimed_local_identity_fingerprint: string
+          claimed_provider_state_updated_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          lease_until?: string | null
+          local_provider_state_updated_at?: string | null
+          next_attempt_at?: string | null
+          outcome?: string | null
+          remote_cancelled?: boolean | null
+          remote_ends_at?: string | null
+          remote_provider_updated_at?: string | null
+          remote_renews_at?: string | null
+          remote_state_fingerprint?: string | null
+          remote_status?: string | null
+          run_id: string
+          started_at?: string | null
+          status: string
+          subscription_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          checked_at?: string | null
+          claim_token?: string | null
+          claimed_local_identity_fingerprint?: string
+          claimed_provider_state_updated_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          lease_until?: string | null
+          local_provider_state_updated_at?: string | null
+          next_attempt_at?: string | null
+          outcome?: string | null
+          remote_cancelled?: boolean | null
+          remote_ends_at?: string | null
+          remote_provider_updated_at?: string | null
+          remote_renews_at?: string | null
+          remote_state_fingerprint?: string | null
+          remote_status?: string | null
+          run_id?: string
+          started_at?: string | null
+          status?: string
+          subscription_id?: string
+          updated_at?: string
+        }
+        Relationships: [{
+          foreignKeyName: "billing_subscription_reconciliation_checks_subscription_id_fkey"
+          columns: ["subscription_id"]
+          isOneToOne: false
+          referencedRelation: "subscriptions"
+          referencedColumns: ["id"]
+        }]
+      }
       billing_webhook_events: {
         Row: {
           created_at: string
@@ -2244,6 +2328,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_next_linked_billing_subscription_for_reconciliation_v1: {
+        Args: { p_lease_duration?: string; p_min_freshness?: string; p_now?: string; p_run_id: string }
+        Returns: { check_id: string; claim_token: string; local_cancel_at_period_end: boolean; local_cancelled_at: string | null; local_current_period_ends_at: string | null; local_plan_id: string; local_provider_state_updated_at: string | null; local_status: string; mapped_product_id: string | null; mapped_store_id: string; mapped_variant_id: string; provider_customer_id: string; provider_subscription_id: string; subscription_id: string }[]
+      }
+      evaluate_billing_subscription_snapshot_v1: {
+        Args: { p_claimed_local_identity_fingerprint: string; p_now?: string; p_provider_cancelled: boolean; p_provider_created_at: string; p_provider_customer_id: string; p_provider_ends_at: string | null; p_provider_pause_mode: string | null; p_provider_pause_resumes_at: string | null; p_provider_product_id: string; p_provider_renews_at: string | null; p_provider_status: string; p_provider_store_id: string; p_provider_subscription_id: string; p_provider_trial_ends_at: string | null; p_provider_updated_at: string; p_provider_variant_id: string; p_subscription_id: string; p_test_mode: boolean }
+        Returns: { error_code: string | null; local_provider_state_updated_at: string | null; outcome: string }[]
+      }
+      finalize_billing_subscription_reconciliation_v1: {
+        Args: { p_check_id: string; p_claim_token: string; p_now?: string; p_provider_cancelled?: boolean | null; p_provider_created_at?: string | null; p_provider_customer_id?: string | null; p_provider_ends_at?: string | null; p_provider_error_code?: string | null; p_provider_pause_mode?: string | null; p_provider_pause_resumes_at?: string | null; p_provider_product_id?: string | null; p_provider_renews_at?: string | null; p_provider_status?: string | null; p_provider_store_id?: string | null; p_provider_subscription_id?: string | null; p_provider_trial_ends_at?: string | null; p_provider_updated_at?: string | null; p_provider_variant_id?: string | null; p_result_kind: string; p_test_mode?: boolean | null }
+        Returns: { outcome: string }[]
+      }
       claim_pending_billing_webhook_events_v1: {
         Args: {
           p_batch_size?: number

@@ -47,3 +47,11 @@ Bezbedan bootstrap je workflow-only promena: prvo se workflow fajl priprema kao 
 Prvi acceptance run koristi `expected_status=503` dok je `BILLING_RECONCILIATION_ENABLED=false`. Kasniji kontrolisani test koristi `expected_status=200`. Kill switch ostaje `BILLING_RECONCILIATION_ENABLED=false`, a workflow se dodatno može disable-ovati u GitHub Actions podešavanjima.
 
 Nikada ne prikazivati ili screenshotovati GitHub secret vrednosti, kompletne request komande, Actions debug secret output ili nefiltriran response. Workflow prikazuje samo HTTP status za očekivani fail-closed rezultat ili osam allowlistovanih agregatnih summary polja za uspešan rezultat.
+
+### Branch alias redirect handling
+
+Stabilan branch Preview alias može vratiti HTTP redirect pre nego što zahtev stigne do aplikacionog endpointa. HTTP 302 zato sam po sebi ne potvrđuje niti osporava ispravnost `BILLING_RECONCILIATION_SECRET` vrednosti.
+
+Workflow nikada ne koristi slepo automatsko praćenje redirecta. Dozvoljen je najviše jedan eksplicitni redirect za 301, 302, 307 ili 308. `Location` se prvo parsira standardnim URL parserom i target mora imati HTTPS, tačnu reconciliation putanju, bez credentials, porta, query-ja ili fragmenta. Host mora pripadati istom Vercel project/team namespace-u izvedenom iz konfigurisanog `billing-webhook-sandbox` branch aliasa. Tek posle uspešne validacije oba security headera se ponovo šalju direktno validiranom targetu.
+
+Vercel Authentication/login redirect, drugi projekat, drugi redirect ili bilo koji neočekivani target odbija se bez prikazivanja `Location` vrednosti, response headera ili HTML body-ja.

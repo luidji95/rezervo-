@@ -33,21 +33,33 @@ test("workflow uses only the approved variable, secrets and headers", () => {
 test("request is a bounded zero-body POST without verbose or retry behavior", () => {
   assert.match(workflow, /--request POST/);
   assert.match(workflow, /Content-Length:\s*0/);
-  assert.match(workflow, /--max-time\s+70/);
+  assert.match(workflow, /remaining_seconds=\$\(\(70 - SECONDS\)\)/);
+  assert.match(workflow, /--max-time "\$remaining_seconds"/);
   assert.doesNotMatch(workflow, /(^|\s)(--data|-d|--form|-F|--json)(\s|=)/m);
   assert.doesNotMatch(workflow, /curl\s+[^\n]*(--verbose|-v)|set\s+-x|--retry/i);
+  assert.doesNotMatch(workflow, /--location(?:-trusted)?|(^|\s)-L(?:\s|$)/m);
   assert.doesNotMatch(workflow, /\?[^\s"']*(secret|token|key)=/i);
   assert.doesNotMatch(workflow, /actions\/checkout|uses:/);
+  assert.equal((workflow.match(/perform_request "/g) ?? []).length, 2);
 });
 
 test("target validation and response output are fail-closed and allowlisted", () => {
-  assert.match(workflow, /target\.protocol !== "https:"/);
-  assert.match(workflow, /target\.username !== ""/);
-  assert.match(workflow, /target\.password !== ""/);
-  assert.match(workflow, /target\.search !== ""/);
-  assert.match(workflow, /target\.hash !== ""/);
-  assert.match(workflow, /\.endsWith\("\.vercel\.app"\)/);
+  assert.match(workflow, /from urllib\.parse import urljoin, urlsplit/);
+  assert.match(workflow, /from email\.parser import BytesParser/);
+  assert.match(workflow, /target\.scheme != "https"/);
+  assert.match(workflow, /target\.username is not None/);
+  assert.match(workflow, /target\.password is not None/);
+  assert.match(workflow, /target_port is not None/);
+  assert.match(workflow, /target\.query/);
+  assert.match(workflow, /target\.fragment/);
+  assert.match(workflow, /marker = "-git-billing-webhook-sandbox-"/);
+  assert.match(workflow, /same_project_namespace/);
+  assert.match(workflow, /target_label\.startswith\(project \+ "-"\)/);
+  assert.match(workflow, /target_label\.endswith\("-" \+ team\)/);
   assert.match(workflow, /\/api\/internal\/billing\/reconcile-linked-subscriptions/);
+  assert.match(workflow, /301\|302\|307\|308/);
+  assert.match(workflow, /second_status.*perform_request/);
+  assert.match(workflow, /second_status" =~ \^3\[0-9\]\[0-9\]\$/);
   assert.match(workflow, /http_status" != "\$EXPECTED_STATUS/);
   for (const field of [
     "claimed",
@@ -60,6 +72,8 @@ test("target validation and response output are fail-closed and allowlisted", ()
     "claimLost",
   ]) assert.match(workflow, new RegExp(`"${field}"`));
   assert.match(workflow, /trap cleanup EXIT/);
-  assert.match(workflow, /rm -f "\$response_file"/);
-  assert.doesNotMatch(workflow, /cat\s+"?\$response_file|response\.headers|curl.*--include/i);
+  for (const file of ["first_body_file", "first_header_file", "second_body_file", "second_header_file", "redirect_target_file"])
+    assert.match(workflow, new RegExp(`"\\$${file}"`));
+  assert.doesNotMatch(workflow, /cat\s+"?\$(response|first_header|second_header)_file|response\.headers|curl.*--include/i);
+  assert.doesNotMatch(workflow, /echo.*(redirect_url|Location|target_host|target\.geturl)/i);
 });

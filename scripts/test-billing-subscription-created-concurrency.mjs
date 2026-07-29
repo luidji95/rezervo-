@@ -2,9 +2,10 @@ import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 
 function psql(sql) {
+  const container = process.env.CREATED_PROCESSOR_DB_CONTAINER ?? "supabase_db_rezervo";
   return new Promise((resolve, reject) => {
     const child = spawn("docker", [
-      "exec", "-i", "supabase_db_rezervo", "psql", "-X", "-q", "-A", "-t",
+      "exec", "-i", container, "psql", "-X", "-q", "-A", "-t",
       "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d",
       process.env.BILLING_PROCESSOR_TEST_DATABASE ?? "postgres",
     ]);

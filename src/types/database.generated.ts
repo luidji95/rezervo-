@@ -719,9 +719,15 @@ export type Database = {
           error_code: string | null
           event_name: string
           id: string
+          last_processing_attempt_at: string | null
+          last_processing_outcome: string | null
+          next_processing_attempt_at: string | null
           payload_hash: string
           processed_at: string | null
           processing_status: string
+          processing_attempt_count: number
+          processing_claim_token: string | null
+          processing_lease_until: string | null
           provider: string
           provider_object_id: string
           provider_object_type: string
@@ -736,9 +742,15 @@ export type Database = {
           error_code?: string | null
           event_name: string
           id?: string
+          last_processing_attempt_at?: string | null
+          last_processing_outcome?: string | null
+          next_processing_attempt_at?: string | null
           payload_hash: string
           processed_at?: string | null
           processing_status: string
+          processing_attempt_count?: number
+          processing_claim_token?: string | null
+          processing_lease_until?: string | null
           provider: string
           provider_object_id: string
           provider_object_type: string
@@ -753,9 +765,15 @@ export type Database = {
           error_code?: string | null
           event_name?: string
           id?: string
+          last_processing_attempt_at?: string | null
+          last_processing_outcome?: string | null
+          next_processing_attempt_at?: string | null
           payload_hash?: string
           processed_at?: string | null
           processing_status?: string
+          processing_attempt_count?: number
+          processing_claim_token?: string | null
+          processing_lease_until?: string | null
           provider?: string
           provider_object_id?: string
           provider_object_type?: string
@@ -2226,6 +2244,29 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_pending_billing_webhook_events_v1: {
+        Args: {
+          p_batch_size?: number
+          p_lease_duration?: string
+          p_now?: string
+        }
+        Returns: {
+          claim_token: string
+          event_name: string
+          webhook_event_id: string
+        }[]
+      }
+      finalize_billing_webhook_processing_attempt_v1: {
+        Args: {
+          p_claim_token: string
+          p_now?: string
+          p_webhook_event_id: string
+          p_worker_outcome: string
+        }
+        Returns: {
+          outcome: string
+        }[]
+      }
       ingest_billing_webhook_event_v1: {
         Args: {
           p_checkout_session_id: string | null

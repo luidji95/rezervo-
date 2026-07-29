@@ -36,54 +36,182 @@ jobs:
         run: |
           set -euo pipefail
 
-          response_file="$(mktemp)"
+          first_body_file="$(mktemp)"
+          first_header_file="$(mktemp)"
+          second_body_file="$(mktemp)"
+          second_header_file="$(mktemp)"
+          redirect_target_file="$(mktemp)"
           cleanup() {
-            rm -f "$response_file"
+            rm -f \
+              "$first_body_file" \
+              "$first_header_file" \
+              "$second_body_file" \
+              "$second_header_file" \
+              "$redirect_target_file"
           }
           trap cleanup EXIT
 
-          RESPONSE_FILE="$response_file" node <<'NODE'
-          const raw = process.env.RECONCILIATION_URL ?? "";
-          if (!raw || raw !== raw.trim()) throw new Error("Reconciliation URL is missing or malformed.");
+          python3 <<'PYTHON'
+          import os
+          import re
+          from urllib.parse import urlsplit
 
-          let target;
-          try {
-            target = new URL(raw);
-          } catch {
-            throw new Error("Reconciliation URL is malformed.");
-          }
+          raw = os.environ.get("RECONCILIATION_URL", "")
+          if not raw or raw != raw.strip():
+              raise SystemExit("Reconciliation URL is missing or malformed.")
+
+          try:
+              target = urlsplit(raw)
+              port = target.port
+          except ValueError:
+              raise SystemExit("Reconciliation URL is malformed.") from None
+
+          host = (target.hostname or "").lower()
+          suffix = ".vercel.app"
+          marker = "-git-billing-webhook-sandbox-"
+          label = host[:-len(suffix)] if host.endswith(suffix) else ""
+          valid_token = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
+          namespace = label.split(marker)
 
           if (
-            target.protocol !== "https:" ||
-            target.username !== "" ||
-            target.password !== "" ||
-            target.port !== "" ||
-            target.search !== "" ||
-            target.hash !== "" ||
-            target.hostname === "vercel.app" ||
-            !target.hostname.endsWith(".vercel.app") ||
-            target.pathname !== "/api/internal/billing/reconcile-linked-subscriptions"
-          ) {
-            throw new Error("Reconciliation URL does not satisfy the protected Preview target contract.");
+              target.scheme != "https"
+              or target.username is not None
+              or target.password is not None
+              or port is not None
+              or target.query
+              or target.fragment
+              or target.path != "/api/internal/billing/reconcile-linked-subscriptions"
+              or len(namespace) != 2
+              or not all(valid_token.fullmatch(value) for value in namespace)
+          ):
+              raise SystemExit("Reconciliation URL does not satisfy the protected branch Preview contract.")
+
+          if not os.environ.get("RECONCILIATION_SECRET") or not os.environ.get("VERCEL_BYPASS_SECRET"):
+              raise SystemExit("Required reconciliation credentials are not configured.")
+          PYTHON
+
+          perform_request() {
+            local target_url="$1"
+            local body_file="$2"
+            local header_file="$3"
+            local remaining_seconds=$((70 - SECONDS))
+            if (( remaining_seconds <= 0 )); then
+              echo "Reconciliation request time budget was exhausted." >&2
+              return 1
+            fi
+
+            curl \
+              --silent \
+              --show-error \
+              --request POST \
+              --connect-timeout 10 \
+              --max-time "$remaining_seconds" \
+              --header "Content-Length: 0" \
+              --header "Authorization: Bearer ${RECONCILIATION_SECRET}" \
+              --header "x-vercel-protection-bypass: ${VERCEL_BYPASS_SECRET}" \
+              --dump-header "$header_file" \
+              --output "$body_file" \
+              --write-out "%{http_code}" \
+              "$target_url"
           }
 
-          if (!process.env.RECONCILIATION_SECRET || !process.env.VERCEL_BYPASS_SECRET) {
-            throw new Error("Required reconciliation credentials are not configured.");
-          }
-          NODE
+          http_status="$(perform_request "$RECONCILIATION_URL" "$first_body_file" "$first_header_file")"
+          response_file="$first_body_file"
 
-          http_status="$(curl \
-            --silent \
-            --show-error \
-            --request POST \
-            --connect-timeout 10 \
-            --max-time 70 \
-            --header "Content-Length: 0" \
-            --header "Authorization: Bearer ${RECONCILIATION_SECRET}" \
-            --header "x-vercel-protection-bypass: ${VERCEL_BYPASS_SECRET}" \
-            --output "$response_file" \
-            --write-out "%{http_code}" \
-            "$RECONCILIATION_URL")"
+          case "$http_status" in
+            301|302|307|308)
+              if ! ORIGINAL_URL="$RECONCILIATION_URL" \
+                HEADER_FILE="$first_header_file" \
+                TARGET_FILE="$redirect_target_file" \
+                python3 <<'PYTHON'
+          import os
+          import re
+          from email import policy
+          from email.parser import BytesParser
+          from urllib.parse import urljoin, urlsplit
+
+          def reject():
+              raise SystemExit(1)
+
+          try:
+              original = urlsplit(os.environ["ORIGINAL_URL"])
+              raw_headers = open(os.environ["HEADER_FILE"], "rb").read().replace(b"\r\n", b"\n")
+              locations = []
+              for block in raw_headers.split(b"\n\n"):
+                  lines = block.splitlines()
+                  if lines and lines[0].startswith(b"HTTP/"):
+                      lines = lines[1:]
+                  if not lines:
+                      continue
+                  message = BytesParser(policy=policy.HTTP).parsebytes(b"\n".join(lines) + b"\n\n")
+                  locations.extend(value.strip() for value in message.get_all("Location", []) if value.strip())
+              if not locations or any(ord(character) < 32 or ord(character) == 127 for character in locations[-1]):
+                  reject()
+
+              target = urlsplit(urljoin(original.geturl(), locations[-1]))
+              target_port = target.port
+          except (KeyError, OSError, UnicodeError, ValueError):
+              reject()
+
+          suffix = ".vercel.app"
+          marker = "-git-billing-webhook-sandbox-"
+          original_host = (original.hostname or "").lower()
+          target_host = (target.hostname or "").lower()
+          original_label = original_host[:-len(suffix)] if original_host.endswith(suffix) else ""
+          namespace = original_label.split(marker)
+          valid_token = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
+          if len(namespace) != 2 or not all(valid_token.fullmatch(value) for value in namespace):
+              reject()
+          project, team = namespace
+
+          target_label = target_host[:-len(suffix)] if target_host.endswith(suffix) else ""
+          same_project_namespace = (
+              target_host == original_host
+              or (
+                  target_label.startswith(project + "-")
+                  and target_label.endswith("-" + team)
+                  and len(target_label) > len(project) + len(team) + 2
+              )
+          )
+
+          if (
+              target.scheme != "https"
+              or target.username is not None
+              or target.password is not None
+              or target_port is not None
+              or target.query
+              or target.fragment
+              or target.path != "/api/internal/billing/reconcile-linked-subscriptions"
+              or not same_project_namespace
+          ):
+              reject()
+
+          with open(os.environ["TARGET_FILE"], "w", encoding="utf-8") as target_file:
+              target_file.write(target.geturl())
+          PYTHON
+              then
+                echo "Unexpected or authentication redirect rejected." >&2
+                exit 1
+              fi
+
+              echo "Validated Vercel deployment redirect followed."
+              redirect_url="$(<"$redirect_target_file")"
+              second_status="$(perform_request "$redirect_url" "$second_body_file" "$second_header_file")"
+              if [[ "$second_status" =~ ^3[0-9][0-9]$ ]]; then
+                echo "Unexpected or authentication redirect rejected." >&2
+                exit 1
+              fi
+              http_status="$second_status"
+              response_file="$second_body_file"
+              ;;
+            3[0-9][0-9])
+              echo "Unexpected or authentication redirect rejected." >&2
+              exit 1
+              ;;
+            *)
+              echo "Direct endpoint response received."
+              ;;
+          esac
 
           if [[ "$http_status" != "$EXPECTED_STATUS" ]]; then
             echo "Reconciliation endpoint returned unexpected HTTP status: $http_status" >&2

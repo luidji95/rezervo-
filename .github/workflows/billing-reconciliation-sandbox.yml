@@ -1,0 +1,133 @@
+name: Billing reconciliation sandbox
+
+# This file must exist on the repository default branch for manual dispatch to
+# be discoverable; the operator can then select billing-webhook-sandbox as the
+# execution ref. This foundation has no schedule trigger.
+on:
+  workflow_dispatch:
+    inputs:
+      expected_status:
+        description: Expected fail-closed or enabled endpoint status
+        required: true
+        type: choice
+        options:
+          - "503"
+          - "200"
+        default: "503"
+
+permissions: {}
+
+concurrency:
+  group: billing-reconciliation-sandbox
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      RECONCILIATION_URL: ${{ vars.BILLING_RECONCILIATION_URL }}
+      RECONCILIATION_SECRET: ${{ secrets.BILLING_RECONCILIATION_SECRET }}
+      VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      EXPECTED_STATUS: ${{ inputs.expected_status }}
+    steps:
+      - name: Validate target and invoke reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response_file="$(mktemp)"
+          cleanup() {
+            rm -f "$response_file"
+          }
+          trap cleanup EXIT
+
+          RESPONSE_FILE="$response_file" node <<'NODE'
+          const raw = process.env.RECONCILIATION_URL ?? "";
+          if (!raw || raw !== raw.trim()) throw new Error("Reconciliation URL is missing or malformed.");
+
+          let target;
+          try {
+            target = new URL(raw);
+          } catch {
+            throw new Error("Reconciliation URL is malformed.");
+          }
+
+          if (
+            target.protocol !== "https:" ||
+            target.username !== "" ||
+            target.password !== "" ||
+            target.port !== "" ||
+            target.search !== "" ||
+            target.hash !== "" ||
+            target.hostname === "vercel.app" ||
+            !target.hostname.endsWith(".vercel.app") ||
+            target.pathname !== "/api/internal/billing/reconcile-linked-subscriptions"
+          ) {
+            throw new Error("Reconciliation URL does not satisfy the protected Preview target contract.");
+          }
+
+          if (!process.env.RECONCILIATION_SECRET || !process.env.VERCEL_BYPASS_SECRET) {
+            throw new Error("Required reconciliation credentials are not configured.");
+          }
+          NODE
+
+          http_status="$(curl \
+            --silent \
+            --show-error \
+            --request POST \
+            --connect-timeout 10 \
+            --max-time 70 \
+            --header "Content-Length: 0" \
+            --header "Authorization: Bearer ${RECONCILIATION_SECRET}" \
+            --header "x-vercel-protection-bypass: ${VERCEL_BYPASS_SECRET}" \
+            --output "$response_file" \
+            --write-out "%{http_code}" \
+            "$RECONCILIATION_URL")"
+
+          if [[ "$http_status" != "$EXPECTED_STATUS" ]]; then
+            echo "Reconciliation endpoint returned unexpected HTTP status: $http_status" >&2
+            exit 1
+          fi
+
+          if [[ "$EXPECTED_STATUS" == "503" ]]; then
+            echo "Reconciliation endpoint was reached and returned expected fail-closed HTTP 503."
+            exit 0
+          fi
+
+          RESPONSE_FILE="$response_file" node <<'NODE'
+          const fs = require("node:fs");
+          const allowed = [
+            "claimed",
+            "inSync",
+            "remoteNewerEquivalent",
+            "driftDetected",
+            "manualReview",
+            "providerUnavailable",
+            "configurationError",
+            "claimLost",
+          ];
+
+          let payload;
+          try {
+            payload = JSON.parse(fs.readFileSync(process.env.RESPONSE_FILE, "utf8"));
+          } catch {
+            throw new Error("Reconciliation endpoint did not return valid JSON.");
+          }
+
+          if (payload?.success !== true || !payload.summary || typeof payload.summary !== "object") {
+            throw new Error("Reconciliation endpoint returned an invalid success contract.");
+          }
+
+          const summary = {};
+          for (const key of allowed) {
+            const value = payload.summary[key];
+            if (!Number.isInteger(value) || value < 0) {
+              throw new Error("Reconciliation endpoint returned an invalid summary contract.");
+            }
+            summary[key] = value;
+          }
+
+          console.log("Reconciliation completed with sanitized summary:");
+          console.log(JSON.stringify(summary));
+          NODE

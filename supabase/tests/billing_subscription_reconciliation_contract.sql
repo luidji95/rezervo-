@@ -28,7 +28,7 @@ begin
   insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values(v_owner,v_owner||'@example.invalid','{}','{}');
   insert into public.salons(id,owner_id,name,slug) values(v_salon,v_owner,'Reconciliation contract','recon-'||substr(v_salon::text,1,8));
   select id into v_subscription from public.subscriptions where salon_id=v_salon;
-  update public.subscriptions set plan_id=v_starter,status='active',billing_provider='lemonsqueezy',billing_environment='test',provider_customer_id='customer-recon',provider_subscription_id='subscription-recon',current_period_ends_at='2026-08-29T10:00:00Z',cancel_at_period_end=false,cancelled_at=null,provider_state_updated_at='2026-07-29T10:00:00Z' where id=v_subscription;
+  update public.subscriptions set plan_id=v_starter,status='active',billing_provider='lemonsqueezy',billing_environment='test',provider_customer_id='customer-recon',provider_subscription_id='subscription-recon',current_period_starts_at='2026-07-29T09:00:00Z',current_period_ends_at='2026-08-29T10:00:00Z',cancel_at_period_end=false,cancelled_at=null,provider_state_updated_at='2026-07-29T10:00:00Z' where id=v_subscription;
   select md5(row(s.*)::text) into v_business_before from public.subscriptions s where id=v_subscription;
   select * into v_check from public.claim_next_linked_billing_subscription_for_reconciliation_v1(gen_random_uuid(),'2026-07-29T10:05:00Z','5 minutes','15 minutes');
   if v_check.subscription_id is distinct from v_subscription or v_check.claim_token is null then raise exception 'ELIGIBLE_SUBSCRIPTION_NOT_CLAIMED'; end if;

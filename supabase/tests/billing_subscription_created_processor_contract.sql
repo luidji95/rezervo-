@@ -208,7 +208,7 @@ begin
     ) as cases(provider,environment,customer_id,subscription_id,event_subscription_id,hash_character)
   loop
     update public.subscriptions
-    set billing_provider=v_case.provider,billing_environment=v_case.environment,
+    set status='past_due',billing_provider=v_case.provider,billing_environment=v_case.environment,
         provider_customer_id=v_case.customer_id,
         provider_subscription_id=v_case.subscription_id,
         provider_state_updated_at=null,provider_last_webhook_event_id=null
@@ -227,7 +227,7 @@ begin
     end if;
   end loop;
 
-  update public.subscriptions set billing_provider=null,billing_environment=null,
+  update public.subscriptions set status='active',billing_provider=null,billing_environment=null,
     provider_customer_id=null,provider_subscription_id=null,
     provider_state_updated_at=null,provider_last_webhook_event_id=null
   where id=v_subscription;

@@ -1,8 +1,8 @@
 name: Billing reconciliation sandbox
 
-# This file must exist on the repository default branch for manual dispatch to
-# be discoverable; the operator can then select billing-webhook-sandbox as the
-# execution ref. This foundation has no schedule trigger.
+# This file must exist on the repository default branch for manual dispatch and
+# scheduled execution to be discoverable. Manual operators can then select
+# billing-webhook-sandbox as the execution ref.
 on:
   workflow_dispatch:
     inputs:
@@ -14,6 +14,9 @@ on:
           - "503"
           - "200"
         default: "503"
+  schedule:
+    # GitHub schedules use UTC and may start later during scheduler congestion.
+    - cron: "17 */6 * * *"
 
 permissions: {}
 
@@ -23,18 +26,26 @@ concurrency:
 
 jobs:
   reconcile:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' &&
+      vars.BILLING_RECONCILIATION_SCHEDULE_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     env:
       RECONCILIATION_URL: ${{ vars.BILLING_RECONCILIATION_URL }}
       RECONCILIATION_SECRET: ${{ secrets.BILLING_RECONCILIATION_SECRET }}
       VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-      EXPECTED_STATUS: ${{ inputs.expected_status }}
+      EXPECTED_STATUS: ${{ github.event_name == 'schedule' && '200' || inputs.expected_status }}
     steps:
       - name: Validate target and invoke reconciliation
         shell: bash
         run: |
           set -euo pipefail
+
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+            echo "Scheduled billing reconciliation started."
+          fi
 
           first_body_file="$(mktemp)"
           first_header_file="$(mktemp)"

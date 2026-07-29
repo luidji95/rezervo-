@@ -15,4 +15,5 @@ export type BillingPlanCatalogItem = {
 export type BillingOverview = {
   usage: BillingUsage;
   plans: BillingPlanCatalogItem[];
+  canOpenCustomerPortal: boolean;
 };

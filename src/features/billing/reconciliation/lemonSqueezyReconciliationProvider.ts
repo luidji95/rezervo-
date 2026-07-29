@@ -1,11 +1,11 @@
 import { normalizeLemonSqueezySubscriptionObject } from "../lemonSqueezy/lemonSqueezySubscriptionObjectCore.ts";
-import { BillingReconciliationProviderError, type BillingReconciliationProvider } from "./billingReconciliationProvider.ts";
+import { BILLING_RECONCILIATION_PROVIDER_TIMEOUT_MS,BillingReconciliationProviderError, type BillingReconciliationProvider } from "./billingReconciliationProvider.ts";
 
 const API_BASE="https://api.lemonsqueezy.com/v1/subscriptions/"; const JSON_API="application/vnd.api+json";
 function remaining(value:string|null){ if(value===null||!/^(0|[1-9]\d*)$/.test(value)) return null; const n=Number(value); return Number.isSafeInteger(n)?n:null; }
 export class LemonSqueezyReconciliationProvider implements BillingReconciliationProvider {
   private readonly apiKey:string;private readonly fetchImpl:typeof fetch;private readonly timeoutMs:number;
-  constructor(apiKey:string,fetchImpl:typeof fetch=fetch,timeoutMs=10_000){this.apiKey=apiKey;this.fetchImpl=fetchImpl;this.timeoutMs=timeoutMs;}
+  constructor(apiKey:string,fetchImpl:typeof fetch=fetch,timeoutMs=BILLING_RECONCILIATION_PROVIDER_TIMEOUT_MS){this.apiKey=apiKey;this.fetchImpl=fetchImpl;this.timeoutMs=timeoutMs;}
   async retrieveSubscription(providerSubscriptionId:string){
     const controller=new AbortController(); const timeout=setTimeout(()=>controller.abort(),this.timeoutMs);
     try {

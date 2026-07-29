@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";import test from "node:test";import {runBillingReconciliation,type BillingReconciliationRepository,type ClaimedReconciliationCheck,type ReconciliationFinalResult} from "./billingReconciliationWorkerCore.ts";import {BillingReconciliationProviderError} from "./billingReconciliationProvider.ts";
+import assert from "node:assert/strict";import test from "node:test";import {BILLING_RECONCILIATION_EXECUTION_BUDGET_MS,BILLING_RECONCILIATION_MINIMUM_ITEM_TIME_MS,runBillingReconciliation,type BillingReconciliationRepository,type ClaimedReconciliationCheck,type ReconciliationFinalResult} from "./billingReconciliationWorkerCore.ts";import {BillingReconciliationProviderError} from "./billingReconciliationProvider.ts";
 const check=(id:string):ClaimedReconciliationCheck=>({checkId:id,subscriptionId:id,claimToken:`t-${id}`,providerSubscriptionId:id,providerCustomerId:"customer"});
 const snapshot={providerSubscriptionId:"1",providerStoreId:"10",providerCustomerId:"customer",providerOrderId:null,providerProductId:"20",providerVariantId:"30",providerStatus:"active",providerCancelled:false,providerPauseMode:null,providerPauseResumesAt:null,providerTrialEndsAt:null,providerRenewsAt:"2026-08-01T00:00:00Z",providerEndsAt:null,providerCreatedAt:"2026-07-01T00:00:00Z",providerUpdatedAt:"2026-07-02T00:00:00Z",testMode:true} as const;
 class Repo implements BillingReconciliationRepository{claims=0;active=0;max=0;readonly items:ClaimedReconciliationCheck[];readonly outcomes:string[];constructor(items:ClaimedReconciliationCheck[],outcomes:string[]=[] ){this.items=items;this.outcomes=outcomes;}async claimNext(){return this.items[this.claims++]??null;}async finalize(){return (this.outcomes.shift()??"in_sync") as ReconciliationFinalResult;}}
@@ -20,3 +20,43 @@ test("timeout continues with later items",async()=>{
   assert.equal(s.claimed,2);assert.equal(s.providerUnavailable,1);assert.equal(s.inSync,1);
 });
 test("finalizer error is sanitized and later claim continues",async()=>{const repo=new Repo([check("1"),check("2")]);let calls=0;repo.finalize=async()=>{if(calls++===0)throw new Error("private");return"in_sync";};const s=await runBillingReconciliation({runId:"r",batchSize:2,storeId:"10",repository:repo,provider:{retrieveSubscription:async()=>({snapshot:{...snapshot},rateLimitRemaining:null})}});assert.equal(s.claimLost,1);assert.equal(s.inSync,1);});
+
+test("does not claim when one safe item no longer fits in the execution budget",async()=>{
+  const repo=new Repo([check("1")]);
+  const times=[0,BILLING_RECONCILIATION_EXECUTION_BUDGET_MS-BILLING_RECONCILIATION_MINIMUM_ITEM_TIME_MS];
+  const result=await runBillingReconciliation({runId:"r",batchSize:1,storeId:"10",repository:repo,provider:{retrieveSubscription:async()=>({snapshot:{...snapshot},rateLimitRemaining:null})},monotonicNow:()=>times.shift()??times.at(-1)??0});
+  assert.equal(repo.claims,0);assert.equal(result.claimed,0);assert.equal(result.executionBudgetReached,true);assert.equal(result.providerUnavailable,0);
+});
+
+test("claims and finalizes an item when enough execution budget remains",async()=>{
+  const repo=new Repo([check("1")]);let finalized=0;repo.finalize=async()=>{finalized++;return"in_sync";};
+  const result=await runBillingReconciliation({runId:"r",batchSize:1,storeId:"10",repository:repo,provider:{retrieveSubscription:async()=>({snapshot:{...snapshot},rateLimitRemaining:null})},monotonicNow:()=>0});
+  assert.equal(repo.claims,1);assert.equal(finalized,1);assert.equal(result.inSync,1);assert.equal(result.executionBudgetReached,false);
+});
+
+test("budget expiry during provider work finalizes the claimed item and stops before another claim",async()=>{
+  const repo=new Repo([check("1"),check("2")]);let now=0,finalized=0;repo.finalize=async()=>{finalized++;return"in_sync";};
+  const provider={retrieveSubscription:async()=>{now=BILLING_RECONCILIATION_EXECUTION_BUDGET_MS-BILLING_RECONCILIATION_MINIMUM_ITEM_TIME_MS;return{snapshot:{...snapshot},rateLimitRemaining:null};}};
+  const result=await runBillingReconciliation({runId:"r",batchSize:2,storeId:"10",repository:repo,provider,monotonicNow:()=>now});
+  assert.equal(repo.claims,1);assert.equal(finalized,1);assert.equal(result.claimed,1);assert.equal(result.inSync,1);assert.equal(result.providerUnavailable,0);assert.equal(result.executionBudgetReached,true);
+});
+
+test("provider timeout finalizes retry contract before budget stops the next claim",async()=>{
+  const repo=new Repo([check("1"),check("2")],["retry_scheduled"]);let now=0,finalized=0;repo.finalize=async()=>{finalized++;return(repo.outcomes.shift()??"in_sync") as ReconciliationFinalResult;};
+  const provider={retrieveSubscription:async()=>{now=BILLING_RECONCILIATION_EXECUTION_BUDGET_MS-BILLING_RECONCILIATION_MINIMUM_ITEM_TIME_MS;throw new BillingReconciliationProviderError("provider_unavailable","provider_timeout",false);}};
+  const result=await runBillingReconciliation({runId:"r",batchSize:2,storeId:"10",repository:repo,provider,monotonicNow:()=>now});
+  assert.equal(repo.claims,1);assert.equal(finalized,1);assert.equal(result.providerUnavailable,1);assert.equal(result.executionBudgetReached,true);
+});
+
+test("provider 5xx finalizes retry contract before budget stops the next claim",async()=>{
+  const repo=new Repo([check("1"),check("2")],["retry_scheduled"]);let now=0,finalized=0;repo.finalize=async()=>{finalized++;return(repo.outcomes.shift()??"in_sync") as ReconciliationFinalResult;};
+  const provider={retrieveSubscription:async()=>{now=BILLING_RECONCILIATION_EXECUTION_BUDGET_MS-BILLING_RECONCILIATION_MINIMUM_ITEM_TIME_MS;throw new BillingReconciliationProviderError("provider_unavailable","provider_server_unavailable",false);}};
+  const result=await runBillingReconciliation({runId:"r",batchSize:2,storeId:"10",repository:repo,provider,monotonicNow:()=>now});
+  assert.equal(repo.claims,1);assert.equal(finalized,1);assert.equal(result.providerUnavailable,1);assert.equal(result.executionBudgetReached,true);
+});
+
+test("batch hard limit remains independent from execution budget",async()=>{
+  const repo=new Repo([check("1"),check("2")]);
+  const result=await runBillingReconciliation({runId:"r",batchSize:1,storeId:"10",repository:repo,provider:{retrieveSubscription:async()=>({snapshot:{...snapshot},rateLimitRemaining:null})},monotonicNow:()=>0});
+  assert.equal(repo.claims,1);assert.equal(result.claimed,1);assert.equal(result.executionBudgetReached,false);
+});

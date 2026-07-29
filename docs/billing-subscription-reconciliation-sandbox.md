@@ -55,3 +55,11 @@ Stabilan branch Preview alias može vratiti HTTP redirect pre nego što zahtev s
 Workflow nikada ne koristi slepo automatsko praćenje redirecta. Dozvoljen je najviše jedan eksplicitni redirect za 301, 302, 307 ili 308. `Location` se prvo parsira standardnim URL parserom i target mora imati HTTPS, tačnu reconciliation putanju, bez credentials, porta, query-ja ili fragmenta. Host mora pripadati istom Vercel project/team namespace-u izvedenom iz konfigurisanog `billing-webhook-sandbox` branch aliasa. Tek posle uspešne validacije oba security headera se ponovo šalju direktno validiranom targetu.
 
 Vercel Authentication/login redirect, drugi projekat, drugi redirect ili bilo koji neočekivani target odbija se bez prikazivanja `Location` vrednosti, response headera ili HTML body-ja.
+
+### Execution budget
+
+Jedno reconciliation worker izvršavanje ima fiksni ukupni monotonic execution budget od 55 sekundi. Budžet je kraći od GitHub Actions HTTP timeouta od 70 sekundi kako bi aplikacija imala prostor da finalizuje poslednji item i vrati odgovor.
+
+Pre svakog novog claima worker zahteva više od 15 sekundi preostalog vremena: provider timeout contract je 10 sekundi, a dodatnih 5 sekundi rezervisano je za DB finalizaciju i endpoint response. Već claimovan item se ne prekida zbog ukupnog budžeta; njegov provider poziv ostaje ograničen zasebnim provider timeoutom i worker uvek pokušava finalizaciju pre sledeće provere budžeta.
+
+Execution-budget stop nije retry razlog i ne claimuje niti povećava attempt count sledećem itemu. Batch size ostaje nezavisan hard limit, a postojeća pravila za configuration error, rate limit i provider greške ostaju na snazi. Schedule trigger još nije aktivan.

@@ -1,4 +1,5 @@
 import { BillingWebhookError } from "./billingWebhookErrors.ts";
+import { parseBillingEnvironment } from "../config/billingEnvironment.ts";
 
 export type BillingWebhookEnvironment = {
   BILLING_WEBHOOKS_ENABLED?: string;
@@ -13,9 +14,17 @@ export function resolveBillingWebhookConfig(
   if (environment.BILLING_WEBHOOKS_ENABLED !== "true") {
     throw new BillingWebhookError("BILLING_WEBHOOK_DISABLED", 404);
   }
+  let billingEnvironment;
+  try {
+    billingEnvironment = parseBillingEnvironment(
+      environment.BILLING_ENVIRONMENT,
+    );
+  } catch {
+    throw new BillingWebhookError("BILLING_WEBHOOK_NOT_CONFIGURED", 503);
+  }
   if (
     environment.BILLING_PROVIDER !== "lemonsqueezy" ||
-    environment.BILLING_ENVIRONMENT !== "test"
+    billingEnvironment !== "test"
   ) {
     throw new BillingWebhookError("BILLING_WEBHOOK_NOT_CONFIGURED", 503);
   }

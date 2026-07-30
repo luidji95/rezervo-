@@ -183,6 +183,13 @@ test("JSON parsing happens only after signature verification", async () => {
 });
 
 test("webhook config fails closed when disabled, incomplete or non-test", () => {
+  const runtimeAliasesWithoutBillingEnvironment = {
+    BILLING_WEBHOOKS_ENABLED: "true",
+    BILLING_PROVIDER: "lemonsqueezy",
+    NODE_ENV: "test",
+    VERCEL_ENV: "preview",
+    LEMONSQUEEZY_WEBHOOK_SECRET: secret,
+  };
   assert.throws(
     () => resolveBillingWebhookConfig({}),
     (error: unknown) => error instanceof BillingWebhookError && error.code === "BILLING_WEBHOOK_DISABLED",
@@ -194,6 +201,19 @@ test("webhook config fails closed when disabled, incomplete or non-test", () => 
   assert.throws(
     () => resolveBillingWebhookConfig({ BILLING_WEBHOOKS_ENABLED: "true", BILLING_PROVIDER: "lemonsqueezy", BILLING_ENVIRONMENT: "live", LEMONSQUEEZY_WEBHOOK_SECRET: secret }),
     (error: unknown) => error instanceof BillingWebhookError && error.code === "BILLING_WEBHOOK_NOT_CONFIGURED",
+  );
+  assert.throws(
+    () => resolveBillingWebhookConfig(runtimeAliasesWithoutBillingEnvironment),
+    (error: unknown) => error instanceof BillingWebhookError && error.code === "BILLING_WEBHOOK_NOT_CONFIGURED",
+  );
+  assert.deepEqual(
+    resolveBillingWebhookConfig({
+      BILLING_WEBHOOKS_ENABLED: "true",
+      BILLING_PROVIDER: "lemonsqueezy",
+      BILLING_ENVIRONMENT: "test",
+      LEMONSQUEEZY_WEBHOOK_SECRET: secret,
+    }),
+    { provider: "lemonsqueezy", environment: "test", webhookSecret: secret },
   );
 });
 

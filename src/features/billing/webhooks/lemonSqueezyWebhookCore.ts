@@ -3,6 +3,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 import { BillingWebhookError } from "./billingWebhookErrors.ts";
+import type { BillingEnvironment } from "../config/billingEnvironment.ts";
 
 export const LEMON_SQUEEZY_SUBSCRIPTION_EVENTS = new Set([
   "subscription_created",
@@ -81,7 +82,7 @@ export type BillingWebhookSubscriptionFactsInput = {
 
 export type BillingWebhookEventInput = {
   provider: "lemonsqueezy";
-  environment: "test";
+  environment: BillingEnvironment;
   eventName: string;
   providerObjectType: string;
   providerObjectId: string;

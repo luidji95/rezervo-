@@ -1,8 +1,9 @@
 import { BillingCustomerPortalError } from "./billingCustomerPortalErrors.ts";
+import type { BillingEnvironment } from "../config/billingEnvironment.ts";
 
 export type BillingCustomerPortalInput = {
   provider: "lemonsqueezy";
-  environment: "test";
+  environment: BillingEnvironment;
   providerSubscriptionId: string;
   providerCustomerId: string;
 };

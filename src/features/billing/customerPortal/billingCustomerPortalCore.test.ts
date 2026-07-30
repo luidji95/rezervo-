@@ -12,6 +12,7 @@ for (const [name, patch] of [
   ["false flag", { BILLING_CUSTOMER_PORTAL_ENABLED: "false" }],
   ["wrong provider", { BILLING_PROVIDER: "other" }],
   ["live environment", { BILLING_ENVIRONMENT: "live" }],
+  ["runtime alias without billing environment", { BILLING_ENVIRONMENT: undefined, NODE_ENV: "test", VERCEL_ENV: "preview" }],
   ["missing API key", { LEMONSQUEEZY_API_KEY: "" }],
   ["missing Store ID", { LEMONSQUEEZY_STORE_ID: "" }],
   ["missing allowlist", { LEMONSQUEEZY_PORTAL_ALLOWED_HOSTS: "" }],
@@ -50,7 +51,7 @@ test("core maps non-owner to forbidden", async () => {
 
 for (const [name, unavailable] of [
   ["trialing", { ...subscription, status: "trialing" }], ["expired", { ...subscription, status: "expired" }],
-  ["another provider", { ...subscription, provider: "other" as "lemonsqueezy" }], ["live environment", { ...subscription, environment: "live" as "test" }],
+  ["another provider", { ...subscription, provider: "other" as "lemonsqueezy" }], ["live environment", { ...subscription, environment: "live" as const }],
   ["missing subscription ID", { ...subscription, providerSubscriptionId: "" }], ["missing customer ID", { ...subscription, providerCustomerId: "" }],
 ] as const) {
   test(`core rejects ${name} subscription`, async () => {

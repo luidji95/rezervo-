@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { BillingEnvironment } from "../config/billingEnvironment";
 import type { BillingCustomerPortalRepository, PortalSubscription } from "./billingCustomerPortalCore";
 
 export class SupabaseBillingCustomerPortalRepository implements BillingCustomerPortalRepository {
@@ -23,7 +24,7 @@ export class SupabaseBillingCustomerPortalRepository implements BillingCustomerP
     const row = subscriptions[0];
     return {
       provider: row.billing_provider as "lemonsqueezy",
-      environment: row.billing_environment as "test",
+      environment: row.billing_environment as BillingEnvironment,
       providerSubscriptionId: row.provider_subscription_id ?? "",
       providerCustomerId: row.provider_customer_id ?? "",
       status: row.status,

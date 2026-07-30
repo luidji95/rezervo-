@@ -6,6 +6,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { normalizePlanCatalog, type PlanCatalogRow } from "@/features/billing/services/planCatalog";
 import { isBillingCustomerPortalConfigured } from "@/features/billing/customerPortal/billingCustomerPortalConfig";
 import { canOpenCustomerPortal } from "@/features/billing/customerPortal/billingCustomerPortalCore";
+import type { BillingEnvironment } from "@/features/billing/config/billingEnvironment";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
       configured: isBillingCustomerPortalConfigured(process.env),
       subscription: subscription ? {
         provider: subscription.billing_provider as "lemonsqueezy",
-        environment: subscription.billing_environment as "test",
+        environment: subscription.billing_environment as BillingEnvironment,
         providerSubscriptionId: subscription.provider_subscription_id ?? "",
         providerCustomerId: subscription.provider_customer_id ?? "",
         status: subscription.status,

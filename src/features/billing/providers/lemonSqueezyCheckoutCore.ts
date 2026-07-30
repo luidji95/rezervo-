@@ -4,6 +4,7 @@ import type {
   CreateCheckoutSessionResult,
 } from "./billingProvider.ts";
 import { BillingCheckoutError } from "./billingCheckoutErrors.ts";
+import { expectedLemonSqueezyTestMode } from "../config/billingEnvironment.ts";
 
 const API_URL = "https://api.lemonsqueezy.com/v1/checkouts";
 const JSON_API = "application/vnd.api+json";
@@ -45,10 +46,7 @@ export class LemonSqueezyCheckoutCore implements BillingProvider {
   async createCheckoutSession(
     input: CreateCheckoutSessionInput,
   ): Promise<CreateCheckoutSessionResult> {
-    if (input.environment !== "test") {
-      throw new BillingCheckoutError("BILLING_NOT_CONFIGURED", 503);
-    }
-
+    const expectedTestMode = expectedLemonSqueezyTestMode(input.environment);
     const storeId = positiveIntegerId(input.providerStoreId);
     const variantId = positiveIntegerId(input.providerVariantId);
     const controller = new AbortController();
@@ -84,7 +82,7 @@ export class LemonSqueezyCheckoutCore implements BillingProvider {
                 },
               },
               expires_at: input.expiresAt,
-              test_mode: true,
+              test_mode: expectedTestMode,
             },
             relationships: {
               store: { data: { type: "stores", id: storeId } },
@@ -113,14 +111,32 @@ export class LemonSqueezyCheckoutCore implements BillingProvider {
       if (
         payload.data?.type !== "checkouts" ||
         typeof id !== "string" ||
+        !id.trim() ||
         typeof checkoutUrl !== "string" ||
-        payload.data.attributes?.test_mode !== true
+        payload.data.attributes?.test_mode !== expectedTestMode
       ) {
-        throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+        throw new BillingCheckoutError(
+          "BILLING_RECONCILIATION_REQUIRED",
+          503,
+        );
+      }
+      if (
+        providerExpiresAt !== null &&
+        providerExpiresAt !== undefined &&
+        (typeof providerExpiresAt !== "string" ||
+          !Number.isFinite(Date.parse(providerExpiresAt)))
+      ) {
+        throw new BillingCheckoutError(
+          "BILLING_RECONCILIATION_REQUIRED",
+          503,
+        );
       }
       const parsedUrl = new URL(checkoutUrl);
       if (parsedUrl.protocol !== "https:") {
-        throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+        throw new BillingCheckoutError(
+          "BILLING_RECONCILIATION_REQUIRED",
+          503,
+        );
       }
 
       return {
@@ -128,20 +144,15 @@ export class LemonSqueezyCheckoutCore implements BillingProvider {
         providerSessionId: id,
         checkoutUrl,
         expiresAt:
-          typeof providerExpiresAt === "string"
-            ? providerExpiresAt
-            : input.expiresAt,
-        environment: "test",
+          providerExpiresAt ?? input.expiresAt,
+        environment: input.environment,
       };
     } catch (error) {
       if (error instanceof BillingCheckoutError) throw error;
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new BillingCheckoutError(
-          "BILLING_RECONCILIATION_REQUIRED",
-          503,
-        );
-      }
-      throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+      throw new BillingCheckoutError(
+        "BILLING_RECONCILIATION_REQUIRED",
+        503,
+      );
     } finally {
       clearTimeout(timeout);
     }

@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { BillingEnvironment } from "../config/billingEnvironment.ts";
-import type { BillingProvider, CheckoutPlanCode } from "../providers/billingProvider.ts";
+import type {
+  BillingProvider,
+  CheckoutPlanCode,
+  CreateCheckoutSessionResult,
+} from "../providers/billingProvider.ts";
 import { BillingCheckoutError } from "../providers/billingCheckoutErrors.ts";
 
 export type BillingPriceMapping = {
@@ -77,6 +81,7 @@ export type BillingCheckoutRuntime = {
   appUrl: string;
   storeId: string;
   environment: BillingEnvironment;
+  liveAllowedSalonIds: ReadonlySet<string> | null;
   now: () => Date;
 };
 
@@ -101,6 +106,12 @@ export async function createBillingCheckout(
   provider: BillingProvider,
   runtime: BillingCheckoutRuntime,
 ) {
+  if (
+    runtime.environment === "live" &&
+    !runtime.liveAllowedSalonIds?.has(input.salonId)
+  ) {
+    throw new BillingCheckoutError("BILLING_CHECKOUT_DISABLED", 404);
+  }
   if (!(await repository.isSalonOwner(input.salonId, input.actorProfileId))) {
     throw new BillingCheckoutError("BILLING_OWNER_REQUIRED", 403);
   }
@@ -165,8 +176,9 @@ export async function createBillingCheckout(
   }
 
   const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
+  let result: CreateCheckoutSessionResult;
   try {
-    const result = await provider.createCheckoutSession({
+    result = await provider.createCheckoutSession({
       checkoutSessionId: ledger.id,
       salonId: input.salonId,
       actorProfileId: input.actorProfileId,
@@ -181,18 +193,6 @@ export async function createBillingCheckout(
       providerVariantId: mapping.providerVariantId,
       expiresAt,
     });
-    await repository.markOpen({
-      id: ledger.id,
-      providerSessionId: result.providerSessionId,
-      checkoutUrlHash: createHash("sha256").update(result.checkoutUrl).digest("hex"),
-      expiresAt: result.expiresAt,
-    });
-    return {
-      provider: result.provider,
-      environment: result.environment,
-      checkoutUrl: result.checkoutUrl,
-      expiresAt: result.expiresAt,
-    };
   } catch (error) {
     if (
       error instanceof BillingCheckoutError &&
@@ -200,12 +200,34 @@ export async function createBillingCheckout(
     ) {
       throw error;
     }
-    const safeCode =
-      error instanceof BillingCheckoutError
-        ? error.code
-        : "BILLING_PROVIDER_UNAVAILABLE";
-    await repository.markFailed(ledger.id, safeCode);
-    if (error instanceof BillingCheckoutError) throw error;
-    throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+    if (!(error instanceof BillingCheckoutError)) {
+      throw new BillingCheckoutError(
+        "BILLING_RECONCILIATION_REQUIRED",
+        503,
+      );
+    }
+    await repository.markFailed(ledger.id, error.code);
+    throw error;
   }
+
+  try {
+    await repository.markOpen({
+      id: ledger.id,
+      providerSessionId: result.providerSessionId,
+      checkoutUrlHash: createHash("sha256").update(result.checkoutUrl).digest("hex"),
+      expiresAt: result.expiresAt,
+    });
+  } catch {
+    throw new BillingCheckoutError(
+      "BILLING_RECONCILIATION_REQUIRED",
+      503,
+    );
+  }
+
+  return {
+    provider: result.provider,
+    environment: result.environment,
+    checkoutUrl: result.checkoutUrl,
+    expiresAt: result.expiresAt,
+  };
 }

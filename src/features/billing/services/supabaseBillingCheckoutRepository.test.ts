@@ -37,3 +37,14 @@ test("mapping query returns Store ID and remains environment-scoped", () => {
   assert.match(method, /\.eq\("environment", this\.environment\)/);
   assert.match(method, /providerStoreId: row\.provider_store_id/);
 });
+
+test("markOpen confirms exactly one expected creating ledger row", () => {
+  const method = methodSource("markOpen", "markFailed");
+  assert.match(method, /\.eq\("id", input\.id\)/);
+  assert.match(method, /\.eq\("provider", "lemonsqueezy"\)/);
+  assert.match(method, /\.eq\("environment", this\.environment\)/);
+  assert.match(method, /\.eq\("status", "creating"\)/);
+  assert.match(method, /\.select\("id"\)/);
+  assert.match(method, /\.maybeSingle\(\)/);
+  assert.match(method, /if \(error \|\| !data\)/);
+});

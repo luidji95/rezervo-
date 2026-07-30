@@ -36,6 +36,7 @@ class MemoryRepository implements BillingCheckoutRepository {
   ledgers = new Map<string, BillingCheckoutLedger>();
   subscriptions = new Map([[salon, { status: "trialing", planId: "pro-plan", provider: null }]]);
   sequence = 0;
+  markFailedCalls = 0;
 
   async isSalonOwner() { return this.owner; }
   async hasActiveOverride() { return this.override; }
@@ -74,11 +75,12 @@ class MemoryRepository implements BillingCheckoutRepository {
     }
   }
   async markFailed(id: string) {
+    this.markFailedCalls += 1;
     for (const row of this.ledgers.values()) if (row.id === id) row.status = "failed";
   }
 }
 
-const runtime = { appUrl: "https://rezervo.example", storeId: "123", environment: "test" as const, now: () => now };
+const runtime = { appUrl: "https://rezervo.example", storeId: "123", environment: "test" as const, liveAllowedSalonIds: null, now: () => now };
 const request = { salonId: salon, actorProfileId: actor, planCode: "starter" as const, idempotencyKey: key };
 
 async function expectCode(action: () => Promise<unknown>, code: string) {
@@ -113,6 +115,44 @@ test("checkout rejects a mapping from another billing environment", async () => 
   );
   assert.equal(provider.calls.length, 0);
   assert.equal(repo.ledgers.size, 0);
+});
+
+test("live pilot allowlist rejects before every repository and provider side effect", async () => {
+  const repo = new MemoryRepository();
+  repo.mapping = { ...repo.mapping!, environment: "live" };
+  let repositoryCalls = 0;
+  repo.isSalonOwner = async () => { repositoryCalls += 1; return true; };
+  repo.getPriceMapping = async () => { repositoryCalls += 1; return repo.mapping; };
+  repo.insertCreating = async (input) => {
+    repositoryCalls += 1;
+    return MemoryRepository.prototype.insertCreating.call(repo, input);
+  };
+  const provider = new MockBillingProvider();
+  const liveRuntime = {
+    ...runtime,
+    environment: "live" as const,
+    liveAllowedSalonIds: new Set(["20000000-0000-4000-8000-000000000099"]),
+  };
+  await expectCode(
+    () => createBillingCheckout(request, repo, provider, liveRuntime),
+    "BILLING_CHECKOUT_DISABLED",
+  );
+  assert.equal(repositoryCalls, 0);
+  assert.equal(repo.ledgers.size, 0);
+  assert.equal(provider.calls.length, 0);
+});
+
+test("allowlisted live salon reaches environment-scoped mapping and provider", async () => {
+  const repo = new MemoryRepository();
+  repo.mapping = { ...repo.mapping!, environment: "live" };
+  const provider = new MockBillingProvider();
+  const result = await createBillingCheckout(request, repo, provider, {
+    ...runtime,
+    environment: "live",
+    liveAllowedSalonIds: new Set([salon]),
+  });
+  assert.equal(result.environment, "live");
+  assert.equal(provider.calls[0]?.environment, "live");
 });
 
 test("checkout requires mapping Store ID to match canonical provider config", async () => {
@@ -155,6 +195,7 @@ test("request contract rejects browser-owned billing fields", () => {
     { currency: "USD" },
     { providerVariantId: "1" },
     { successUrl: "https://evil.example" },
+    { environment: "live" },
   ]) {
     assert.throws(
       () => parseBillingCheckoutRequest({ salonId: salon, planCode: "starter", ...extra }),
@@ -214,6 +255,7 @@ test("provider rejection fails the ledger while timeout remains creating for rec
   );
   assert.equal(rejectedRepo.ledgers.get(key)?.status, "failed");
   assert.equal(rejectedRepo.ledgers.get(key)?.id, "ledger-1");
+  assert.equal(rejectedRepo.markFailedCalls, 1);
 
   const timeoutRepo = new MemoryRepository();
   await expectCode(
@@ -222,6 +264,47 @@ test("provider rejection fails the ledger while timeout remains creating for rec
   );
   assert.equal(timeoutRepo.ledgers.get(key)?.status, "creating");
   assert.equal(timeoutRepo.ledgers.get(key)?.id, "ledger-1");
+  assert.equal(timeoutRepo.ledgers.size, 1);
+  assert.equal(timeoutRepo.markFailedCalls, 0);
+  const timeoutProvider = new MockBillingProvider();
+  await expectCode(
+    () => createBillingCheckout(request, timeoutRepo, timeoutProvider, runtime),
+    "BILLING_CHECKOUT_IN_PROGRESS",
+  );
+  assert.equal(timeoutRepo.ledgers.get(key)?.status, "creating");
+  assert.equal(timeoutRepo.ledgers.size, 1);
+  assert.equal(timeoutRepo.markFailedCalls, 0);
+  assert.equal(timeoutProvider.calls.length, 0);
+});
+
+test("markOpen failure after provider success remains reconciliation-required and idempotent", async () => {
+  const repo = new MemoryRepository();
+  let markOpenCalls = 0;
+  repo.markOpen = async () => {
+    markOpenCalls += 1;
+    throw new Error("database details must stay private");
+  };
+  const provider = new MockBillingProvider();
+
+  await expectCode(
+    () => createBillingCheckout(request, repo, provider, runtime),
+    "BILLING_RECONCILIATION_REQUIRED",
+  );
+  assert.equal(provider.calls.length, 1);
+  assert.equal(markOpenCalls, 1);
+  assert.equal(repo.markFailedCalls, 0);
+  assert.equal(repo.ledgers.size, 1);
+  assert.equal(repo.ledgers.get(key)?.status, "creating");
+
+  const secondProvider = new MockBillingProvider();
+  await expectCode(
+    () => createBillingCheckout(request, repo, secondProvider, runtime),
+    "BILLING_CHECKOUT_IN_PROGRESS",
+  );
+  assert.equal(secondProvider.calls.length, 0);
+  assert.equal(repo.markFailedCalls, 0);
+  assert.equal(repo.ledgers.size, 1);
+  assert.equal(repo.ledgers.get(key)?.status, "creating");
 });
 
 test("expired open session permits a new attempt, valid open session is reused as in-progress", async () => {

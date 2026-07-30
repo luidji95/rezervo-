@@ -113,6 +113,8 @@ test("owner-only authorization, overrides, mappings and Premium fail closed", as
   await expectCode(() => createBillingCheckout(request, repo, new MockBillingProvider(), runtime), "BILLING_PRICE_MAPPING_MISSING");
   repo.mapping = { ...new MemoryRepository().mapping!, mappingActive: false };
   await expectCode(() => createBillingCheckout(request, repo, new MockBillingProvider(), runtime), "BILLING_PLAN_NOT_AVAILABLE");
+  repo.mapping = { ...new MemoryRepository().mapping!, planActive: false };
+  await expectCode(() => createBillingCheckout(request, repo, new MockBillingProvider(), runtime), "BILLING_PLAN_NOT_AVAILABLE");
   assert.throws(
     () => parseBillingCheckoutRequest({ salonId: salon, planCode: "premium" }),
     (error: unknown) => error instanceof BillingCheckoutError && error.code === "INVALID_INPUT",

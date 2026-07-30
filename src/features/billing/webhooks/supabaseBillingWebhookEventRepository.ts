@@ -66,7 +66,7 @@ export class SupabaseBillingWebhookEventRepository
 
   async processSubscriptionCreated(eventId: string) {
     const { data, error } = await supabaseServer
-      .rpc("process_billing_subscription_created_v1", {
+      .rpc("process_billing_subscription_created_v2", {
         p_webhook_event_id: eventId,
       })
       .single();
@@ -83,7 +83,7 @@ export class SupabaseBillingWebhookEventRepository
 
   async processSubscriptionUpdated(eventId: string) {
     const { data, error } = await supabaseServer
-      .rpc("process_billing_subscription_updated_v1", {
+      .rpc("process_billing_subscription_updated_v2", {
         p_webhook_event_id: eventId,
       })
       .single();

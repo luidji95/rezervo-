@@ -1,4 +1,4 @@
-import { parseBillingEnvironment } from "../config/billingEnvironment.ts";
+import { resolveLemonSqueezyProviderConfig } from "../config/lemonSqueezyProviderConfigCore.ts";
 
 export type PortalEnvironment = Record<string, string | undefined>;
 const HOST_PATTERN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -10,16 +10,21 @@ export function parsePortalAllowedHosts(value: string | undefined) {
 }
 
 export function isBillingCustomerPortalConfigured(env: PortalEnvironment) {
-  let billingEnvironment;
+  return resolveBillingCustomerPortalConfig(env) !== null;
+}
+
+export function resolveBillingCustomerPortalConfig(env: PortalEnvironment) {
+  let providerConfig;
   try {
-    billingEnvironment = parseBillingEnvironment(env.BILLING_ENVIRONMENT);
+    providerConfig = resolveLemonSqueezyProviderConfig(env, "test");
   } catch {
-    return false;
+    return null;
   }
-  return env.BILLING_CUSTOMER_PORTAL_ENABLED === "true"
-    && env.BILLING_PROVIDER === "lemonsqueezy"
-    && billingEnvironment === "test"
-    && Boolean(env.LEMONSQUEEZY_API_KEY?.trim())
-    && /^\d+$/.test(env.LEMONSQUEEZY_STORE_ID?.trim() ?? "")
-    && parsePortalAllowedHosts(env.LEMONSQUEEZY_PORTAL_ALLOWED_HOSTS) !== null;
+  const allowedHosts = parsePortalAllowedHosts(
+    env.LEMONSQUEEZY_PORTAL_ALLOWED_HOSTS,
+  );
+  if (env.BILLING_CUSTOMER_PORTAL_ENABLED !== "true" || !allowedHosts) {
+    return null;
+  }
+  return { ...providerConfig, allowedHosts };
 }

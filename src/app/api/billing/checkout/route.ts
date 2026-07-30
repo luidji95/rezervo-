@@ -43,7 +43,9 @@ export async function POST(request: Request) {
     const parsed = parseBillingCheckoutRequest(body);
 
     const provider = new LemonSqueezyBillingProvider(config.apiKey);
-    const repository = new SupabaseBillingCheckoutRepository();
+    const repository = new SupabaseBillingCheckoutRepository(
+      config.environment,
+    );
     const result = await createBillingCheckout(
       {
         ...parsed,
@@ -52,7 +54,12 @@ export async function POST(request: Request) {
       },
       repository,
       provider,
-      { appUrl: config.appUrl, storeId: config.storeId, now: () => new Date() },
+      {
+        appUrl: config.appUrl,
+        storeId: config.storeId,
+        environment: config.environment,
+        now: () => new Date(),
+      },
     );
 
     return NextResponse.json(

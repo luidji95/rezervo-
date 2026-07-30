@@ -26,6 +26,8 @@ for (const [name, patch] of [
 }
 
 test("config accepts one exact host", () => assert.equal(isBillingCustomerPortalConfigured(validEnv), true));
+test("test portal does not use live provider credentials", () => assert.equal(isBillingCustomerPortalConfigured({ BILLING_CUSTOMER_PORTAL_ENABLED: "true", BILLING_PROVIDER: "lemonsqueezy", BILLING_ENVIRONMENT: "test", LEMONSQUEEZY_LIVE_API_KEY: "live-key", LEMONSQUEEZY_LIVE_STORE_ID: "440512", LEMONSQUEEZY_PORTAL_ALLOWED_HOSTS: "rezervo.lemonsqueezy.com" }), false));
+test("live provider credentials do not enable live portal", () => assert.equal(isBillingCustomerPortalConfigured({ ...validEnv, BILLING_ENVIRONMENT: "live", LEMONSQUEEZY_LIVE_API_KEY: "live-key", LEMONSQUEEZY_LIVE_STORE_ID: "440512" }), false));
 test("config accepts and normalizes multiple exact hosts", () => assert.deepEqual([...parsePortalAllowedHosts(" A.Example.com, b.example.com ")!], ["a.example.com", "b.example.com"]));
 
 test("overview eligibility supports active, cancelled and past_due owners", () => {

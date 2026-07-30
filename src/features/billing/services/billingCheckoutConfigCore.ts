@@ -1,4 +1,4 @@
-import { parseBillingEnvironment } from "../config/billingEnvironment.ts";
+import { resolveLemonSqueezyProviderConfig } from "../config/lemonSqueezyProviderConfigCore.ts";
 import { BillingCheckoutError } from "../providers/billingCheckoutErrors.ts";
 
 export type BillingCheckoutConfig = {
@@ -31,31 +31,18 @@ export function resolveBillingCheckoutConfig(
   if (environment.BILLING_CHECKOUT_ENABLED !== "true") {
     throw new BillingCheckoutError("BILLING_CHECKOUT_DISABLED", 404);
   }
-  let billingEnvironment;
+  let providerConfig;
   try {
-    billingEnvironment = parseBillingEnvironment(
-      environment.BILLING_ENVIRONMENT,
-    );
+    providerConfig = resolveLemonSqueezyProviderConfig(environment, "test");
   } catch {
     throw new BillingCheckoutError("BILLING_NOT_CONFIGURED", 503);
   }
-  if (
-    environment.BILLING_PROVIDER !== "lemonsqueezy" ||
-    billingEnvironment !== "test"
-  ) {
-    throw new BillingCheckoutError("BILLING_NOT_CONFIGURED", 503);
-  }
-  const apiKey = environment.LEMONSQUEEZY_API_KEY?.trim();
-  const storeId = environment.LEMONSQUEEZY_STORE_ID?.trim();
-  if (!apiKey || !storeId || !/^\d+$/.test(storeId) || !validAppUrl(appUrl)) {
+  if (!validAppUrl(appUrl)) {
     throw new BillingCheckoutError("BILLING_NOT_CONFIGURED", 503);
   }
   return {
     enabled: true,
-    provider: "lemonsqueezy",
-    environment: "test",
-    apiKey,
-    storeId,
+    ...providerConfig,
     appUrl,
   };
 }

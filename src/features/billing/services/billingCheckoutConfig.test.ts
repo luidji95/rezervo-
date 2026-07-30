@@ -30,7 +30,31 @@ test("checkout config recognizes but does not enable live billing", () => {
   assert.throws(
     () =>
       resolveBillingCheckoutConfig(
-        { ...base, BILLING_ENVIRONMENT: "live" },
+        {
+          ...base,
+          BILLING_ENVIRONMENT: "live",
+          LEMONSQUEEZY_LIVE_API_KEY: "live-key",
+          LEMONSQUEEZY_LIVE_STORE_ID: "456",
+        },
+        "https://app.example.test",
+      ),
+    (error) =>
+      error instanceof BillingCheckoutError &&
+      error.code === "BILLING_NOT_CONFIGURED",
+  );
+});
+
+test("checkout does not use live credentials as a test fallback", () => {
+  assert.throws(
+    () =>
+      resolveBillingCheckoutConfig(
+        {
+          BILLING_CHECKOUT_ENABLED: "true",
+          BILLING_PROVIDER: "lemonsqueezy",
+          BILLING_ENVIRONMENT: "test",
+          LEMONSQUEEZY_LIVE_API_KEY: "live-key",
+          LEMONSQUEEZY_LIVE_STORE_ID: "456",
+        },
         "https://app.example.test",
       ),
     (error) =>

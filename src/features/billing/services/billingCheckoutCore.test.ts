@@ -30,6 +30,8 @@ class MemoryRepository implements BillingCheckoutRepository {
     mappingAmount: 2990,
     mappingCurrency: "RSD",
     providerVariantId: "456",
+    providerStoreId: "123",
+    environment: "test",
   };
   ledgers = new Map<string, BillingCheckoutLedger>();
   subscriptions = new Map([[salon, { status: "trialing", planId: "pro-plan", provider: null }]]);
@@ -76,7 +78,7 @@ class MemoryRepository implements BillingCheckoutRepository {
   }
 }
 
-const runtime = { appUrl: "https://rezervo.example", storeId: "123", now: () => now };
+const runtime = { appUrl: "https://rezervo.example", storeId: "123", environment: "test" as const, now: () => now };
 const request = { salonId: salon, actorProfileId: actor, planCode: "starter" as const, idempotencyKey: key };
 
 async function expectCode(action: () => Promise<unknown>, code: string) {
@@ -98,6 +100,32 @@ test("owner creates Starter and Pro sessions without changing subscription state
     assert.equal(repo.ledgers.get(key)?.status, "open");
     assert.equal(provider.calls[0]?.checkoutSessionId, "ledger-1");
     assert.equal("checkoutSessionId" in result, false);
+  }
+});
+
+test("checkout rejects a mapping from another billing environment", async () => {
+  const repo = new MemoryRepository();
+  repo.mapping = { ...repo.mapping!, environment: "live" };
+  const provider = new MockBillingProvider();
+  await expectCode(
+    () => createBillingCheckout(request, repo, provider, runtime),
+    "BILLING_PRICE_MISMATCH",
+  );
+  assert.equal(provider.calls.length, 0);
+  assert.equal(repo.ledgers.size, 0);
+});
+
+test("checkout requires mapping Store ID to match canonical provider config", async () => {
+  for (const providerStoreId of ["456", "", "   "]) {
+    const repo = new MemoryRepository();
+    repo.mapping = { ...repo.mapping!, providerStoreId };
+    const provider = new MockBillingProvider();
+    await expectCode(
+      () => createBillingCheckout(request, repo, provider, runtime),
+      "BILLING_PRICE_MISMATCH",
+    );
+    assert.equal(provider.calls.length, 0);
+    assert.equal(repo.ledgers.size, 0);
   }
 });
 

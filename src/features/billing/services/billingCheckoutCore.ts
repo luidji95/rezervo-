@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import type { BillingEnvironment } from "../config/billingEnvironment.ts";
 import type { BillingProvider, CheckoutPlanCode } from "../providers/billingProvider.ts";
 import { BillingCheckoutError } from "../providers/billingCheckoutErrors.ts";
 
@@ -14,6 +15,8 @@ export type BillingPriceMapping = {
   mappingAmount: number;
   mappingCurrency: string;
   providerVariantId: string;
+  providerStoreId: string;
+  environment: BillingEnvironment;
 };
 
 export type BillingCheckoutLedger = {
@@ -73,6 +76,7 @@ export type CreateBillingCheckoutInput = {
 export type BillingCheckoutRuntime = {
   appUrl: string;
   storeId: string;
+  environment: BillingEnvironment;
   now: () => Date;
 };
 
@@ -115,6 +119,9 @@ export async function createBillingCheckout(
   }
   if (
     mapping.planCode !== input.planCode ||
+    mapping.environment !== runtime.environment ||
+    !mapping.providerStoreId.trim() ||
+    mapping.providerStoreId !== runtime.storeId ||
     mapping.planCurrency !== "RSD" ||
     mapping.mappingCurrency !== mapping.planCurrency ||
     mapping.mappingAmount !== mapping.planMonthlyPrice
@@ -169,7 +176,7 @@ export async function createBillingCheckout(
       successUrl: `${runtime.appUrl}/settings?tab=billing&checkout=return`,
       cancelUrl: `${runtime.appUrl}/settings?tab=billing&checkout=cancelled`,
       customerEmail: input.actorEmail,
-      environment: "test",
+      environment: runtime.environment,
       providerStoreId: runtime.storeId,
       providerVariantId: mapping.providerVariantId,
       expiresAt,

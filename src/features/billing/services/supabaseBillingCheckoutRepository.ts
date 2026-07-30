@@ -7,6 +7,7 @@ import type {
   BillingPriceMapping,
 } from "./billingCheckoutCore";
 import type { CheckoutPlanCode } from "../providers/billingProvider";
+import type { BillingEnvironment } from "../config/billingEnvironment";
 
 type MappingResult = {
   id: string;
@@ -15,6 +16,8 @@ type MappingResult = {
   currency: string;
   is_active: boolean;
   provider_variant_id: string;
+  provider_store_id: string;
+  environment: string;
   plans: {
     slug: string;
     is_active: boolean;
@@ -49,6 +52,8 @@ const LEDGER_COLUMNS =
 export class SupabaseBillingCheckoutRepository
   implements BillingCheckoutRepository
 {
+  constructor(private readonly environment: BillingEnvironment) {}
+
   async isSalonOwner(salonId: string, actorProfileId: string) {
     const { data, error } = await supabaseServer
       .from("salons")
@@ -80,10 +85,10 @@ export class SupabaseBillingCheckoutRepository
     const { data, error } = await supabaseServer
       .from("billing_provider_prices")
       .select(
-        "id,plan_id,amount,currency,is_active,provider_variant_id,plans!inner(slug,is_active,monthly_price,currency)",
+        "id,plan_id,amount,currency,is_active,provider_store_id,provider_variant_id,environment,plans!inner(slug,is_active,monthly_price,currency)",
       )
       .eq("provider", "lemonsqueezy")
-      .eq("environment", "test")
+      .eq("environment", this.environment)
       .eq("billing_interval", "monthly")
       .eq("plans.slug", planCode)
       .maybeSingle();
@@ -101,6 +106,8 @@ export class SupabaseBillingCheckoutRepository
       mappingAmount: Number(row.amount),
       mappingCurrency: row.currency,
       providerVariantId: row.provider_variant_id,
+      providerStoreId: row.provider_store_id,
+      environment: row.environment as BillingEnvironment,
     };
   }
 
@@ -109,7 +116,7 @@ export class SupabaseBillingCheckoutRepository
       .from("billing_checkout_sessions")
       .select(LEDGER_COLUMNS)
       .eq("provider", "lemonsqueezy")
-      .eq("environment", "test")
+      .eq("environment", this.environment)
       .eq("idempotency_key", key)
       .maybeSingle();
     if (error) throw new Error("BILLING_SESSION_LOOKUP_FAILED");
@@ -126,7 +133,7 @@ export class SupabaseBillingCheckoutRepository
       .from("billing_checkout_sessions")
       .select(LEDGER_COLUMNS)
       .eq("provider", "lemonsqueezy")
-      .eq("environment", "test")
+      .eq("environment", this.environment)
       .eq("salon_id", input.salonId)
       .eq("requested_plan_id", input.planId)
       .eq("status", "open")
@@ -143,6 +150,8 @@ export class SupabaseBillingCheckoutRepository
       .from("billing_checkout_sessions")
       .update({ status: "expired" })
       .eq("id", id)
+      .eq("provider", "lemonsqueezy")
+      .eq("environment", this.environment)
       .eq("status", "open");
     if (error) throw new Error("BILLING_SESSION_UPDATE_FAILED");
   }
@@ -160,7 +169,7 @@ export class SupabaseBillingCheckoutRepository
         actor_profile_id: input.actorProfileId,
         requested_plan_id: input.planId,
         provider: "lemonsqueezy",
-        environment: "test",
+        environment: this.environment,
         idempotency_key: input.idempotencyKey,
         status: "creating",
       })
@@ -200,6 +209,8 @@ export class SupabaseBillingCheckoutRepository
         error_code: null,
       })
       .eq("id", input.id)
+      .eq("provider", "lemonsqueezy")
+      .eq("environment", this.environment)
       .eq("status", "creating")
       .select("id")
       .maybeSingle();
@@ -215,6 +226,8 @@ export class SupabaseBillingCheckoutRepository
         error_code: errorCode,
       })
       .eq("id", id)
+      .eq("provider", "lemonsqueezy")
+      .eq("environment", this.environment)
       .eq("status", "creating");
     if (error) throw new Error("BILLING_SESSION_UPDATE_FAILED");
   }

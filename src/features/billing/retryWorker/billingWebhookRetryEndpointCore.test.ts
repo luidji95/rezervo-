@@ -4,7 +4,7 @@ import { handleBillingWebhookRetryRequest } from "./billingWebhookRetryEndpointC
 import { BillingWebhookRetryWorkerConfigError } from "./billingWebhookRetryWorkerConfig.ts";
 
 const summary = { claimed: 4, processed: 2, alreadyTerminal: 1, retried: 1, manualReview: 0, claimLost: 0 };
-const config = { enabled: true as const, secret: "worker-secret", batchSize: 10 };
+const config = { enabled: true as const, environment: "test" as const, secret: "worker-secret", batchSize: 10 };
 function request(input: { authorization?: string; body?: string; query?: string } = {}) { return new Request(`https://rezervo.test/api/internal/billing/process-pending${input.query ?? ""}`, { method: "POST", headers: input.authorization ? { Authorization: input.authorization } : {}, ...(input.body === undefined ? {} : { body: input.body }) }); }
 async function run(req: Request, overrides: Partial<Parameters<typeof handleBillingWebhookRetryRequest>[0]> = {}) { return handleBillingWebhookRetryRequest({ request: req, getConfig: () => config, runWorker: async () => summary, ...overrides }); }
 
@@ -17,6 +17,23 @@ test("missing, malformed, wrong and ordinary user bearer tokens are unauthorized
   for (const authorization of [undefined, "worker-secret", "Basic worker-secret", "Bearer wrong", "Bearer supabase-access-token"]) {
     const result = await run(request({ authorization })); assert.equal(result.status, 401); assert.deepEqual(result.body, { success: false, code: "BILLING_WORKER_UNAUTHORIZED" }); assert.equal(result.headers["Cache-Control"], "no-store");
   }
+});
+
+test("test and live worker secrets cannot authenticate the opposite trusted route", async () => {
+  const testConfig = { enabled: true as const, secret: "test-secret", batchSize: 10, environment: "test" as const };
+  const liveConfig = { enabled: true as const, secret: "live-secret", batchSize: 5, environment: "live" as const };
+
+  const liveWithTestSecret = await run(request({ authorization: "Bearer test-secret" }), {
+    getConfig: () => liveConfig,
+  });
+  const testWithLiveSecret = await run(request({ authorization: "Bearer live-secret" }), {
+    getConfig: () => testConfig,
+  });
+
+  assert.equal(liveWithTestSecret.status, 401);
+  assert.deepEqual(liveWithTestSecret.body, { success: false, code: "BILLING_WORKER_UNAUTHORIZED" });
+  assert.equal(testWithLiveSecret.status, 401);
+  assert.deepEqual(testWithLiveSecret.body, { success: false, code: "BILLING_WORKER_UNAUTHORIZED" });
 });
 
 test("non-empty body and any query are rejected before worker execution", async () => {

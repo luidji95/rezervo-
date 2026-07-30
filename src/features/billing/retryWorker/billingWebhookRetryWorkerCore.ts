@@ -1,3 +1,5 @@
+import type { BillingEnvironment } from "../config/billingEnvironment.ts";
+
 export const BILLING_WEBHOOK_PROCESSOR_OUTCOMES = [
   "processed", "already_processed", "already_applied", "stale_ignored",
   "manual_review", "dependency_pending",
@@ -11,6 +13,7 @@ export type ClaimedBillingWebhookEvent = {
   webhookEventId: string;
   eventName: "subscription_created" | "subscription_updated";
   claimToken: string;
+  environment: BillingEnvironment;
 };
 
 export type BillingWebhookRetrySummary = {
@@ -35,12 +38,17 @@ function isProcessorOutcome(value: string): value is BillingWebhookProcessorOutc
 
 export async function runBillingWebhookRetryWorker(input: {
   repository: BillingWebhookRetryRepository;
+  environment: BillingEnvironment;
   batchSize?: number;
 }): Promise<BillingWebhookRetrySummary> {
   const claimed = await input.repository.claimPending(input.batchSize ?? 10);
   const summary: BillingWebhookRetrySummary = { claimed: claimed.length, processed: 0, alreadyTerminal: 0, retried: 0, manualReview: 0, claimLost: 0 };
 
   for (const event of claimed) {
+    if (event.environment !== input.environment) {
+      summary.claimLost += 1;
+      continue;
+    }
     let workerOutcome: BillingWebhookWorkerOutcome;
     try {
       const result = event.eventName === "subscription_created"

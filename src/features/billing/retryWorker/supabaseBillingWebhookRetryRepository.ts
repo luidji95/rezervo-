@@ -3,16 +3,22 @@ import "server-only";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { SupabaseBillingWebhookEventRepository } from "../webhooks/supabaseBillingWebhookEventRepository";
 import type { BillingWebhookFinalizerOutcome, BillingWebhookRetryRepository, BillingWebhookWorkerOutcome, ClaimedBillingWebhookEvent } from "./billingWebhookRetryWorkerCore";
+import type { BillingEnvironment } from "../config/billingEnvironment";
 
 export class SupabaseBillingWebhookRetryRepository implements BillingWebhookRetryRepository {
   private readonly processorRepository = new SupabaseBillingWebhookEventRepository();
+  constructor(private readonly environment: BillingEnvironment) {}
 
   async claimPending(batchSize: number): Promise<ClaimedBillingWebhookEvent[]> {
-    const { data, error } = await supabaseServer.rpc("claim_pending_billing_webhook_events_v1", { p_batch_size: batchSize });
+    const { data, error } = await supabaseServer.rpc("claim_pending_billing_webhook_events_v2", {
+      p_environment: this.environment,
+      p_batch_size: batchSize,
+    });
     if (error || !Array.isArray(data)) throw new Error("BILLING_WORKER_CLAIM_FAILED");
     return data.map((row) => ({
       webhookEventId: row.webhook_event_id,
       eventName: row.event_name as ClaimedBillingWebhookEvent["eventName"],
+      environment: row.environment as BillingEnvironment,
       claimToken: row.claim_token,
     }));
   }

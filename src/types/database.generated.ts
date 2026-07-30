@@ -2442,6 +2442,20 @@ export type Database = {
         Args: { p_now?: string; p_webhook_event_id: string }
         Returns: { error_code: string; outcome: string }[]
       }
+      claim_pending_billing_webhook_events_v2: {
+        Args: {
+          p_batch_size?: number
+          p_environment: string
+          p_lease_duration?: string
+          p_now?: string
+        }
+        Returns: {
+          claim_token: string
+          environment: string
+          event_name: string
+          webhook_event_id: string
+        }[]
+      }
       process_billing_subscription_created_v2: {
         Args: { p_now?: string; p_webhook_event_id: string }
         Returns: { error_code: string | null; outcome: string }[]

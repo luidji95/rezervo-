@@ -27,7 +27,7 @@ for (let iteration = 1; iteration <= 3; iteration += 1) {
       'received','2026-07-29T09:00:00Z','2026-07-29T09:00:00Z'
     );`).join("\n"));
 
-  const claimSql = `select webhook_event_id from public.claim_pending_billing_webhook_events_v1(1,'2026-07-29T10:00:00Z','5 minutes');`;
+  const claimSql = `select webhook_event_id from public.claim_pending_billing_webhook_events_v2('test',1,'2026-07-29T10:00:00Z','5 minutes');`;
   const results = await Promise.all([psql(claimSql), psql(claimSql)]);
   const claimed = results.flatMap((result) => result.split(/\r?\n/)).filter((id) => ids.includes(id));
   if (claimed.length !== 2 || new Set(claimed).size !== 2) throw new Error(`Iteration ${iteration}: parallel claims overlapped or missed a fixture`);

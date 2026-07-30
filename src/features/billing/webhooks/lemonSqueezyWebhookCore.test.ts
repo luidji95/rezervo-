@@ -6,13 +6,23 @@ import { resolveBillingWebhookConfig } from "./billingWebhookConfigCore.ts";
 import { BillingWebhookError } from "./billingWebhookErrors.ts";
 import {
   createLemonSqueezySemanticFingerprint,
-  ingestLemonSqueezyWebhook,
+  ingestLemonSqueezyWebhook as ingestLemonSqueezyWebhookCore,
   verifyLemonSqueezyWebhookSignature,
   type BillingWebhookEventInput,
   type BillingWebhookEventRepository,
 } from "./lemonSqueezyWebhookCore.ts";
+import type { BillingEnvironment } from "../config/billingEnvironment.ts";
 
 const secret = "unit-test-webhook-secret";
+
+function ingestLemonSqueezyWebhook(
+  input: Omit<
+    Parameters<typeof ingestLemonSqueezyWebhookCore>[0],
+    "environment"
+  > & { environment?: BillingEnvironment },
+) {
+  return ingestLemonSqueezyWebhookCore({ environment: "test", ...input });
+}
 
 function payload(
   eventName = "subscription_created",
@@ -182,7 +192,7 @@ test("JSON parsing happens only after signature verification", async () => {
   );
 });
 
-test("webhook config fails closed when disabled, incomplete or non-test", () => {
+test("webhook configs are capability- and secret-isolated", () => {
   const runtimeAliasesWithoutBillingEnvironment = {
     BILLING_WEBHOOKS_ENABLED: "true",
     BILLING_PROVIDER: "lemonsqueezy",
@@ -191,19 +201,19 @@ test("webhook config fails closed when disabled, incomplete or non-test", () => 
     LEMONSQUEEZY_WEBHOOK_SECRET: secret,
   };
   assert.throws(
-    () => resolveBillingWebhookConfig({}),
+    () => resolveBillingWebhookConfig({}, "test"),
     (error: unknown) => error instanceof BillingWebhookError && error.code === "BILLING_WEBHOOK_DISABLED",
   );
   assert.throws(
-    () => resolveBillingWebhookConfig({ BILLING_WEBHOOKS_ENABLED: "true", BILLING_PROVIDER: "lemonsqueezy", BILLING_ENVIRONMENT: "test" }),
+    () => resolveBillingWebhookConfig({ BILLING_WEBHOOKS_ENABLED: "true", BILLING_PROVIDER: "lemonsqueezy", BILLING_ENVIRONMENT: "test" }, "test"),
     (error: unknown) => error instanceof BillingWebhookError && error.code === "BILLING_WEBHOOK_NOT_CONFIGURED",
   );
   assert.throws(
-    () => resolveBillingWebhookConfig({ BILLING_WEBHOOKS_ENABLED: "true", BILLING_PROVIDER: "lemonsqueezy", BILLING_ENVIRONMENT: "live", LEMONSQUEEZY_WEBHOOK_SECRET: secret }),
+    () => resolveBillingWebhookConfig({ BILLING_WEBHOOKS_ENABLED: "true", BILLING_PROVIDER: "lemonsqueezy", BILLING_ENVIRONMENT: "live", LEMONSQUEEZY_WEBHOOK_SECRET: secret }, "test"),
     (error: unknown) => error instanceof BillingWebhookError && error.code === "BILLING_WEBHOOK_NOT_CONFIGURED",
   );
   assert.throws(
-    () => resolveBillingWebhookConfig(runtimeAliasesWithoutBillingEnvironment),
+    () => resolveBillingWebhookConfig(runtimeAliasesWithoutBillingEnvironment, "test"),
     (error: unknown) => error instanceof BillingWebhookError && error.code === "BILLING_WEBHOOK_NOT_CONFIGURED",
   );
   assert.deepEqual(
@@ -212,8 +222,177 @@ test("webhook config fails closed when disabled, incomplete or non-test", () => 
       BILLING_PROVIDER: "lemonsqueezy",
       BILLING_ENVIRONMENT: "test",
       LEMONSQUEEZY_WEBHOOK_SECRET: secret,
-    }),
+    }, "test"),
     { provider: "lemonsqueezy", environment: "test", webhookSecret: secret },
+  );
+  assert.throws(
+    () =>
+      resolveBillingWebhookConfig(
+        {
+          BILLING_WEBHOOKS_ENABLED: "true",
+          BILLING_PROVIDER: "lemonsqueezy",
+          BILLING_ENVIRONMENT: "live",
+          LEMONSQUEEZY_WEBHOOK_SECRET: secret,
+        },
+        "live",
+      ),
+    (error: unknown) =>
+      error instanceof BillingWebhookError &&
+      error.code === "BILLING_WEBHOOK_DISABLED",
+  );
+  assert.throws(
+    () =>
+      resolveBillingWebhookConfig(
+        {
+          BILLING_LIVE_WEBHOOKS_ENABLED: "true",
+          BILLING_PROVIDER: "lemonsqueezy",
+          BILLING_ENVIRONMENT: "live",
+          LEMONSQUEEZY_WEBHOOK_SECRET: secret,
+        },
+        "live",
+      ),
+    (error: unknown) =>
+      error instanceof BillingWebhookError &&
+      error.code === "BILLING_WEBHOOK_NOT_CONFIGURED",
+  );
+  assert.deepEqual(
+    resolveBillingWebhookConfig(
+      {
+        BILLING_LIVE_WEBHOOKS_ENABLED: "true",
+        BILLING_PROVIDER: "lemonsqueezy",
+        BILLING_ENVIRONMENT: "live",
+        LEMONSQUEEZY_LIVE_WEBHOOK_SECRET: "live-unit-test-secret",
+      },
+      "live",
+    ),
+    {
+      provider: "lemonsqueezy",
+      environment: "live",
+      webhookSecret: "live-unit-test-secret",
+    },
+  );
+});
+
+test("deployment billing environment permits only its attested webhook capability", () => {
+  const sharedCapabilities = {
+    BILLING_WEBHOOKS_ENABLED: "true",
+    BILLING_LIVE_WEBHOOKS_ENABLED: "true",
+    BILLING_PROVIDER: "lemonsqueezy",
+    LEMONSQUEEZY_WEBHOOK_SECRET: "test-unit-secret",
+    LEMONSQUEEZY_LIVE_WEBHOOK_SECRET: "live-unit-secret",
+  };
+
+  const testDeployment = {
+    ...sharedCapabilities,
+    BILLING_ENVIRONMENT: "test",
+  };
+  assert.deepEqual(resolveBillingWebhookConfig(testDeployment, "test"), {
+    provider: "lemonsqueezy",
+    environment: "test",
+    webhookSecret: "test-unit-secret",
+  });
+  assert.throws(
+    () => resolveBillingWebhookConfig(testDeployment, "live"),
+    (error: unknown) =>
+      error instanceof BillingWebhookError &&
+      error.code === "BILLING_WEBHOOK_NOT_CONFIGURED",
+  );
+
+  const liveDeployment = {
+    ...sharedCapabilities,
+    BILLING_ENVIRONMENT: "live",
+  };
+  assert.deepEqual(resolveBillingWebhookConfig(liveDeployment, "live"), {
+    provider: "lemonsqueezy",
+    environment: "live",
+    webhookSecret: "live-unit-secret",
+  });
+  assert.throws(
+    () => resolveBillingWebhookConfig(liveDeployment, "test"),
+    (error: unknown) =>
+      error instanceof BillingWebhookError &&
+      error.code === "BILLING_WEBHOOK_NOT_CONFIGURED",
+  );
+});
+
+test("test route cannot be enabled by live capability or live secret", () => {
+  assert.throws(
+    () =>
+      resolveBillingWebhookConfig(
+        {
+          BILLING_LIVE_WEBHOOKS_ENABLED: "true",
+          BILLING_PROVIDER: "lemonsqueezy",
+          BILLING_ENVIRONMENT: "test",
+          LEMONSQUEEZY_LIVE_WEBHOOK_SECRET: "live-unit-secret",
+        },
+        "test",
+      ),
+    (error: unknown) =>
+      error instanceof BillingWebhookError &&
+      error.code === "BILLING_WEBHOOK_DISABLED",
+  );
+
+  assert.throws(
+    () =>
+      resolveBillingWebhookConfig(
+        {
+          BILLING_WEBHOOKS_ENABLED: "true",
+          BILLING_PROVIDER: "lemonsqueezy",
+          BILLING_ENVIRONMENT: "test",
+          LEMONSQUEEZY_LIVE_WEBHOOK_SECRET: "live-unit-secret",
+        },
+        "test",
+      ),
+    (error: unknown) =>
+      error instanceof BillingWebhookError &&
+      error.code === "BILLING_WEBHOOK_NOT_CONFIGURED",
+  );
+});
+
+test("trusted environment determines accepted provider mode and persisted environment", async () => {
+  const testRepository = new MemoryRepository();
+  const testBody = payload("subscription_created", true);
+  await ingestLemonSqueezyWebhookCore({
+    rawBody: testBody,
+    signature: sign(testBody),
+    webhookSecret: secret,
+    environment: "test",
+    repository: testRepository,
+  });
+  assert.equal(testRepository.rows[0]?.environment, "test");
+
+  const liveRepository = new MemoryRepository();
+  const liveBody = payload("subscription_created", false);
+  await ingestLemonSqueezyWebhookCore({
+    rawBody: liveBody,
+    signature: sign(liveBody),
+    webhookSecret: secret,
+    environment: "live",
+    repository: liveRepository,
+  });
+  assert.equal(liveRepository.rows[0]?.environment, "live");
+
+  await expectCode(
+    () =>
+      ingestLemonSqueezyWebhookCore({
+        rawBody: liveBody,
+        signature: sign(liveBody),
+        webhookSecret: secret,
+        environment: "test",
+        repository: new MemoryRepository(),
+      }),
+    "BILLING_WEBHOOK_ENVIRONMENT_MISMATCH",
+  );
+  await expectCode(
+    () =>
+      ingestLemonSqueezyWebhookCore({
+        rawBody: testBody,
+        signature: sign(testBody),
+        webhookSecret: secret,
+        environment: "live",
+        repository: new MemoryRepository(),
+      }),
+    "BILLING_WEBHOOK_ENVIRONMENT_MISMATCH",
   );
 });
 

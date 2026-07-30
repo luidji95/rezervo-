@@ -1,40 +1,53 @@
 import { BillingWebhookError } from "./billingWebhookErrors.ts";
-import { parseBillingEnvironment } from "../config/billingEnvironment.ts";
+import {
+  parseBillingEnvironment,
+  type BillingEnvironment,
+} from "../config/billingEnvironment.ts";
 
 export type BillingWebhookEnvironment = {
   BILLING_WEBHOOKS_ENABLED?: string;
+  BILLING_LIVE_WEBHOOKS_ENABLED?: string;
   BILLING_PROVIDER?: string;
   BILLING_ENVIRONMENT?: string;
   LEMONSQUEEZY_WEBHOOK_SECRET?: string;
+  LEMONSQUEEZY_LIVE_WEBHOOK_SECRET?: string;
 };
 
 export function resolveBillingWebhookConfig(
-  environment: BillingWebhookEnvironment,
+  runtimeEnvironment: BillingWebhookEnvironment,
+  trustedEnvironment: BillingEnvironment,
 ) {
-  if (environment.BILLING_WEBHOOKS_ENABLED !== "true") {
+  const enabled =
+    trustedEnvironment === "test"
+      ? runtimeEnvironment.BILLING_WEBHOOKS_ENABLED
+      : runtimeEnvironment.BILLING_LIVE_WEBHOOKS_ENABLED;
+  if (enabled !== "true") {
     throw new BillingWebhookError("BILLING_WEBHOOK_DISABLED", 404);
   }
   let billingEnvironment;
   try {
     billingEnvironment = parseBillingEnvironment(
-      environment.BILLING_ENVIRONMENT,
+      runtimeEnvironment.BILLING_ENVIRONMENT,
     );
   } catch {
     throw new BillingWebhookError("BILLING_WEBHOOK_NOT_CONFIGURED", 503);
   }
   if (
-    environment.BILLING_PROVIDER !== "lemonsqueezy" ||
-    billingEnvironment !== "test"
+    runtimeEnvironment.BILLING_PROVIDER !== "lemonsqueezy" ||
+    billingEnvironment !== trustedEnvironment
   ) {
     throw new BillingWebhookError("BILLING_WEBHOOK_NOT_CONFIGURED", 503);
   }
-  const webhookSecret = environment.LEMONSQUEEZY_WEBHOOK_SECRET?.trim();
+  const webhookSecret =
+    trustedEnvironment === "test"
+      ? runtimeEnvironment.LEMONSQUEEZY_WEBHOOK_SECRET?.trim()
+      : runtimeEnvironment.LEMONSQUEEZY_LIVE_WEBHOOK_SECRET?.trim();
   if (!webhookSecret) {
     throw new BillingWebhookError("BILLING_WEBHOOK_NOT_CONFIGURED", 503);
   }
   return {
     provider: "lemonsqueezy" as const,
-    environment: "test" as const,
+    environment: trustedEnvironment,
     webhookSecret,
   };
 }

@@ -3,7 +3,10 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 import { BillingWebhookError } from "./billingWebhookErrors.ts";
-import type { BillingEnvironment } from "../config/billingEnvironment.ts";
+import {
+  expectedLemonSqueezyTestMode,
+  type BillingEnvironment,
+} from "../config/billingEnvironment.ts";
 
 export const LEMON_SQUEEZY_SUBSCRIPTION_EVENTS = new Set([
   "subscription_created",
@@ -256,6 +259,7 @@ export async function ingestLemonSqueezyWebhook(input: {
   rawBody: string;
   signature: string | null;
   webhookSecret: string;
+  environment: BillingEnvironment;
   repository: BillingWebhookEventRepository;
   now?: () => Date;
 }) {
@@ -282,7 +286,10 @@ export async function ingestLemonSqueezyWebhook(input: {
   if (!parsed.success) {
     throw new BillingWebhookError("BILLING_WEBHOOK_PAYLOAD_INVALID", 400);
   }
-  if (parsed.data.data.attributes.test_mode !== true) {
+  if (
+    parsed.data.data.attributes.test_mode !==
+    expectedLemonSqueezyTestMode(input.environment)
+  ) {
     throw new BillingWebhookError(
       "BILLING_WEBHOOK_ENVIRONMENT_MISMATCH",
       400,
@@ -300,7 +307,7 @@ export async function ingestLemonSqueezyWebhook(input: {
   try {
     stored = await input.repository.insertEvent({
       provider: "lemonsqueezy",
-      environment: "test",
+      environment: input.environment,
       eventName: parsed.data.meta.event_name,
       providerObjectType: parsed.data.data.type,
       providerObjectId: parsed.data.data.id,

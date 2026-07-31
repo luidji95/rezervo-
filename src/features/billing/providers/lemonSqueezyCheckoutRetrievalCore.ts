@@ -345,6 +345,45 @@ export class LemonSqueezyCheckoutRetrievalClient {
     }
     return page;
   }
+
+  async listPageByUrl(
+    url: string,
+    expected: { storeId: string; variantId: string },
+  ) {
+    const trustedUrl = validateCheckoutListPageUrl(
+      url,
+      expected.storeId,
+      expected.variantId,
+    );
+    const payload = await this.request(
+      {
+        url: trustedUrl,
+        init: {
+          method: "GET",
+          headers: {
+            Accept: JSON_API,
+            Authorization: `Bearer ${this.config.apiKey}`,
+          },
+          cache: "no-store" as const,
+          redirect: "error" as const,
+        },
+      },
+      "list",
+    );
+    const page = parseLemonSqueezyCheckoutListResponse(payload, expected);
+    if (
+      page.checkouts.some(
+        (checkout) =>
+          checkout.testMode !==
+          expectedLemonSqueezyTestMode(this.config.environment),
+      )
+    ) {
+      throw new LemonSqueezyCheckoutRetrievalError(
+        "invalid_provider_response",
+      );
+    }
+    return page;
+  }
 }
 
 export type CheckoutRecoveryLedgerFacts = {

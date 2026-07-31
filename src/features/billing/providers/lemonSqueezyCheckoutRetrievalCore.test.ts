@@ -249,6 +249,22 @@ test("list request uses only official Store, Variant and pagination parameters",
   assert.throws(() => buildLemonSqueezyCheckoutListRequest({ storeId: "11", variantId: "20", pageNumber: 1, pageSize: 50 }, config));
 });
 
+test("runtime page fetch revalidates every provider pagination URL", async () => {
+  const calls: string[] = [];
+  const client = new LemonSqueezyCheckoutRetrievalClient(config, async (url) => {
+    calls.push(String(url));
+    return Response.json({ data: [], links: { next: null } }, { headers: jsonApiHeaders });
+  });
+  assert.deepEqual(await client.listPageByUrl(pageUrl(2), { storeId: "10", variantId: "20" }), {
+    checkouts: [], nextPageUrl: null,
+  });
+  await invalidResponse(() => client.listPageByUrl(
+    pageUrl(2).replace("api.lemonsqueezy.com", "evil.invalid"),
+    { storeId: "10", variantId: "20" },
+  ));
+  assert.deepEqual(calls, [pageUrl(2)]);
+});
+
 test("list parser supports empty/next pages and rejects malformed candidates or unsafe next links", async () => {
   const next = "https://api.lemonsqueezy.com/v1/checkouts?filter%5Bstore_id%5D=10&filter%5Bvariant_id%5D=20&page%5Bnumber%5D=2&page%5Bsize%5D=50";
   assert.deepEqual(parseLemonSqueezyCheckoutListResponse({ data: [], links: { next }, meta: { page: { currentPage: 1 } } }, { storeId: "10", variantId: "20" }), { checkouts: [], nextPageUrl: next });

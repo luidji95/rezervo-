@@ -656,6 +656,62 @@ export type Database = {
           },
         ]
       }
+      billing_checkout_recovery_attempts: {
+        Row: {
+          attempt_number: number
+          checkout_session_id: string
+          claim_token: string
+          claimed_at: string
+          completed_at: string | null
+          created_at: string
+          environment: string
+          id: string
+          lease_expires_at: string
+          outcome: string | null
+          provider: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_number: number
+          checkout_session_id: string
+          claim_token: string
+          claimed_at: string
+          completed_at?: string | null
+          created_at?: string
+          environment: string
+          id?: string
+          lease_expires_at: string
+          outcome?: string | null
+          provider: string
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_number?: number
+          checkout_session_id?: string
+          claim_token?: string
+          claimed_at?: string
+          completed_at?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          lease_expires_at?: string
+          outcome?: string | null
+          provider?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_checkout_recovery_attempts_checkout_session_id_fkey"
+            columns: ["checkout_session_id"]
+            isOneToOne: false
+            referencedRelation: "billing_checkout_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       billing_provider_prices: {
         Row: {
           amount: number
@@ -2328,6 +2384,47 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_billing_checkout_recovery_v1: {
+        Args: {
+          p_checkout_session_id: string
+          p_environment: string
+          p_lease_duration?: string
+          p_now?: string
+        }
+        Returns: {
+          attempt_number: number | null
+          checkout_session_id: string
+          claim_outcome: string
+          claim_token: string | null
+          environment: string
+          idempotency_key: string
+          lease_expires_at: string | null
+          ledger_created_at: string
+          ledger_expires_at: string | null
+          ledger_status: string
+          provider: string
+          provider_session_id: string | null
+          recovery_attempt_id: string | null
+          requested_plan_id: string
+          salon_id: string
+        }[]
+      }
+      complete_billing_checkout_recovery_attempt_v1: {
+        Args: {
+          p_claim_token: string
+          p_environment: string
+          p_now?: string
+          p_outcome: string
+          p_recovery_attempt_id: string
+        }
+        Returns: {
+          completed_at: string | null
+          completion_outcome: string
+          outcome: string | null
+          recovery_attempt_id: string
+          status: string | null
+        }[]
+      }
       claim_next_linked_billing_subscription_for_reconciliation_v1: {
         Args: { p_lease_duration?: string; p_min_freshness?: string; p_now?: string; p_run_id: string }
         Returns: { check_id: string; claim_token: string; local_cancel_at_period_end: boolean; local_cancelled_at: string | null; local_current_period_ends_at: string | null; local_plan_id: string; local_provider_state_updated_at: string | null; local_status: string; mapped_product_id: string | null; mapped_store_id: string; mapped_variant_id: string; provider_customer_id: string; provider_subscription_id: string; subscription_id: string }[]

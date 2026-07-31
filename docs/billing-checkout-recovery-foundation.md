@@ -1,6 +1,6 @@
 # Billing checkout recovery foundation
 
-Ovaj dokument opisuje pure/dormant checkout retrieval i correlation foundation. Faza nema API route, DB mutation, migraciju, secret, schedule niti provider poziv tokom implementacije. Live ostaje dormant, a pravi checkout nije uključen.
+Ovaj dokument obuhvata dve odvojene dormant recovery faze. Pure retrieval/correlation faza nije imala migraciju, API route, secret, schedule niti provider poziv. DB claim/audit faza dodaje additive migraciju 032, audit tabelu i service-role-only RPC funkcije, ali i dalje nema provider HTTP poziv, API route, secret ni schedule. Migracija 032 još nije primenjena na sandbox. Live ostaje dormant, a pravi checkout nije uključen.
 
 ## Potvrđeni Lemon Squeezy contract
 
@@ -19,3 +19,11 @@ Nula potpuno potvrđenih kandidata nakon iscrpljene pretrage daje `search_exhaus
 Normalizer zadržava samo provider checkout/Store/Variant identitet, četiri opcionalna custom korelacijska polja, test mode, HTTPS checkout URL, expiry i provider creation/update vreme. Ne zadržava raw JSON, checkout data, email, ime, adresu ili poreske podatke. Greške su stabilne i ne sadrže provider response ili tajne.
 
 Ova faza ne menja `billing_checkout_sessions`, ne poziva `markOpen`, ne kreira checkout i ne pokušava subscription recovery. Sledeća zasebno odobrena faza može dodati manual-only operator claim/audit i read-only provider retrieval, pa tek zatim token-authoritative `creating → open` finalizaciju.
+
+## DB claim i audit foundation
+
+Manual recovery sada ima server-only DB claim/audit foundation. Samo `creating` ledger može dobiti aktivan recovery attempt; baza izdaje random claim token, ograničeni lease i rastući attempt number. Partial unique indeks i zaključavanje checkout reda obezbeđuju najviše jedan aktivan claim po checkoutu i environmentu. Istekli claim se prvo označava kao `abandoned`, pa tek onda može nastati novi attempt; stari token ne može završiti novi attempt.
+
+Claim RPC vraća samo minimalne trusted ledger činjenice potrebne budućem operator servisu. `open` i `completed` ledgeri vraćaju read-only terminalni rezultat bez recovery attempta, dok `failed`, `expired` i `cancelled` ostaju terminalni/manual-review slučajevi. Complete RPC završava samo sanitizovani audit attempt i ne menja checkout ili subscription stanje.
+
+Budući provider HTTP poziv mora se izvršavati izvan DB transakcije, između claim i complete poziva. Ova faza sama ne poziva provider, nema API route, secret ni schedule, i ne menja checkout ledger, `provider_session_id` niti subscriptions. Live ostaje dormant. Token-authoritative `creating → open` finalizacija još nije implementirana.

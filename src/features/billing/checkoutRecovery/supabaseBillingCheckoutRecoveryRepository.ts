@@ -101,7 +101,7 @@ export function parseCheckoutRecoveryClaimRow(value: unknown, trustedEnvironment
     ledgerStatus: row.ledger_status,
     provider: "lemonsqueezy",
     environment: trustedEnvironment,
-    providerSessionId: providerId(row.provider_session_id, true, code),
+    providerSessionId: claimed ? providerId(row.provider_session_id, true, code) : null,
     requestedPlanId: uuid(row.requested_plan_id, code),
     salonId: uuid(row.salon_id, code),
     idempotencyKey: uuid(row.idempotency_key, code),

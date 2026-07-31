@@ -38,6 +38,27 @@ test("claim parser accepts every contracted outcome with strict token consistenc
   }
 });
 
+test("terminal claim outcomes ignore legacy provider session IDs", () => {
+  for (const [claim_outcome, ledger_status, provider_session_id] of [
+    ["already_completed", "completed", "70000000-0000-4000-8000-000000000001"],
+    ["already_open", "open", "70000000-0000-4000-8000-000000000001"],
+    ["already_claimed", "creating", "malformed"],
+    ["manual_review", "failed", "malformed"],
+  ] as const) {
+    const parsed = parseCheckoutRecoveryClaimRow(claim({
+      claim_outcome, ledger_status, provider_session_id,
+      recovery_attempt_id: null, claim_token: null,
+    }), "test");
+    assert.equal(parsed.providerSessionId, null);
+  }
+});
+
+test("claimed outcome keeps strict provider session ID validation", () => {
+  assert.throws(() => parseCheckoutRecoveryClaimRow(claim({ provider_session_id: "70000000-0000-4000-8000-000000000001" }), "test"), BillingCheckoutRecoveryRepositoryError);
+  assert.equal(parseCheckoutRecoveryClaimRow(claim({ provider_session_id: "123" }), "test").providerSessionId, "123");
+  assert.equal(parseCheckoutRecoveryClaimRow(claim({ provider_session_id: null }), "test").providerSessionId, null);
+});
+
 test("claim parser rejects unknown authority, inconsistent tokens and malformed facts", () => {
   for (const overrides of [
     { claim_outcome: "private" }, { environment: "live" }, { provider: "stripe" },

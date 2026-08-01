@@ -186,7 +186,8 @@ async function scenarioIdentical() {
   const hash = "1".repeat(64);
   const expiry = new Date(Date.now() + 3_600_000).toISOString();
   sql(fixtureSql([fixture]), label);
-  const call = finalizerCallOnly(fixture, "81001", hash, expiry);
+  const providerId = "81010000-0000-0000-0000-000000000001";
+  const call = finalizerCallOnly(fixture, providerId, hash, expiry);
   const outputs = await concurrentPair(label, call, call, 33001);
   const outcomes = outputs.map(outcome).sort();
   if (outcomes.join(",") !== "already_finalized,finalized") fail(label, `unexpected outcomes: ${outcomes}`);
@@ -196,7 +197,7 @@ async function scenarioIdentical() {
     'attemptCount',(select count(*) from public.billing_checkout_recovery_attempts x where x.checkout_session_id=c.id)
   )::text from public.billing_checkout_sessions c join public.billing_checkout_recovery_attempts a on a.checkout_session_id=c.id
   where c.id=${quote(fixture.checkoutId)}::uuid`, label);
-  if (state.ledgerStatus !== "open" || state.providerId !== "81001" || state.hash !== hash || !state.expiryMatches
+  if (state.ledgerStatus !== "open" || state.providerId !== providerId || state.hash !== hash || !state.expiryMatches
     || state.attemptStatus !== "completed" || state.audit !== "recovered_open" || state.attemptCount !== 1) fail(label, JSON.stringify(state));
   console.log("SCENARIO 1 PASS: identical finalizers -> finalized + already_finalized");
 }
@@ -208,14 +209,14 @@ async function scenarioDifferentIds() {
   const expiry = new Date(Date.now() + 3_600_000).toISOString();
   sql(fixtureSql([fixture]), label);
   const outputs = await concurrentPair(label,
-    finalizerCallOnly(fixture, "82001", hash, expiry),
-    finalizerCallOnly(fixture, "82002", hash, expiry), 33002);
+    finalizerCallOnly(fixture, "82010000-0000-0000-0000-000000000001", hash, expiry),
+    finalizerCallOnly(fixture, "82020000-0000-0000-0000-000000000002", hash, expiry), 33002);
   const outcomes = outputs.map(outcome).sort();
   if (outcomes.join(",") !== "finalization_conflict,finalized") fail(label, `unexpected outcomes: ${outcomes}`);
   const state = jsonQuery(`select pg_catalog.json_build_object('providerId',c.provider_session_id,'status',c.status,
     'attemptStatus',a.status,'audit',a.outcome) from public.billing_checkout_sessions c
     join public.billing_checkout_recovery_attempts a on a.checkout_session_id=c.id where c.id=${quote(fixture.checkoutId)}::uuid`, label);
-  if (!["82001", "82002"].includes(state.providerId) || state.status !== "open" || state.attemptStatus !== "completed" || state.audit !== "recovered_open") fail(label, JSON.stringify(state));
+  if (!["82010000-0000-0000-0000-000000000001", "82020000-0000-0000-0000-000000000002"].includes(state.providerId) || state.status !== "open" || state.attemptStatus !== "completed" || state.audit !== "recovered_open") fail(label, JSON.stringify(state));
   console.log("SCENARIO 2 PASS: different IDs -> finalized + finalization_conflict");
 }
 
@@ -225,13 +226,14 @@ async function scenarioProviderCollision() {
   const rightFixture = newFixture();
   const expiry = new Date(Date.now() + 3_600_000).toISOString();
   sql(fixtureSql([leftFixture, rightFixture]), label);
+  const providerId = "83010000-0000-0000-0000-000000000001";
   const outputs = await concurrentPair(label,
-    finalizerCallOnly(leftFixture, "83001", "3".repeat(64), expiry),
-    finalizerCallOnly(rightFixture, "83001", "4".repeat(64), expiry), 33003);
+    finalizerCallOnly(leftFixture, providerId, "3".repeat(64), expiry),
+    finalizerCallOnly(rightFixture, providerId, "4".repeat(64), expiry), 33003);
   const outcomes = outputs.map(outcome).sort();
   if (outcomes.join(",") !== "finalized,provider_id_conflict") fail(label, `unexpected outcomes: ${outcomes}`);
   const state = jsonQuery(`select pg_catalog.json_build_object(
-    'idCount',count(*) filter(where c.provider_session_id='83001'),
+    'idCount',count(*) filter(where c.provider_session_id=${quote(providerId)}),
     'openRecovered',count(*) filter(where c.status='open' and a.status='completed' and a.outcome='recovered_open'),
     'creatingManual',count(*) filter(where c.status='creating' and c.provider_session_id is null and a.status='completed' and a.outcome='manual_review')
   ) from public.billing_checkout_sessions c join public.billing_checkout_recovery_attempts a on a.checkout_session_id=c.id
@@ -250,7 +252,7 @@ async function scenarioLockPastLease() {
     \\echo LEDGER_LOCKED
     select pg_catalog.pg_sleep(3); commit;`, `${label}:holder`);
   await holder.waitFor("LEDGER_LOCKED");
-  const finalizer = startSession(finalizerSql(fixture, "84001", "5".repeat(64), new Date(Date.now() + 60_000).toISOString()), `${label}:finalizer`);
+  const finalizer = startSession(finalizerSql(fixture, "84010000-0000-0000-0000-000000000001", "5".repeat(64), new Date(Date.now() + 60_000).toISOString()), `${label}:finalizer`);
   const [output] = await Promise.all([finalizer.done, holder.done]);
   if (outcome(output) !== "claim_lost") fail(label, output);
   const state = jsonQuery(`select pg_catalog.json_build_object('ledger',c.status,'providerId',c.provider_session_id,'attempt',a.status,'audit',a.outcome)
@@ -269,7 +271,7 @@ async function scenarioLockPastProviderExpiry() {
     \\echo LEDGER_LOCKED
     select pg_catalog.pg_sleep(3); commit;`, `${label}:holder`);
   await holder.waitFor("LEDGER_LOCKED");
-  const finalizer = startSession(finalizerSql(fixture, "85001", "6".repeat(64), expiry), `${label}:finalizer`);
+  const finalizer = startSession(finalizerSql(fixture, "85010000-0000-0000-0000-000000000001", "6".repeat(64), expiry), `${label}:finalizer`);
   const [output] = await Promise.all([finalizer.done, holder.done]);
   if (outcome(output) !== "provider_checkout_expired") fail(label, output);
   const state = jsonQuery(`select pg_catalog.json_build_object('ledger',c.status,'providerId',c.provider_session_id,'attempt',a.status,'audit',a.outcome)
@@ -290,7 +292,7 @@ async function scenarioGenericCompletionRace() {
       ${quote(fixture.attemptId)}::uuid,${quote(fixture.token)}::uuid,'test','still_pending',clock_timestamp());
     commit;`, `${label}:generic`);
   await holder.waitFor("LEDGER_LOCKED");
-  const finalizer = startSession(finalizerSql(fixture, "86001", "7".repeat(64), new Date(Date.now() + 60_000).toISOString()), `${label}:finalizer`);
+  const finalizer = startSession(finalizerSql(fixture, "86010000-0000-0000-0000-000000000001", "7".repeat(64), new Date(Date.now() + 60_000).toISOString()), `${label}:finalizer`);
   const [finalizerOutput, genericOutput] = await Promise.all([finalizer.done, holder.done]);
   if (!genericOutput.includes("completed|completed|still_pending") || outcome(finalizerOutput) !== "attempt_state_conflict") fail(label, `${genericOutput}\n${finalizerOutput}`);
   const state = jsonQuery(`select pg_catalog.json_build_object('ledger',c.status,'providerId',c.provider_session_id,'attempt',a.status,'audit',a.outcome)
@@ -314,7 +316,7 @@ async function scenarioLifecycleRace() {
       where id=${quote(fixture.checkoutId)}::uuid;
     commit;`, `${label}:lifecycle`);
   await holder.waitFor("LEDGER_LOCKED");
-  const finalizer = startSession(finalizerSql(fixture, "87001", "8".repeat(64), new Date(Date.now() + 60_000).toISOString()), `${label}:finalizer`);
+  const finalizer = startSession(finalizerSql(fixture, "87010000-0000-0000-0000-000000000001", "8".repeat(64), new Date(Date.now() + 60_000).toISOString()), `${label}:finalizer`);
   const [output] = await Promise.all([finalizer.done, holder.done]);
   if (outcome(output) !== "ledger_state_conflict") fail(label, output);
   const state = jsonQuery(`select pg_catalog.json_build_object('ledger',c.status,'providerId',c.provider_session_id,'attempt',a.status,'audit',a.outcome)

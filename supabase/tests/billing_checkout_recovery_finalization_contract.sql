@@ -45,6 +45,8 @@ begin
      or pg_catalog.substr(v_def,v_attempt_lock_pos,v_clock_pos-v_attempt_lock_pos) not ilike '%for update%'
      or v_def ilike '%update public.subscriptions%'
      or v_def ilike '%p_now%'
+     or v_def not like '%^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$%'
+     or v_def like '%^[1-9][0-9]*$%'
      or v_complete_def ilike '%p_outcome not in (%recovered_open%' then
     raise exception 'CHECKOUT_RECOVERY_FINALIZER_DEFINITION_INVALID';
   end if;
@@ -133,7 +135,7 @@ begin
   if v_subscription is null then raise exception 'FINALIZATION_SUBSCRIPTION_FIXTURE_MISSING'; end if;
 
   -- Stable argument validation must happen before any mutation.
-  foreach v_status in array array['', '0', '-1', '1.5', 'abc', '70000000-0000-4000-8000-000000000001'] loop
+  foreach v_status in array array['', '7001', 'ABCDEFAB-CDEF-ABCD-EFAB-CDEFABCDEFAB', 'abcdefabcdefabcdefabcdefabcdefab', ' abcdefab-cdef-abcd-efab-cdefabcdefab', 'abcdefab-cdef-abcd-efab-cdefabcdefab ', 'abcdefab-cdef', 'abc'] loop
     v_rejected:=false;
     begin
       perform * from public.finalize_billing_checkout_recovery_v1(
@@ -145,17 +147,43 @@ begin
   end loop;
   v_rejected:=false;
   begin perform * from public.finalize_billing_checkout_recovery_v1(
-    extensions.gen_random_uuid(),extensions.gen_random_uuid(),'test','7001','ABC',v_expiry);
+    extensions.gen_random_uuid(),extensions.gen_random_uuid(),'test','70010000-0000-0000-0000-000000000001','ABC',v_expiry);
   exception when sqlstate '22023' then v_rejected:=sqlerrm='BILLING_CHECKOUT_RECOVERY_FINALIZATION_URL_HASH_INVALID'; end;
   if not v_rejected then raise exception 'INVALID_URL_HASH_ALLOWED'; end if;
   v_rejected:=false;
   begin perform * from public.finalize_billing_checkout_recovery_v1(
-    extensions.gen_random_uuid(),extensions.gen_random_uuid(),'test','7001',v_hash,null);
+    extensions.gen_random_uuid(),extensions.gen_random_uuid(),'test','70010000-0000-0000-0000-000000000001',v_hash,null);
   exception when sqlstate '22004' then v_rejected:=sqlerrm='BILLING_CHECKOUT_RECOVERY_FINALIZATION_EXPIRY_REQUIRED'; end;
   if not v_rejected then raise exception 'NULL_EXPIRY_ALLOWED'; end if;
 
   select * into v_fixture from pg_temp.make_recovery_fixture(
     v_salon,v_owner,v_plan,'test','creating',null,'claimed',null,interval '10 minutes');
+  -- Invalid Checkout IDs are rejected before either trusted row can mutate.
+  foreach v_status in array array[
+    null,'','7001','ABCDEFAB-CDEF-ABCD-EFAB-CDEFABCDEFAB',
+    'abcdefabcdefabcdefabcdefabcdefab',' abcdefab-cdef-abcd-efab-cdefabcdefab',
+    'abcdefab-cdef-abcd-efab-cdefabcdefab ','abcdefab-cdef','abc'
+  ] loop
+    select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_before
+    from public.billing_checkout_sessions c where c.id=v_fixture.checkout_id;
+    select pg_catalog.md5(pg_catalog.row_to_json(a)::text) into v_attempt_before
+    from public.billing_checkout_recovery_attempts a where a.id=v_fixture.attempt_id;
+    v_rejected:=false;
+    begin
+      perform * from public.finalize_billing_checkout_recovery_v1(
+        v_fixture.attempt_id,v_fixture.claim_token,'test',v_status,v_hash,v_expiry);
+    exception when sqlstate '22023' then
+      v_rejected:=sqlerrm='BILLING_CHECKOUT_RECOVERY_FINALIZATION_PROVIDER_ID_INVALID';
+    end;
+    select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_after
+    from public.billing_checkout_sessions c where c.id=v_fixture.checkout_id;
+    select pg_catalog.md5(pg_catalog.row_to_json(a)::text) into v_attempt_after
+    from public.billing_checkout_recovery_attempts a where a.id=v_fixture.attempt_id;
+    if not v_rejected or v_before is distinct from v_after
+       or v_attempt_before is distinct from v_attempt_after then
+      raise exception 'INVALID_PROVIDER_ID_MUTATED_STATE';
+    end if;
+  end loop;
   foreach v_nonfinite in array array['infinity'::timestamptz,'-infinity'::timestamptz] loop
     select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_before
     from public.billing_checkout_sessions c where c.id=v_fixture.checkout_id;
@@ -163,7 +191,7 @@ begin
     from public.billing_checkout_recovery_attempts a where a.id=v_fixture.attempt_id;
     v_rejected:=false;
     begin perform * from public.finalize_billing_checkout_recovery_v1(
-      v_fixture.attempt_id,v_fixture.claim_token,'test','7002',v_hash,v_nonfinite);
+      v_fixture.attempt_id,v_fixture.claim_token,'test','70020000-0000-0000-0000-000000000002',v_hash,v_nonfinite);
     exception when sqlstate '22023' then
       v_rejected:=sqlerrm='BILLING_CHECKOUT_RECOVERY_FINALIZATION_EXPIRY_INVALID';
     end;
@@ -194,13 +222,13 @@ begin
   select pg_catalog.md5(pg_catalog.row_to_json(s)::text) into v_subscription_before
   from public.subscriptions s where id=v_subscription;
   select * into v_result from public.finalize_billing_checkout_recovery_v1(
-    v_fixture.attempt_id,v_fixture.claim_token,'test','7101',v_hash,v_expiry);
+    v_fixture.attempt_id,v_fixture.claim_token,'test','71010000-0000-0000-0000-000000000001',v_hash,v_expiry);
   if v_result.finalization_outcome<>'finalized' or v_result.ledger_status<>'open'
      or v_result.attempt_status<>'completed' or v_result.audit_outcome<>'recovered_open'
      or v_result.attempt_completed_at is null then raise exception 'FINALIZATION_SUCCESS_INVALID'; end if;
   if not exists(
     select 1 from public.billing_checkout_sessions c
-    where c.id=v_fixture.checkout_id and c.status='open' and c.provider_session_id='7101'
+    where c.id=v_fixture.checkout_id and c.status='open' and c.provider_session_id='71010000-0000-0000-0000-000000000001'
       and c.checkout_url_hash=v_hash and c.expires_at=v_expiry and c.error_code is null
       and c.failed_at is null and c.completed_at is null
       and c.provider_order_id='preserved-order' and c.resulting_subscription_id=v_subscription
@@ -216,7 +244,7 @@ begin
   select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_before
   from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   select * into v_result from public.finalize_billing_checkout_recovery_v1(
-    v_fixture.attempt_id,v_fixture.claim_token,'test','7101',v_hash,v_expiry);
+    v_fixture.attempt_id,v_fixture.claim_token,'test','71010000-0000-0000-0000-000000000001',v_hash,v_expiry);
   select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_after
   from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   if v_result.finalization_outcome<>'already_finalized' or v_before is distinct from v_after then
@@ -225,7 +253,7 @@ begin
   for v_status in select value from (values('id'),('hash'),('expiry')) x(value) loop
     select * into v_result from public.finalize_billing_checkout_recovery_v1(
       v_fixture.attempt_id,v_fixture.claim_token,'test',
-      case when v_status='id' then '7102' else '7101' end,
+      case when v_status='id' then '71020000-0000-0000-0000-000000000002' else '71010000-0000-0000-0000-000000000001' end,
       case when v_status='hash' then v_hash_2 else v_hash end,
       case when v_status='expiry' then v_expiry+interval '1 minute' else v_expiry end);
     if v_result.finalization_outcome<>'finalization_conflict' then raise exception 'REPLAY_CONFLICT_NOT_DETECTED:%',v_status; end if;
@@ -233,20 +261,20 @@ begin
 
   -- Missing, wrong-token and environment mismatch never mutate.
   select * into v_result from public.finalize_billing_checkout_recovery_v1(
-    extensions.gen_random_uuid(),extensions.gen_random_uuid(),'test','7201',v_hash,v_expiry);
+    extensions.gen_random_uuid(),extensions.gen_random_uuid(),'test','72010000-0000-0000-0000-000000000001',v_hash,v_expiry);
   if v_result.finalization_outcome<>'claim_lost' then raise exception 'MISSING_ATTEMPT_NOT_CLAIM_LOST'; end if;
   select * into v_fixture from pg_temp.make_recovery_fixture(
     v_salon,v_owner,v_plan,'test','creating',null,'claimed',null,interval '10 minutes');
   select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_before from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   select pg_catalog.md5(pg_catalog.row_to_json(a)::text) into v_attempt_before from public.billing_checkout_recovery_attempts a where id=v_fixture.attempt_id;
   select * into v_result from public.finalize_billing_checkout_recovery_v1(
-    v_fixture.attempt_id,extensions.gen_random_uuid(),'test','7202',v_hash,v_expiry);
+    v_fixture.attempt_id,extensions.gen_random_uuid(),'test','72020000-0000-0000-0000-000000000002',v_hash,v_expiry);
   select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_after from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   select pg_catalog.md5(pg_catalog.row_to_json(a)::text) into v_attempt_after from public.billing_checkout_recovery_attempts a where id=v_fixture.attempt_id;
   if v_result.finalization_outcome<>'claim_lost' or v_before is distinct from v_after
      or v_attempt_before is distinct from v_attempt_after then raise exception 'WRONG_TOKEN_MUTATED'; end if;
   select * into v_result from public.finalize_billing_checkout_recovery_v1(
-    v_fixture.attempt_id,v_fixture.claim_token,'live','7202',v_hash,v_expiry);
+    v_fixture.attempt_id,v_fixture.claim_token,'live','72020000-0000-0000-0000-000000000002',v_hash,v_expiry);
   select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_after from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   select pg_catalog.md5(pg_catalog.row_to_json(a)::text) into v_attempt_after from public.billing_checkout_recovery_attempts a where id=v_fixture.attempt_id;
   if v_result.finalization_outcome<>'claim_lost' or v_before is distinct from v_after
@@ -254,10 +282,10 @@ begin
 
   -- A creating ledger with any existing provider ID is a manual-review conflict.
   select * into v_fixture from pg_temp.make_recovery_fixture(
-    v_salon,v_owner,v_plan,'test','creating','7251','claimed',null,interval '10 minutes');
+    v_salon,v_owner,v_plan,'test','creating','72510000-0000-0000-0000-000000000001','claimed',null,interval '10 minutes');
   select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_before from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   select * into v_result from public.finalize_billing_checkout_recovery_v1(
-    v_fixture.attempt_id,v_fixture.claim_token,'test','7251',v_hash,v_expiry);
+    v_fixture.attempt_id,v_fixture.claim_token,'test','72510000-0000-0000-0000-000000000001',v_hash,v_expiry);
   select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_after from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   if v_result.finalization_outcome<>'ledger_state_conflict' or v_result.attempt_status<>'completed'
      or v_result.audit_outcome<>'manual_review' or v_before is distinct from v_after then
@@ -268,27 +296,27 @@ begin
   select * into v_fixture from pg_temp.make_recovery_fixture(
     v_salon,v_owner,v_plan,'test','creating',null,'completed','still_pending',interval '10 minutes');
   select * into v_result from public.finalize_billing_checkout_recovery_v1(
-    v_fixture.attempt_id,v_fixture.claim_token,'test','7301',v_hash,v_expiry);
+    v_fixture.attempt_id,v_fixture.claim_token,'test','73010000-0000-0000-0000-000000000001',v_hash,v_expiry);
   if v_result.finalization_outcome<>'attempt_state_conflict' or v_result.audit_outcome<>'still_pending' then
     raise exception 'COMPLETED_NON_RECOVERED_INVALID'; end if;
   select * into v_fixture from pg_temp.make_recovery_fixture(
     v_salon,v_owner,v_plan,'test','creating',null,'abandoned','claim_lost',interval '-1 second');
   select * into v_result from public.finalize_billing_checkout_recovery_v1(
-    v_fixture.attempt_id,v_fixture.claim_token,'test','7302',v_hash,v_expiry);
+    v_fixture.attempt_id,v_fixture.claim_token,'test','73020000-0000-0000-0000-000000000002',v_hash,v_expiry);
   if v_result.finalization_outcome<>'claim_lost' or v_result.attempt_status<>'abandoned' then raise exception 'ABANDONED_INVALID'; end if;
 
   -- Expired active lease and expired provider checkout have distinct audits.
   select * into v_fixture from pg_temp.make_recovery_fixture(
     v_salon,v_owner,v_plan,'test','creating',null,'claimed',null,interval '-1 second');
   select * into v_result from public.finalize_billing_checkout_recovery_v1(
-    v_fixture.attempt_id,v_fixture.claim_token,'test','7401',v_hash,v_expiry);
+    v_fixture.attempt_id,v_fixture.claim_token,'test','74010000-0000-0000-0000-000000000001',v_hash,v_expiry);
   if v_result.finalization_outcome<>'claim_lost' or v_result.attempt_status<>'abandoned' or v_result.audit_outcome<>'claim_lost' then
     raise exception 'EXPIRED_LEASE_INVALID'; end if;
   select * into v_fixture from pg_temp.make_recovery_fixture(
     v_salon,v_owner,v_plan,'test','creating',null,'claimed',null,interval '10 minutes');
   select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_before from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   select * into v_result from public.finalize_billing_checkout_recovery_v1(
-    v_fixture.attempt_id,v_fixture.claim_token,'test','7402',v_hash,pg_catalog.clock_timestamp()-interval '1 second');
+    v_fixture.attempt_id,v_fixture.claim_token,'test','74020000-0000-0000-0000-000000000002',v_hash,pg_catalog.clock_timestamp()-interval '1 second');
   select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_after from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   if v_result.finalization_outcome<>'provider_checkout_expired' or v_result.attempt_status<>'completed'
      or v_result.audit_outcome<>'invalid_candidate' or v_before is distinct from v_after then
@@ -296,12 +324,12 @@ begin
 
   -- Provider ID collision completes audit/manual_review without ledger mutation.
   select * into v_other from pg_temp.make_recovery_fixture(
-    v_salon,v_owner,v_plan,'test','open','7501','completed','still_pending',interval '10 minutes');
+    v_salon,v_owner,v_plan,'test','open','75010000-0000-0000-0000-000000000001','completed','still_pending',interval '10 minutes');
   select * into v_fixture from pg_temp.make_recovery_fixture(
     v_salon,v_owner,v_plan,'test','creating',null,'claimed',null,interval '10 minutes');
   select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_before from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   select * into v_result from public.finalize_billing_checkout_recovery_v1(
-    v_fixture.attempt_id,v_fixture.claim_token,'test','7501',v_hash,v_expiry);
+    v_fixture.attempt_id,v_fixture.claim_token,'test','75010000-0000-0000-0000-000000000001',v_hash,v_expiry);
   select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_after from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   if v_result.finalization_outcome<>'provider_id_conflict' or v_result.audit_outcome<>'manual_review'
      or v_result.attempt_status<>'completed' or v_before is distinct from v_after then
@@ -315,7 +343,7 @@ begin
       'claimed',null,interval '10 minutes');
     select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_before from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
     select * into v_result from public.finalize_billing_checkout_recovery_v1(
-      v_fixture.attempt_id,v_fixture.claim_token,'test','760'||array_position(array['open','completed','failed','cancelled','expired'],v_status),v_hash,v_expiry);
+      v_fixture.attempt_id,v_fixture.claim_token,'test','76000000-0000-0000-0000-000000000001',v_hash,v_expiry);
     select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_after from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
     if v_result.finalization_outcome<>'ledger_state_conflict' or v_result.attempt_status<>'completed'
        or v_result.audit_outcome<>'manual_review' or v_before is distinct from v_after then
@@ -358,7 +386,7 @@ begin
   from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   begin
     perform * from public.finalize_billing_checkout_recovery_v1(
-      v_fixture.attempt_id,v_fixture.claim_token,'test','7901',repeat('c',64),pg_catalog.clock_timestamp()+interval '30 minutes');
+      v_fixture.attempt_id,v_fixture.claim_token,'test','79010000-0000-0000-0000-000000000001',repeat('c',64),pg_catalog.clock_timestamp()+interval '30 minutes');
   exception when raise_exception then v_rejected:=sqlerrm='TEST_SECOND_UPDATE_FAILURE'; end;
   select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_after
   from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
@@ -411,7 +439,7 @@ begin
   from public.billing_checkout_recovery_attempts a where id=v_fixture.attempt_id;
   begin
     perform * from public.finalize_billing_checkout_recovery_v1(
-      v_fixture.attempt_id,v_fixture.claim_token,'test','7951',repeat('e',64),pg_catalog.clock_timestamp()+interval '30 minutes');
+      v_fixture.attempt_id,v_fixture.claim_token,'test','79510000-0000-0000-0000-000000000001',repeat('e',64),pg_catalog.clock_timestamp()+interval '30 minutes');
   exception when unique_violation then
     get stacked diagnostics v_constraint_name=constraint_name;
     v_rejected:=v_constraint_name='synthetic_unrelated_unique_constraint';

@@ -5,6 +5,10 @@ import type {
 } from "./billingProvider.ts";
 import { BillingCheckoutError } from "./billingCheckoutErrors.ts";
 import { expectedLemonSqueezyTestMode } from "../config/billingEnvironment.ts";
+import {
+  parseLemonSqueezyCheckoutId,
+  parseLemonSqueezyNumericObjectId,
+} from "./lemonSqueezyResourceIds.ts";
 
 const API_URL = "https://api.lemonsqueezy.com/v1/checkouts";
 const JSON_API = "application/vnd.api+json";
@@ -20,13 +24,6 @@ type LemonSqueezyCheckoutResponse = {
     };
   };
 };
-
-function positiveIntegerId(value: string) {
-  if (!/^\d+$/.test(value)) {
-    throw new BillingCheckoutError("BILLING_PRICE_MAPPING_MISSING", 503);
-  }
-  return value;
-}
 
 export class LemonSqueezyCheckoutCore implements BillingProvider {
   private readonly apiKey: string;
@@ -47,8 +44,14 @@ export class LemonSqueezyCheckoutCore implements BillingProvider {
     input: CreateCheckoutSessionInput,
   ): Promise<CreateCheckoutSessionResult> {
     const expectedTestMode = expectedLemonSqueezyTestMode(input.environment);
-    const storeId = positiveIntegerId(input.providerStoreId);
-    const variantId = positiveIntegerId(input.providerVariantId);
+    let storeId: string;
+    let variantId: string;
+    try {
+      storeId = parseLemonSqueezyNumericObjectId(input.providerStoreId);
+      variantId = parseLemonSqueezyNumericObjectId(input.providerVariantId);
+    } catch {
+      throw new BillingCheckoutError("BILLING_PRICE_MAPPING_MISSING", 503);
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
@@ -110,8 +113,6 @@ export class LemonSqueezyCheckoutCore implements BillingProvider {
       const providerExpiresAt = payload.data?.attributes?.expires_at;
       if (
         payload.data?.type !== "checkouts" ||
-        typeof id !== "string" ||
-        !id.trim() ||
         typeof checkoutUrl !== "string" ||
         payload.data.attributes?.test_mode !== expectedTestMode
       ) {
@@ -120,6 +121,7 @@ export class LemonSqueezyCheckoutCore implements BillingProvider {
           503,
         );
       }
+      const providerSessionId = parseLemonSqueezyCheckoutId(id);
       if (
         providerExpiresAt !== null &&
         providerExpiresAt !== undefined &&
@@ -141,7 +143,7 @@ export class LemonSqueezyCheckoutCore implements BillingProvider {
 
       return {
         provider: "lemonsqueezy",
-        providerSessionId: id,
+        providerSessionId,
         checkoutUrl,
         expiresAt:
           providerExpiresAt ?? input.expiresAt,

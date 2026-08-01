@@ -5,6 +5,10 @@ import {
   type LemonSqueezyProviderEnvironment,
 } from "../config/lemonSqueezyProviderConfigCore.ts";
 import { expectedLemonSqueezyTestMode } from "../config/billingEnvironment.ts";
+import {
+  parseLemonSqueezyCheckoutId,
+  parseLemonSqueezyNumericObjectId,
+} from "./lemonSqueezyResourceIds.ts";
 
 const API_ORIGIN = "https://api.lemonsqueezy.com";
 const CHECKOUT_PATH = "/v1/checkouts";
@@ -56,11 +60,20 @@ function object(value: unknown): JsonObject {
   return value as JsonObject;
 }
 
-function providerId(value: unknown): string {
-  if ((typeof value !== "string" && typeof value !== "number") || !POSITIVE_INTEGER_PATTERN.test(String(value))) {
+function checkoutId(value: unknown): string {
+  try {
+    return parseLemonSqueezyCheckoutId(value);
+  } catch {
     throw new LemonSqueezyCheckoutRetrievalError("invalid_provider_response");
   }
-  return String(value);
+}
+
+function numericObjectId(value: unknown): string {
+  try {
+    return parseLemonSqueezyNumericObjectId(value);
+  } catch {
+    throw new LemonSqueezyCheckoutRetrievalError("invalid_provider_response");
+  }
 }
 
 function date(value: unknown, nullable = false): string | null {
@@ -127,9 +140,9 @@ function normalizeCheckoutResource(resource: unknown): LemonSqueezyRetrievedChec
     : object(checkoutData.custom);
 
   return {
-    providerCheckoutId: providerId(data.id),
-    storeId: providerId(attributes.store_id),
-    variantId: providerId(attributes.variant_id),
+    providerCheckoutId: checkoutId(data.id),
+    storeId: numericObjectId(attributes.store_id),
+    variantId: numericObjectId(attributes.variant_id),
     customCheckoutSessionId: optionalUuid(custom?.checkout_session_id),
     customSalonId: optionalUuid(custom?.salon_id),
     customPlanCode: optionalPlan(custom?.plan_code),
@@ -154,7 +167,7 @@ export function resolveLemonSqueezyCheckoutRetrievalConfig<Environment extends B
 }
 
 function encodedProviderCheckoutId(id: string) {
-  return encodeURIComponent(providerId(id));
+  return encodeURIComponent(checkoutId(id));
 }
 
 export function buildLemonSqueezyCheckoutRetrieveRequest(
@@ -197,8 +210,8 @@ export function buildLemonSqueezyCheckoutListRequest(
   input: LemonSqueezyCheckoutListInput,
   config: LemonSqueezyProviderConfig,
 ) {
-  const storeId = providerId(input.storeId);
-  const variantId = providerId(input.variantId);
+  const storeId = numericObjectId(input.storeId);
+  const variantId = numericObjectId(input.variantId);
   if (storeId !== config.storeId) {
     throw new LemonSqueezyCheckoutRetrievalError("configuration_error");
   }
@@ -325,12 +338,19 @@ export class LemonSqueezyCheckoutRetrievalClient {
   }
 
   async retrieveById(providerCheckoutId: string) {
+    const requestedProviderCheckoutId = checkoutId(providerCheckoutId);
     const payload = await this.request(
-      buildLemonSqueezyCheckoutRetrieveRequest(providerCheckoutId, this.config),
+      buildLemonSqueezyCheckoutRetrieveRequest(
+        requestedProviderCheckoutId,
+        this.config,
+      ),
       "retrieve",
     );
     const checkout = parseLemonSqueezyCheckoutResponse(payload);
-    if (checkout.testMode !== expectedLemonSqueezyTestMode(this.config.environment)) {
+    if (
+      checkout.providerCheckoutId !== requestedProviderCheckoutId ||
+      checkout.testMode !== expectedLemonSqueezyTestMode(this.config.environment)
+    ) {
       throw new LemonSqueezyCheckoutRetrievalError("invalid_provider_response");
     }
     return checkout;
@@ -409,7 +429,10 @@ function validatesExactCandidate(candidate: LemonSqueezyRetrievedCheckout, ledge
   const created = Date.parse(candidate.providerCreatedAt);
   const local = Date.parse(ledger.localCreatedAt);
   if (!Number.isFinite(local)) return false;
-  return POSITIVE_INTEGER_PATTERN.test(candidate.providerCheckoutId) &&
+  let validCheckoutId: string;
+  try { validCheckoutId = parseLemonSqueezyCheckoutId(candidate.providerCheckoutId); }
+  catch { return false; }
+  return validCheckoutId === candidate.providerCheckoutId &&
     candidate.storeId === ledger.expectedStoreId &&
     candidate.variantId === ledger.expectedVariantId &&
     candidate.testMode === expectedLemonSqueezyTestMode(ledger.environment) &&

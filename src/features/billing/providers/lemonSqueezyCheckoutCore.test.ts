@@ -4,6 +4,12 @@ import test from "node:test";
 import { LemonSqueezyCheckoutCore } from "./lemonSqueezyCheckoutCore.ts";
 import { BillingCheckoutError } from "./billingCheckoutErrors.ts";
 import type { CreateCheckoutSessionInput } from "./billingProvider.ts";
+import {
+  parseLemonSqueezyCheckoutId,
+  parseLemonSqueezyNumericObjectId,
+} from "./lemonSqueezyResourceIds.ts";
+
+const providerCheckoutId = "4a000000-0000-0000-0000-000000000001";
 
 const input: CreateCheckoutSessionInput = {
   checkoutSessionId: "10000000-0000-4000-8000-000000000004",
@@ -32,7 +38,7 @@ test("creates a test checkout from the server-owned variant without a custom pri
       return Response.json({
         data: {
           type: "checkouts",
-          id: "checkout-fixture",
+          id: providerCheckoutId,
           attributes: {
             url: "https://sandbox.example.invalid/checkout/fixture",
             expires_at: input.expiresAt,
@@ -44,7 +50,7 @@ test("creates a test checkout from the server-owned variant without a custom pri
   );
 
   const result = await provider.createCheckoutSession(input);
-  assert.equal(result.providerSessionId, "checkout-fixture");
+  assert.equal(result.providerSessionId, providerCheckoutId);
   assert.equal(capturedAuthorization, "Bearer test-secret-not-real");
   const serialized = JSON.stringify(capturedBody);
   assert.equal(serialized.includes("custom_price"), false);
@@ -69,7 +75,7 @@ test("creates live checkout mode only from the trusted input environment", async
     return Response.json({
       data: {
         type: "checkouts",
-        id: "live-checkout-fixture",
+        id: providerCheckoutId,
         attributes: {
           url: "https://live.example.invalid/checkout/fixture",
           expires_at: input.expiresAt,
@@ -92,7 +98,7 @@ test("provider mode mismatch fails closed for test and live", async () => {
       Response.json({
         data: {
           type: "checkouts",
-          id: "mismatch",
+          id: providerCheckoutId,
           attributes: {
             url: "https://example.invalid/checkout/mismatch",
             test_mode: responseTestMode,
@@ -114,9 +120,11 @@ test("every ambiguous 2xx result requires reconciliation in test and live", asyn
     ["malformed JSON", () => new Response("{", { status: 200 })],
     ["missing ID", (testMode: boolean) => Response.json({ data: { type: "checkouts", attributes: { url: "https://example.invalid/checkout", test_mode: testMode } } })],
     ["blank ID", (testMode: boolean) => Response.json({ data: { type: "checkouts", id: "   ", attributes: { url: "https://example.invalid/checkout", test_mode: testMode } } })],
-    ["missing URL", (testMode: boolean) => Response.json({ data: { type: "checkouts", id: "checkout-id", attributes: { test_mode: testMode } } })],
-    ["non-HTTPS URL", (testMode: boolean) => Response.json({ data: { type: "checkouts", id: "checkout-id", attributes: { url: "http://example.invalid/checkout", test_mode: testMode } } })],
-    ["wrong response type", (testMode: boolean) => Response.json({ data: { type: "subscriptions", id: "checkout-id", attributes: { url: "https://example.invalid/checkout", test_mode: testMode } } })],
+    ["integer ID", (testMode: boolean) => Response.json({ data: { type: "checkouts", id: "123", attributes: { url: "https://example.invalid/checkout", test_mode: testMode } } })],
+    ["uppercase UUID", (testMode: boolean) => Response.json({ data: { type: "checkouts", id: providerCheckoutId.toUpperCase(), attributes: { url: "https://example.invalid/checkout", test_mode: testMode } } })],
+    ["missing URL", (testMode: boolean) => Response.json({ data: { type: "checkouts", id: providerCheckoutId, attributes: { test_mode: testMode } } })],
+    ["non-HTTPS URL", (testMode: boolean) => Response.json({ data: { type: "checkouts", id: providerCheckoutId, attributes: { url: "http://example.invalid/checkout", test_mode: testMode } } })],
+    ["wrong response type", (testMode: boolean) => Response.json({ data: { type: "subscriptions", id: providerCheckoutId, attributes: { url: "https://example.invalid/checkout", test_mode: testMode } } })],
   ] as const;
 
   for (const environment of ["test", "live"] as const) {
@@ -167,7 +175,7 @@ test("nullable expiry falls back while malformed provider expiry requires reconc
       Response.json({
         data: {
           type: "checkouts",
-          id: "checkout-id",
+          id: providerCheckoutId,
           attributes: {
             url: "https://example.invalid/checkout",
             expires_at: providerExpiresAt,
@@ -185,7 +193,7 @@ test("nullable expiry falls back while malformed provider expiry requires reconc
       Response.json({
         data: {
           type: "checkouts",
-          id: "checkout-id",
+          id: providerCheckoutId,
           attributes: {
             url: "https://example.invalid/checkout",
             expires_at: providerExpiresAt,
@@ -201,6 +209,17 @@ test("nullable expiry falls back while malformed provider expiry requires reconc
         error.code === "BILLING_RECONCILIATION_REQUIRED",
     );
   }
+});
+
+test("Lemon Squeezy Checkout UUID and numeric object IDs use separate contracts", () => {
+  assert.equal(parseLemonSqueezyCheckoutId(providerCheckoutId), providerCheckoutId);
+  for (const value of [providerCheckoutId.toUpperCase(), "123", providerCheckoutId.replaceAll("-", ""), ` ${providerCheckoutId}`, providerCheckoutId.slice(0, -1), null, "", "checkout"])
+    assert.throws(() => parseLemonSqueezyCheckoutId(value));
+
+  assert.equal(parseLemonSqueezyNumericObjectId("123"), "123");
+  assert.equal(parseLemonSqueezyNumericObjectId(123), "123");
+  for (const value of [providerCheckoutId, "0", "-1", "1.5", "", "object"])
+    assert.throws(() => parseLemonSqueezyNumericObjectId(value));
 });
 
 test("sanitizes provider rejection and rejects malformed mappings", async () => {

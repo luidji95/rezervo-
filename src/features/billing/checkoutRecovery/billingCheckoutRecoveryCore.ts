@@ -87,12 +87,16 @@ export async function runBillingCheckoutRecovery(input: {
 
       if (claim.providerSessionId) {
         const checkout = await input.provider.retrieveById(claim.providerSessionId);
-        const correlation = correlateLemonSqueezyCheckoutCandidates(ledger, [checkout]);
-        outcome = correlation.outcome === "exact_match"
-          ? "still_pending"
-          : correlation.outcome === "not_found"
-            ? "invalid_candidate"
-            : correlation.outcome;
+        if (checkout.providerCheckoutId !== claim.providerSessionId) {
+          outcome = "invalid_candidate";
+        } else {
+          const correlation = correlateLemonSqueezyCheckoutCandidates(ledger, [checkout]);
+          outcome = correlation.outcome === "exact_match"
+            ? "still_pending"
+            : correlation.outcome === "not_found"
+              ? "invalid_candidate"
+              : correlation.outcome;
+        }
       } else {
         const firstPageUrl = input.provider.buildFirstListPageUrl({
           storeId: mapping.storeId,

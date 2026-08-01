@@ -22,6 +22,8 @@ const ledgerId = "10000000-0000-4000-8000-000000000001";
 const salonId = "20000000-0000-4000-8000-000000000001";
 const idempotencyKey = "30000000-0000-4000-8000-000000000001";
 const createdAt = "2026-07-31T10:00:00.000Z";
+const providerCheckoutId = "4a000000-0000-0000-0000-000000000001";
+const secondProviderCheckoutId = "4b000000-0000-0000-0000-000000000002";
 const jsonApiHeaders = { "content-type": "application/vnd.api+json" };
 
 function pageUrl(pageNumber: number, storeId = "10", variantId = "20") {
@@ -49,7 +51,7 @@ function resource(overrides: Record<string, unknown> = {}) {
     url: "https://app.lemonsqueezy.com/checkout/example?token=opaque",
     ...((overrides.attributes as Record<string, unknown> | undefined) ?? {}),
   };
-  return { type: "checkouts", id: "123", ...overrides, attributes };
+  return { type: "checkouts", id: providerCheckoutId, ...overrides, attributes };
 }
 
 function payload(overrides: Record<string, unknown> = {}) {
@@ -89,7 +91,7 @@ function invalidResponse(action: () => unknown | Promise<unknown>) {
 test("checkout parser normalizes test/live recovery fields and discards PII/raw data", () => {
   const parsed = parseLemonSqueezyCheckoutResponse(payload());
   assert.deepEqual(parsed, {
-    providerCheckoutId: "123", storeId: "10", variantId: "20",
+    providerCheckoutId, storeId: "10", variantId: "20",
     customCheckoutSessionId: ledgerId, customSalonId: salonId, customPlanCode: "pro",
     customIdempotencyKey: idempotencyKey, testMode: true,
     checkoutUrl: "https://app.lemonsqueezy.com/checkout/example?token=opaque",
@@ -111,7 +113,8 @@ test("checkout parser normalizes test/live recovery fields and discards PII/raw 
 
 test("checkout parser rejects malformed identity, mode, URL, dates and custom fields", async () => {
   const cases = [
-    { type: "subscriptions" }, { id: " " }, { attributes: { store_id: 0 } },
+    { type: "subscriptions" }, { id: " " }, { id: "123" },
+    { id: providerCheckoutId.toUpperCase() }, { attributes: { store_id: 0 } },
     { attributes: { variant_id: "variant" } }, { attributes: { test_mode: "true" } },
     { attributes: { url: "http://example.invalid" } }, { attributes: { created_at: "bad" } },
     { attributes: { updated_at: "bad" } }, { attributes: { expires_at: "bad" } },
@@ -146,9 +149,9 @@ test("canonical retrieval config isolates test and live credentials", () => {
   assert.throws(() => resolveLemonSqueezyCheckoutRetrievalConfig({ ...both, BILLING_ENVIRONMENT: "test", LEMONSQUEEZY_API_KEY: undefined }, "test"));
 });
 
-test("retrieve request accepts only a positive integer provider checkout ID and has no list fallback", async () => {
-  const request = buildLemonSqueezyCheckoutRetrieveRequest("123", config);
-  assert.equal(request.url, "https://api.lemonsqueezy.com/v1/checkouts/123");
+test("retrieve request accepts only a canonical lowercase Checkout UUID and has no list fallback", async () => {
+  const request = buildLemonSqueezyCheckoutRetrieveRequest(providerCheckoutId, config);
+  assert.equal(request.url, `https://api.lemonsqueezy.com/v1/checkouts/${providerCheckoutId}`);
   assert.equal(request.init.method, "GET");
   assert.equal(request.init.headers.Accept, "application/vnd.api+json");
   assert.equal(request.init.redirect, "error");
@@ -157,9 +160,9 @@ test("retrieve request accepts only a positive integer provider checkout ID and 
     calls.push(String(url));
     return Response.json(payload(), { headers: jsonApiHeaders });
   });
-  await client.retrieveById("123");
-  assert.deepEqual(calls, ["https://api.lemonsqueezy.com/v1/checkouts/123"]);
-  for (const invalidId of ["", " ", "123/opaque", "abc", "0", "-1", "1.5"]) {
+  await client.retrieveById(providerCheckoutId);
+  assert.deepEqual(calls, [`https://api.lemonsqueezy.com/v1/checkouts/${providerCheckoutId}`]);
+  for (const invalidId of ["", " ", "123", providerCheckoutId.toUpperCase(), providerCheckoutId.replaceAll("-", ""), `${providerCheckoutId} `, providerCheckoutId.slice(0, -1), "abc"]) {
     assert.throws(
       () => buildLemonSqueezyCheckoutRetrieveRequest(invalidId, config),
       (error: unknown) => error instanceof LemonSqueezyCheckoutRetrievalError && error.kind === "invalid_provider_response",
@@ -167,17 +170,31 @@ test("retrieve request accepts only a positive integer provider checkout ID and 
   }
 });
 
+test("retrieve rejects a valid response whose Checkout ID differs from the requested UUID", async () => {
+  const client = new LemonSqueezyCheckoutRetrievalClient(config, async () =>
+    Response.json(payload({ id: secondProviderCheckoutId }), {
+      headers: jsonApiHeaders,
+    }),
+  );
+  await assert.rejects(
+    () => client.retrieveById(providerCheckoutId),
+    (error: unknown) =>
+      error instanceof LemonSqueezyCheckoutRetrievalError &&
+      error.kind === "invalid_provider_response",
+  );
+});
+
 test("retrieve classifies provider and transport failures without raw details", async () => {
   for (const [status, kind] of [[401, "configuration_error"], [403, "configuration_error"], [404, "provider_not_found"], [429, "provider_unavailable"], [500, "provider_unavailable"]] as const) {
     const client = new LemonSqueezyCheckoutRetrievalClient(config, async () => new Response("private", { status }));
-    await assert.rejects(() => client.retrieveById("123"), (error: unknown) => error instanceof LemonSqueezyCheckoutRetrievalError && error.kind === kind && !error.message.includes("private"));
+    await assert.rejects(() => client.retrieveById(providerCheckoutId), (error: unknown) => error instanceof LemonSqueezyCheckoutRetrievalError && error.kind === kind && !error.message.includes("private"));
   }
   for (const fetchImpl of [
     async () => { throw new TypeError("network private"); },
     (_url: URL | RequestInfo, init?: RequestInit) => new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("private", "AbortError")))),
   ]) {
     const client = new LemonSqueezyCheckoutRetrievalClient(config, fetchImpl as typeof fetch, 5);
-    await assert.rejects(() => client.retrieveById("123"), (error: unknown) => error instanceof LemonSqueezyCheckoutRetrievalError && error.kind === "provider_unavailable");
+    await assert.rejects(() => client.retrieveById(providerCheckoutId), (error: unknown) => error instanceof LemonSqueezyCheckoutRetrievalError && error.kind === "provider_unavailable");
   }
 });
 
@@ -188,7 +205,7 @@ test("404 semantics are endpoint-aware and never turn a list failure into not-fo
     return new Response(null, { status: 404 });
   });
   await assert.rejects(
-    () => client.retrieveById("123"),
+    () => client.retrieveById(providerCheckoutId),
     (error: unknown) => error instanceof LemonSqueezyCheckoutRetrievalError && error.kind === "provider_not_found",
   );
 
@@ -207,7 +224,7 @@ test("404 semantics are endpoint-aware and never turn a list failure into not-fo
   );
   assert.equal(paginationSearchCalls, 0);
   assert.deepEqual(calls, [
-    "https://api.lemonsqueezy.com/v1/checkouts/123",
+    `https://api.lemonsqueezy.com/v1/checkouts/${providerCheckoutId}`,
     pageUrl(1),
   ]);
 });
@@ -221,21 +238,21 @@ test("retrieve rejects malformed 2xx, wrong content type and mode mismatch", asy
   ];
   for (const response of responses) {
     const client = new LemonSqueezyCheckoutRetrievalClient(config, async () => response());
-    await invalidResponse(() => client.retrieveById("123"));
+    await invalidResponse(() => client.retrieveById(providerCheckoutId));
   }
 });
 
 test("retrieve requires the exact JSON:API media type", async () => {
   for (const contentType of ["application/vnd.api+json", "application/vnd.api+json; charset=utf-8", "Application/Vnd.Api+Json; charset=utf-8"]) {
     const client = new LemonSqueezyCheckoutRetrievalClient(config, async () => Response.json(payload(), { headers: { "content-type": contentType } }));
-    assert.equal((await client.retrieveById("123")).providerCheckoutId, "123");
+    assert.equal((await client.retrieveById(providerCheckoutId)).providerCheckoutId, providerCheckoutId);
   }
   for (const contentType of ["application/json", "application/vnd.api+json-malicious", "text/application/vnd.api+json", ""]) {
     const client = new LemonSqueezyCheckoutRetrievalClient(config, async () => new Response(JSON.stringify(payload()), {
       status: 200,
       headers: contentType ? { "content-type": contentType } : {},
     }));
-    await invalidResponse(() => client.retrieveById("123"));
+    await invalidResponse(() => client.retrieveById(providerCheckoutId));
   }
 });
 
@@ -289,7 +306,7 @@ test("list parser supports empty/next pages and rejects malformed candidates or 
 test("correlation requires ledger ID plus environment, identity, window and corroboration", () => {
   assert.equal(correlateLemonSqueezyCheckoutCandidates(ledger(), [normalized()]).outcome, "exact_match");
   assert.equal(correlateLemonSqueezyCheckoutCandidates(ledger(), []).outcome, "not_found");
-  assert.equal(correlateLemonSqueezyCheckoutCandidates(ledger(), [normalized(), normalized({ providerCheckoutId: "124" })]).outcome, "ambiguous");
+  assert.equal(correlateLemonSqueezyCheckoutCandidates(ledger(), [normalized(), normalized({ providerCheckoutId: secondProviderCheckoutId })]).outcome, "ambiguous");
   const invalid: Partial<LemonSqueezyRetrievedCheckout>[] = [
     { testMode: false }, { storeId: "11" }, { variantId: "21" },
     { customSalonId: "20000000-0000-4000-8000-000000000002" },
@@ -302,7 +319,7 @@ test("correlation requires ledger ID plus environment, identity, window and corr
   assert.equal(correlateLemonSqueezyCheckoutCandidates(ledger({ environment: "live" }), [normalized()]).outcome, "invalid_candidate");
   assert.equal(correlateLemonSqueezyCheckoutCandidates(ledger(), [normalized({ customCheckoutSessionId: null })]).outcome, "not_found");
   assert.equal(correlateLemonSqueezyCheckoutCandidates(ledger(), [normalized({ customCheckoutSessionId: "10000000-0000-4000-8000-000000000002" })]).outcome, "not_found");
-  assert.equal(correlateLemonSqueezyCheckoutCandidates(ledger({ knownProviderCheckoutIds: new Set(["123"]) }), [normalized()]).outcome, "invalid_candidate");
+  assert.equal(correlateLemonSqueezyCheckoutCandidates(ledger({ knownProviderCheckoutIds: new Set([providerCheckoutId]) }), [normalized()]).outcome, "invalid_candidate");
 });
 
 test("page correlation distinguishes page miss from definitive search result", () => {
@@ -311,7 +328,7 @@ test("page correlation distinguishes page miss from definitive search result", (
 
 test("pagination continues after page miss and finds a later exact candidate", async () => {
   const pages = new Map<string, LemonSqueezyCheckoutPage>([
-    [pageUrl(1), { checkouts: [normalized({ providerCheckoutId: "900", customCheckoutSessionId: null, providerCreatedAt: "2026-07-31T10:02:00.000Z" })], nextPageUrl: pageUrl(2) }],
+    [pageUrl(1), { checkouts: [normalized({ providerCheckoutId: secondProviderCheckoutId, customCheckoutSessionId: null, providerCreatedAt: "2026-07-31T10:02:00.000Z" })], nextPageUrl: pageUrl(2) }],
     [pageUrl(2), { checkouts: [normalized()], nextPageUrl: null }],
   ]);
   const result = await searchLemonSqueezyCheckoutPages({ ledger: ledger(), firstPageUrl: pageUrl(1), fetchPage: async (url) => pages.get(url)! });
@@ -358,5 +375,5 @@ test("pagination limit is not treated as provider not-found", async () => {
 
 test("live client accepts only live-mode response", async () => {
   const client = new LemonSqueezyCheckoutRetrievalClient(liveConfig, async () => Response.json(payload({ attributes: { test_mode: false } }), { headers: jsonApiHeaders }));
-  assert.equal((await client.retrieveById("123")).testMode, false);
+  assert.equal((await client.retrieveById(providerCheckoutId)).testMode, false);
 });

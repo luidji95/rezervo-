@@ -6,9 +6,12 @@ import type {
   CheckoutRecoveryProviderMapping,
 } from "./billingCheckoutRecoveryRepository";
 import type { BillingEnvironment } from "../config/billingEnvironment";
+import {
+  parseLemonSqueezyCheckoutId,
+  parseLemonSqueezyNumericObjectId,
+} from "../providers/lemonSqueezyResourceIds.ts";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const PROVIDER_ID_PATTERN = /^[1-9]\d*$/;
 const TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/;
 const CLAIM_OUTCOMES = new Set(["claimed", "already_open", "already_completed", "already_claimed", "manual_review"]);
 const CHECKOUT_STATUSES = new Set(["creating", "open", "completed", "failed", "expired", "cancelled"]);
@@ -70,12 +73,16 @@ function timestamp(value: unknown, nullable: boolean, code: string) {
   ) fail(code);
   return value;
 }
-function providerId(value: unknown, nullable: true, code: string): string | null;
-function providerId(value: unknown, nullable: false, code: string): string;
-function providerId(value: unknown, nullable: boolean, code: string) {
+function checkoutId(value: unknown, nullable: true, code: string): string | null;
+function checkoutId(value: unknown, nullable: false, code: string): string;
+function checkoutId(value: unknown, nullable: boolean, code: string) {
   if (nullable && value === null) return null;
-  if (typeof value !== "string" || !PROVIDER_ID_PATTERN.test(value)) fail(code);
-  return value;
+  try { return parseLemonSqueezyCheckoutId(value); }
+  catch { fail(code); }
+}
+function numericObjectId(value: unknown, code: string): string {
+  try { return parseLemonSqueezyNumericObjectId(value); }
+  catch { fail(code); }
 }
 
 export function parseCheckoutRecoveryClaimRow(value: unknown, trustedEnvironment: BillingEnvironment): CheckoutRecoveryClaim {
@@ -101,7 +108,7 @@ export function parseCheckoutRecoveryClaimRow(value: unknown, trustedEnvironment
     ledgerStatus: row.ledger_status,
     provider: "lemonsqueezy",
     environment: trustedEnvironment,
-    providerSessionId: claimed ? providerId(row.provider_session_id, true, code) : null,
+    providerSessionId: claimed ? checkoutId(row.provider_session_id, true, code) : null,
     requestedPlanId: uuid(row.requested_plan_id, code),
     salonId: uuid(row.salon_id, code),
     idempotencyKey: uuid(row.idempotency_key, code),
@@ -133,8 +140,8 @@ export function parseCheckoutRecoveryMappingRows(value: unknown): CheckoutRecove
   const plans = object(row.plans, code);
   if (plans.slug !== "starter" && plans.slug !== "pro") fail(code);
   return {
-    storeId: providerId(row.provider_store_id, false, code),
-    variantId: providerId(row.provider_variant_id, false, code),
+    storeId: numericObjectId(row.provider_store_id, code),
+    variantId: numericObjectId(row.provider_variant_id, code),
     planCode: plans.slug,
   };
 }
@@ -145,9 +152,7 @@ export function parseKnownProviderCheckoutIdRows(value: unknown): ReadonlySet<st
   const ids = new Set<string>();
   for (const item of value) {
     const providerSessionId = object(item, code).provider_session_id;
-    if (typeof providerSessionId !== "string") fail(code);
-    if (PROVIDER_ID_PATTERN.test(providerSessionId)) ids.add(providerSessionId);
-    else if (!UUID_PATTERN.test(providerSessionId)) fail(code);
+    ids.add(checkoutId(providerSessionId, false, code));
   }
   return ids;
 }

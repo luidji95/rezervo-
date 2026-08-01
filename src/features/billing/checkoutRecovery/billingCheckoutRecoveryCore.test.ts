@@ -13,10 +13,12 @@ const salonId = "40000000-0000-4000-8000-000000000001";
 const planId = "50000000-0000-4000-8000-000000000001";
 const idempotency = "60000000-0000-4000-8000-000000000001";
 const createdAt = "2026-07-31T10:00:00.000Z";
+const providerCheckoutId = "7a000000-0000-0000-0000-000000000001";
+const secondProviderCheckoutId = "7b000000-0000-0000-0000-000000000002";
 
 function checkout(overrides: Partial<LemonSqueezyRetrievedCheckout> = {}): LemonSqueezyRetrievedCheckout {
   return {
-    providerCheckoutId: "123", storeId: "10", variantId: "20", customCheckoutSessionId: ledgerId,
+    providerCheckoutId, storeId: "10", variantId: "20", customCheckoutSessionId: ledgerId,
     customSalonId: salonId, customPlanCode: "pro", customIdempotencyKey: idempotency,
     testMode: true, checkoutUrl: "https://app.lemonsqueezy.com/checkout/opaque",
     expiresAt: "2026-07-31T10:30:00.000Z", providerCreatedAt: createdAt,
@@ -57,27 +59,39 @@ async function run(h = harness()) {
 }
 
 test("known provider ID uses retrieve only and exact match is audit-only still_pending", async () => {
-  const h = harness({ providerSessionId: "123" });
+  const h = harness({ providerSessionId: providerCheckoutId });
   assert.equal(await run(h), "still_pending");
   assert.deepEqual(h.calls, { claim: 1, complete: ["still_pending"], retrieve: 1, list: 0, mapping: 1, known: 1 });
 });
 
-test("legacy UUIDs in known ledgers do not block provider lookup", async () => {
+test("retrieve-by-ID mismatch is audited as invalid_candidate without list fallback", async () => {
+  const h = harness({ providerSessionId: providerCheckoutId });
+  h.provider.retrieveById = async () => {
+    h.calls.retrieve += 1;
+    return checkout({ providerCheckoutId: secondProviderCheckoutId });
+  };
+  assert.equal(await run(h), "invalid_candidate");
+  assert.equal(h.calls.retrieve, 1);
+  assert.equal(h.calls.list, 0);
+  assert.deepEqual(h.calls.complete, ["invalid_candidate"]);
+  assert.equal("markOpen" in h.repository, false);
+});
+
+test("known UUID Checkout IDs prevent reusing another ledger's provider checkout", async () => {
   const h = harness();
   h.repository.listKnownProviderCheckoutIds = async () => {
     h.calls.known += 1;
     return parseKnownProviderCheckoutIdRows([
-      { provider_session_id: "70000000-0000-4000-8000-000000000001" },
-      { provider_session_id: "456" },
+      { provider_session_id: providerCheckoutId },
     ]);
   };
-  assert.equal(await run(h), "still_pending");
+  assert.equal(await run(h), "invalid_candidate");
   assert.equal(h.calls.list, 1);
-  assert.deepEqual(h.calls.complete, ["still_pending"]);
+  assert.deepEqual(h.calls.complete, ["invalid_candidate"]);
 });
 
 test("retrieve 404 does not fall back to list and is audited provider_not_found", async () => {
-  const h = harness({ providerSessionId: "123" });
+  const h = harness({ providerSessionId: providerCheckoutId });
   h.provider.retrieveById = async () => { h.calls.retrieve += 1; throw new LemonSqueezyCheckoutRetrievalError("provider_not_found"); };
   assert.equal(await run(h), "provider_not_found");
   assert.equal(h.calls.list, 0); assert.deepEqual(h.calls.complete, ["provider_not_found"]);
@@ -90,7 +104,7 @@ test("missing provider ID uses bounded list correlation", async () => {
 });
 
 test("provider failures are audited and there is no automatic retry", async () => {
-  const h = harness({ providerSessionId: "123" });
+  const h = harness({ providerSessionId: providerCheckoutId });
   h.provider.retrieveById = async () => { h.calls.retrieve += 1; throw new LemonSqueezyCheckoutRetrievalError("provider_unavailable"); };
   assert.equal(await run(h), "provider_unavailable");
   assert.equal(h.calls.retrieve, 1); assert.deepEqual(h.calls.complete, ["provider_unavailable"]);
@@ -120,7 +134,7 @@ test("pagination exhaustion and ambiguous candidates are audited without mutatio
   assert.deepEqual(limit.calls.complete, ["pagination_limit_reached"]);
 
   const ambiguous = harness();
-  ambiguous.provider.fetchListPage = async () => ({ checkouts: [checkout(), checkout({ providerCheckoutId: "124" })], nextPageUrl: null });
+  ambiguous.provider.fetchListPage = async () => ({ checkouts: [checkout(), checkout({ providerCheckoutId: secondProviderCheckoutId })], nextPageUrl: null });
   assert.equal(await run(ambiguous), "ambiguous");
   assert.deepEqual(ambiguous.calls.complete, ["ambiguous"]);
 });
@@ -141,7 +155,7 @@ test("terminal claim outcomes return without provider lookup or audit completion
 });
 
 test("lease loss returned by completion overrides provider result", async () => {
-  const h = harness({ providerSessionId: "123", completion: "claim_lost" });
+  const h = harness({ providerSessionId: providerCheckoutId, completion: "claim_lost" });
   assert.equal(await run(h), "claim_lost"); assert.deepEqual(h.calls.complete, ["still_pending"]);
 });
 
@@ -165,13 +179,13 @@ test("unexpected repository and programming errors are rethrown without audit co
 });
 
 test("completion failures are not hidden as provider outcomes", async () => {
-  const h = harness({ providerSessionId: "123" });
+  const h = harness({ providerSessionId: providerCheckoutId });
   h.repository.completeCheckoutRecoveryAttempt = async () => { throw new Error("DB private detail"); };
   await assert.rejects(() => run(h), /DB private detail/);
 });
 
 test("correlation mismatch is audited and never mutates checkout or subscription", async () => {
-  const h = harness({ providerSessionId: "123" });
+  const h = harness({ providerSessionId: providerCheckoutId });
   h.provider.retrieveById = async () => checkout({ storeId: "99" });
   assert.equal(await run(h), "invalid_candidate"); assert.deepEqual(h.calls.complete, ["invalid_candidate"]);
   assert.equal("markOpen" in h.repository, false); assert.equal("createCheckout" in h.provider, false);

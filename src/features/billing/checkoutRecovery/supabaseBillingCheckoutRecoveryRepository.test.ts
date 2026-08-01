@@ -18,12 +18,14 @@ const token = "30000000-0000-4000-8000-000000000001";
 const planId = "40000000-0000-4000-8000-000000000001";
 const salonId = "50000000-0000-4000-8000-000000000001";
 const idempotency = "60000000-0000-4000-8000-000000000001";
+const providerCheckoutId = "7a000000-0000-0000-0000-000000000001";
+const secondProviderCheckoutId = "7b000000-0000-0000-0000-000000000002";
 
 function claim(overrides: Record<string, unknown> = {}) {
   return {
     claim_outcome: "claimed", recovery_attempt_id: attemptId, claim_token: token,
     checkout_session_id: checkoutId, ledger_status: "creating", provider: "lemonsqueezy",
-    environment: "test", provider_session_id: "123", requested_plan_id: planId,
+    environment: "test", provider_session_id: providerCheckoutId, requested_plan_id: planId,
     salon_id: salonId, idempotency_key: idempotency,
     ledger_created_at: "2026-07-31T10:00:00Z", ledger_expires_at: "2026-07-31T10:30:00Z",
     ...overrides,
@@ -38,7 +40,7 @@ test("claim parser accepts every contracted outcome with strict token consistenc
   }
 });
 
-test("terminal claim outcomes ignore legacy provider session IDs", () => {
+test("terminal claim outcomes do not parse irrelevant provider session IDs", () => {
   for (const [claim_outcome, ledger_status, provider_session_id] of [
     ["already_completed", "completed", "70000000-0000-4000-8000-000000000001"],
     ["already_open", "open", "70000000-0000-4000-8000-000000000001"],
@@ -54,9 +56,10 @@ test("terminal claim outcomes ignore legacy provider session IDs", () => {
 });
 
 test("claimed outcome keeps strict provider session ID validation", () => {
-  assert.throws(() => parseCheckoutRecoveryClaimRow(claim({ provider_session_id: "70000000-0000-4000-8000-000000000001" }), "test"), BillingCheckoutRecoveryRepositoryError);
-  assert.equal(parseCheckoutRecoveryClaimRow(claim({ provider_session_id: "123" }), "test").providerSessionId, "123");
+  assert.equal(parseCheckoutRecoveryClaimRow(claim({ provider_session_id: providerCheckoutId }), "test").providerSessionId, providerCheckoutId);
   assert.equal(parseCheckoutRecoveryClaimRow(claim({ provider_session_id: null }), "test").providerSessionId, null);
+  for (const provider_session_id of ["123", providerCheckoutId.toUpperCase(), "arbitrary"])
+    assert.throws(() => parseCheckoutRecoveryClaimRow(claim({ provider_session_id }), "test"), BillingCheckoutRecoveryRepositoryError);
 });
 
 test("claim parser rejects unknown authority, inconsistent tokens and malformed facts", () => {
@@ -103,7 +106,7 @@ test("completion parser validates outcome/status consistency", () => {
   ]) assert.throws(() => parseCheckoutRecoveryCompletionRow(row), BillingCheckoutRecoveryRepositoryError);
 });
 
-test("mapping and known-ID parsers are strict positive-integer contracts", () => {
+test("mapping IDs stay numeric while known Checkout IDs require canonical UUIDs", () => {
   assert.deepEqual(parseCheckoutRecoveryMappingRows([{ provider_store_id: "10", provider_variant_id: "20", plans: { slug: "pro" } }]), { storeId: "10", variantId: "20", planCode: "pro" });
   assert.equal(parseCheckoutRecoveryMappingRows([]), null);
   for (const rows of [
@@ -113,13 +116,8 @@ test("mapping and known-ID parsers are strict positive-integer contracts", () =>
     [{ provider_store_id: "10", provider_variant_id: "20", plans: { slug: "premium" } }],
     [{ provider_store_id: "10", provider_variant_id: "20", plans: [] }],
   ]) assert.throws(() => parseCheckoutRecoveryMappingRows(rows), BillingCheckoutRecoveryRepositoryError);
-  assert.deepEqual([...parseKnownProviderCheckoutIdRows([{ provider_session_id: "123" }, { provider_session_id: "456" }])], ["123", "456"]);
-  const legacyOne = "70000000-0000-4000-8000-000000000001";
-  const legacyTwo = "70000000-0000-4000-8000-000000000002";
-  assert.deepEqual([...parseKnownProviderCheckoutIdRows([{ provider_session_id: legacyOne }])], []);
-  assert.deepEqual([...parseKnownProviderCheckoutIdRows([{ provider_session_id: legacyOne }, { provider_session_id: "123" }])], ["123"]);
-  assert.deepEqual([...parseKnownProviderCheckoutIdRows([{ provider_session_id: legacyOne }, { provider_session_id: legacyTwo }])], []);
-  for (const value of [null, "", " ", "0", "1.5", "abc", "70000000-0000-4000-8000-00000000000"]) {
+  assert.deepEqual([...parseKnownProviderCheckoutIdRows([{ provider_session_id: providerCheckoutId }, { provider_session_id: providerCheckoutId }, { provider_session_id: secondProviderCheckoutId }])], [providerCheckoutId, secondProviderCheckoutId]);
+  for (const value of [null, "", " ", "123", "0", "1.5", "abc", providerCheckoutId.toUpperCase(), "70000000-0000-0000-0000-00000000000"]) {
     assert.throws(() => parseKnownProviderCheckoutIdRows([{ provider_session_id: value }]), BillingCheckoutRecoveryRepositoryError);
   }
 });
@@ -156,7 +154,7 @@ function fakeClient(input: {
       return { select: () => {
         const mapping = table === "billing_provider_prices";
         const query = new FakeFilter({
-          data: mapping ? (input.mapping ?? [{ provider_store_id: "10", provider_variant_id: "20", plans: { slug: "pro" } }]) : (input.ids ?? [{ provider_session_id: "123" }]),
+          data: mapping ? (input.mapping ?? [{ provider_store_id: "10", provider_variant_id: "20", plans: { slug: "pro" } }]) : (input.ids ?? [{ provider_session_id: providerCheckoutId }]),
           error: mapping ? (input.mappingError ?? null) : (input.idsError ?? null),
         });
         calls.filters.push(query); return query;

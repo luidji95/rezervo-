@@ -46,6 +46,7 @@
     "test:billing-sandbox-concurrency": "node scripts/test-billing-checkout-concurrency.mjs",
     "test:billing-checkout-recovery-db": "node scripts/test-billing-checkout-recovery-contract.mjs",
     "test:billing-checkout-recovery-concurrency": "node scripts/test-billing-checkout-recovery-concurrency.mjs",
+    "test:billing-checkout-recovery-finalization-concurrency": "node scripts/test-billing-checkout-recovery-finalization-concurrency.mjs",
     "test:billing-checkout-recovery": "node --experimental-strip-types --test src/features/billing/checkoutRecovery/billingCheckoutRecoveryConfig.test.ts src/features/billing/checkoutRecovery/billingCheckoutRecoveryEndpointCore.test.ts src/features/billing/checkoutRecovery/billingCheckoutRecoveryCore.test.ts src/features/billing/checkoutRecovery/billingCheckoutRecoveryRoutes.test.ts src/features/billing/checkoutRecovery/supabaseBillingCheckoutRecoveryRepository.test.ts",
     "test:billing-webhooks": "node --experimental-strip-types --test src/features/billing/webhooks/lemonSqueezyWebhookCore.test.ts src/features/billing/webhooks/lemonSqueezyWebhookRoutes.test.ts",
     "test:billing-webhooks-db": "docker exec -i supabase_db_rezervo psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/tests/billing_webhook_ingestion_contract.sql",

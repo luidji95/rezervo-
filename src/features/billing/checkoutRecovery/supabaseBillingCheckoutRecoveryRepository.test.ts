@@ -114,7 +114,14 @@ test("mapping and known-ID parsers are strict positive-integer contracts", () =>
     [{ provider_store_id: "10", provider_variant_id: "20", plans: [] }],
   ]) assert.throws(() => parseCheckoutRecoveryMappingRows(rows), BillingCheckoutRecoveryRepositoryError);
   assert.deepEqual([...parseKnownProviderCheckoutIdRows([{ provider_session_id: "123" }, { provider_session_id: "456" }])], ["123", "456"]);
-  for (const value of [null, "", " ", "0", "1.5", "abc"]) assert.throws(() => parseKnownProviderCheckoutIdRows([{ provider_session_id: value }]), BillingCheckoutRecoveryRepositoryError);
+  const legacyOne = "70000000-0000-4000-8000-000000000001";
+  const legacyTwo = "70000000-0000-4000-8000-000000000002";
+  assert.deepEqual([...parseKnownProviderCheckoutIdRows([{ provider_session_id: legacyOne }])], []);
+  assert.deepEqual([...parseKnownProviderCheckoutIdRows([{ provider_session_id: legacyOne }, { provider_session_id: "123" }])], ["123"]);
+  assert.deepEqual([...parseKnownProviderCheckoutIdRows([{ provider_session_id: legacyOne }, { provider_session_id: legacyTwo }])], []);
+  for (const value of [null, "", " ", "0", "1.5", "abc", "70000000-0000-4000-8000-00000000000"]) {
+    assert.throws(() => parseKnownProviderCheckoutIdRows([{ provider_session_id: value }]), BillingCheckoutRecoveryRepositoryError);
+  }
 });
 
 class FakeFilter {

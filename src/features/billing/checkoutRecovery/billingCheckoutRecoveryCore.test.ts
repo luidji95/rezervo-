@@ -4,6 +4,7 @@ import test from "node:test";
 import { LemonSqueezyCheckoutRetrievalError, type LemonSqueezyRetrievedCheckout } from "../providers/lemonSqueezyCheckoutRetrievalCore.ts";
 import { runBillingCheckoutRecovery, type CheckoutRecoveryProviderGateway } from "./billingCheckoutRecoveryCore.ts";
 import type { BillingCheckoutRecoveryRepository, CheckoutRecoveryAuditOutcome } from "./billingCheckoutRecoveryRepository.ts";
+import { parseKnownProviderCheckoutIdRows } from "./supabaseBillingCheckoutRecoveryRepository.ts";
 
 const ledgerId = "10000000-0000-4000-8000-000000000001";
 const attemptId = "20000000-0000-4000-8000-000000000001";
@@ -59,6 +60,20 @@ test("known provider ID uses retrieve only and exact match is audit-only still_p
   const h = harness({ providerSessionId: "123" });
   assert.equal(await run(h), "still_pending");
   assert.deepEqual(h.calls, { claim: 1, complete: ["still_pending"], retrieve: 1, list: 0, mapping: 1, known: 1 });
+});
+
+test("legacy UUIDs in known ledgers do not block provider lookup", async () => {
+  const h = harness();
+  h.repository.listKnownProviderCheckoutIds = async () => {
+    h.calls.known += 1;
+    return parseKnownProviderCheckoutIdRows([
+      { provider_session_id: "70000000-0000-4000-8000-000000000001" },
+      { provider_session_id: "456" },
+    ]);
+  };
+  assert.equal(await run(h), "still_pending");
+  assert.equal(h.calls.list, 1);
+  assert.deepEqual(h.calls.complete, ["still_pending"]);
 });
 
 test("retrieve 404 does not fall back to list and is audited provider_not_found", async () => {

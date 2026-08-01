@@ -142,7 +142,14 @@ export function parseCheckoutRecoveryMappingRows(value: unknown): CheckoutRecove
 export function parseKnownProviderCheckoutIdRows(value: unknown): ReadonlySet<string> {
   const code = "BILLING_CHECKOUT_RECOVERY_KNOWN_IDS_INVALID";
   if (!Array.isArray(value)) fail(code);
-  return new Set(value.map((item) => providerId(object(item, code).provider_session_id, false, code)));
+  const ids = new Set<string>();
+  for (const item of value) {
+    const providerSessionId = object(item, code).provider_session_id;
+    if (typeof providerSessionId !== "string") fail(code);
+    if (PROVIDER_ID_PATTERN.test(providerSessionId)) ids.add(providerSessionId);
+    else if (!UUID_PATTERN.test(providerSessionId)) fail(code);
+  }
+  return ids;
 }
 
 export class SupabaseBillingCheckoutRecoveryRepository implements BillingCheckoutRecoveryRepository {

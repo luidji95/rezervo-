@@ -12,8 +12,11 @@ export const dynamic = "force-dynamic";
 
 function errorResponse(error: unknown) {
   if (error instanceof BillingCheckoutError) {
+    const message = error.code === "BILLING_CHECKOUT_PENDING"
+      ? "Checkout preparation is already in progress. Please try again shortly."
+      : undefined;
     return NextResponse.json(
-      { success: false, code: error.code },
+      { success: false, code: error.code, ...(message ? { message } : {}) },
       { status: error.status },
     );
   }

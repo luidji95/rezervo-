@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import type { BillingEnvironment } from "../config/billingEnvironment.ts";
 import type {
@@ -43,10 +43,23 @@ export type InsertCreatingResult =
       checkoutSession: BillingCheckoutLedger;
     };
 
+export type BillingCheckoutIntentAcquisition = {
+  outcome: "created" | "existing";
+  checkoutSession: BillingCheckoutLedger;
+  provider: "lemonsqueezy";
+  environment: BillingEnvironment;
+  providerSessionId: string | null;
+};
+
 export interface BillingCheckoutRepository {
   isSalonOwner(salonId: string, actorProfileId: string): Promise<boolean>;
   hasActiveOverride(salonId: string, now: string): Promise<boolean>;
   getPriceMapping(planCode: CheckoutPlanCode): Promise<BillingPriceMapping | null>;
+  acquireCheckoutIntent(input: {
+    salonId: string;
+    actorProfileId: string;
+    planId: string;
+  }): Promise<BillingCheckoutIntentAcquisition>;
   findByIdempotencyKey(key: string): Promise<BillingCheckoutLedger | null>;
   findReusableOpenSession(input: {
     salonId: string;
@@ -84,21 +97,6 @@ export type BillingCheckoutRuntime = {
   liveAllowedSalonIds: ReadonlySet<string> | null;
   now: () => Date;
 };
-
-function assertExistingAttemptMatches(
-  existing: BillingCheckoutLedger,
-  input: CreateBillingCheckoutInput,
-  planId: string,
-) {
-  if (
-    existing.salonId !== input.salonId ||
-    existing.actorProfileId !== input.actorProfileId ||
-    existing.requestedPlanId !== planId
-  ) {
-    throw new BillingCheckoutError("INVALID_INPUT", 400);
-  }
-  throw new BillingCheckoutError("BILLING_CHECKOUT_IN_PROGRESS", 409);
-}
 
 export async function createBillingCheckout(
   input: CreateBillingCheckoutInput,
@@ -140,39 +138,35 @@ export async function createBillingCheckout(
     throw new BillingCheckoutError("BILLING_PRICE_MISMATCH", 409);
   }
 
-  const idempotencyKey = input.idempotencyKey ?? randomUUID();
-  const existing = await repository.findByIdempotencyKey(idempotencyKey);
-  if (existing) assertExistingAttemptMatches(existing, input, mapping.planId);
-
-  const reusable = await repository.findReusableOpenSession({
+  const acquisition = await repository.acquireCheckoutIntent({
     salonId: input.salonId,
+    actorProfileId: input.actorProfileId,
     planId: mapping.planId,
-    now: nowIso,
   });
-  if (reusable) {
-    if (reusable.expiresAt && Date.parse(reusable.expiresAt) <= now.getTime()) {
-      await repository.markExpired(reusable.id);
-    } else {
-      throw new BillingCheckoutError("BILLING_CHECKOUT_IN_PROGRESS", 409);
-    }
-  }
-
-  let insertion: InsertCreatingResult;
-  try {
-    insertion = await repository.insertCreating({
-      salonId: input.salonId,
-      actorProfileId: input.actorProfileId,
-      planId: mapping.planId,
-      idempotencyKey,
-    });
-  } catch {
-    const raced = await repository.findByIdempotencyKey(idempotencyKey);
-    if (raced) assertExistingAttemptMatches(raced, input, mapping.planId);
+  const ledger = acquisition.checkoutSession;
+  if (
+    acquisition.provider !== "lemonsqueezy" ||
+    acquisition.environment !== runtime.environment ||
+    ledger.salonId !== input.salonId
+  ) {
     throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
   }
-  const ledger = insertion.checkoutSession;
-  if (insertion.outcome === "existing") {
-    assertExistingAttemptMatches(ledger, input, mapping.planId);
+  if (acquisition.outcome === "existing") {
+    if (ledger.requestedPlanId !== mapping.planId) {
+      throw new BillingCheckoutError("BILLING_CHECKOUT_IN_PROGRESS", 409);
+    }
+    if (ledger.status !== "creating" && ledger.status !== "open") {
+      throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+    }
+    throw new BillingCheckoutError("BILLING_CHECKOUT_PENDING", 202);
+  }
+  if (
+    ledger.status !== "creating" ||
+    ledger.requestedPlanId !== mapping.planId ||
+    ledger.actorProfileId !== input.actorProfileId ||
+    acquisition.providerSessionId !== null
+  ) {
+    throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
   }
 
   const expiresAt = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
@@ -184,7 +178,7 @@ export async function createBillingCheckout(
       actorProfileId: input.actorProfileId,
       planCode: input.planCode,
       billingInterval: "monthly",
-      idempotencyKey,
+      idempotencyKey: ledger.idempotencyKey,
       successUrl: `${runtime.appUrl}/settings?tab=billing&checkout=return`,
       cancelUrl: `${runtime.appUrl}/settings?tab=billing&checkout=cancelled`,
       customerEmail: input.actorEmail,

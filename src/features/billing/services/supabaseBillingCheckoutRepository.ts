@@ -8,6 +8,7 @@ import type {
 } from "./billingCheckoutCore";
 import type { CheckoutPlanCode } from "../providers/billingProvider";
 import type { BillingEnvironment } from "../config/billingEnvironment";
+import { parseBillingCheckoutIntentAcquisition } from "./billingCheckoutIntent";
 
 type MappingResult = {
   id: string;
@@ -109,6 +110,31 @@ export class SupabaseBillingCheckoutRepository
       providerStoreId: row.provider_store_id,
       environment: row.environment as BillingEnvironment,
     };
+  }
+
+  async acquireCheckoutIntent(input: {
+    salonId: string;
+    actorProfileId: string;
+    planId: string;
+  }) {
+    const { data, error } = await supabaseServer.rpc(
+      "acquire_billing_checkout_intent_v1",
+      {
+        p_salon_id: input.salonId,
+        p_actor_profile_id: input.actorProfileId,
+        p_requested_plan_id: input.planId,
+        p_provider: "lemonsqueezy",
+        p_environment: this.environment,
+      },
+    );
+    if (error || !Array.isArray(data) || data.length !== 1) {
+      throw new Error("BILLING_CHECKOUT_INTENT_ACQUIRE_FAILED");
+    }
+    return parseBillingCheckoutIntentAcquisition(
+      data[0],
+      this.environment,
+      input.salonId,
+    );
   }
 
   async findByIdempotencyKey(key: string) {

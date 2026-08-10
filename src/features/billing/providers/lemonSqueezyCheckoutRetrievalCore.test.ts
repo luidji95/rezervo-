@@ -48,7 +48,7 @@ function resource(overrides: Record<string, unknown> = {}) {
     created_at: createdAt,
     updated_at: "2026-07-31T10:01:00.000Z",
     test_mode: true,
-    url: "https://app.lemonsqueezy.com/checkout/example?token=opaque",
+    url: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785493800&signature=opaque`,
     ...((overrides.attributes as Record<string, unknown> | undefined) ?? {}),
   };
   return { type: "checkouts", id: providerCheckoutId, ...overrides, attributes };
@@ -94,7 +94,7 @@ test("checkout parser normalizes test/live recovery fields and discards PII/raw 
     providerCheckoutId, storeId: "10", variantId: "20",
     customCheckoutSessionId: ledgerId, customSalonId: salonId, customPlanCode: "pro",
     customIdempotencyKey: idempotencyKey, testMode: true,
-    checkoutUrl: "https://app.lemonsqueezy.com/checkout/example?token=opaque",
+    checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785493800&signature=opaque`,
     expiresAt: "2026-07-31T10:30:00.000Z", providerCreatedAt: createdAt,
     providerUpdatedAt: "2026-07-31T10:01:00.000Z",
   });

@@ -40,6 +40,25 @@ export type CheckoutRecoveryCompletion = {
   outcome: string | null;
 };
 
+export type CheckoutRecoveryFinalizationOutcome =
+  | "finalized"
+  | "already_finalized"
+  | "finalization_conflict"
+  | "attempt_state_conflict"
+  | "provider_id_conflict"
+  | "provider_checkout_expired"
+  | "ledger_state_conflict"
+  | "claim_lost";
+
+export type CheckoutRecoveryFinalization = {
+  finalizationOutcome: CheckoutRecoveryFinalizationOutcome;
+  recoveryAttemptId: string;
+  ledgerStatus: string | null;
+  attemptStatus: string | null;
+  auditOutcome: string | null;
+  attemptCompletedAt: string | null;
+};
+
 export type CheckoutRecoveryProviderMapping = {
   storeId: string;
   variantId: string;
@@ -58,6 +77,14 @@ export interface BillingCheckoutRecoveryRepository {
     environment: BillingEnvironment;
     outcome: CheckoutRecoveryAuditOutcome;
   }): Promise<CheckoutRecoveryCompletion>;
+  finalizeCheckoutRecovery(input: {
+    recoveryAttemptId: string;
+    claimToken: string;
+    environment: BillingEnvironment;
+    providerCheckoutId: string;
+    checkoutUrlHash: string;
+    providerExpiresAt: string;
+  }): Promise<CheckoutRecoveryFinalization>;
   resolveTrustedProviderMapping(input: {
     requestedPlanId: string;
     environment: BillingEnvironment;

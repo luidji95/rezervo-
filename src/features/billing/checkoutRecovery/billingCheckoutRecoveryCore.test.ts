@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import { LemonSqueezyCheckoutRetrievalError, type LemonSqueezyRetrievedCheckout } from "../providers/lemonSqueezyCheckoutRetrievalCore.ts";
 import { runBillingCheckoutRecovery, type CheckoutRecoveryProviderGateway } from "./billingCheckoutRecoveryCore.ts";
-import type { BillingCheckoutRecoveryRepository, CheckoutRecoveryAuditOutcome } from "./billingCheckoutRecoveryRepository.ts";
+import type { BillingCheckoutRecoveryRepository, CheckoutRecoveryAuditOutcome, CheckoutRecoveryFinalizationOutcome } from "./billingCheckoutRecoveryRepository.ts";
 import { parseKnownProviderCheckoutIdRows } from "./supabaseBillingCheckoutRecoveryRepository.ts";
 
 const ledgerId = "10000000-0000-4000-8000-000000000001";
@@ -20,14 +21,14 @@ function checkout(overrides: Partial<LemonSqueezyRetrievedCheckout> = {}): Lemon
   return {
     providerCheckoutId, storeId: "10", variantId: "20", customCheckoutSessionId: ledgerId,
     customSalonId: salonId, customPlanCode: "pro", customIdempotencyKey: idempotency,
-    testMode: true, checkoutUrl: "https://app.lemonsqueezy.com/checkout/opaque",
+    testMode: true, checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${overrides.providerCheckoutId ?? providerCheckoutId}?expires=1785493800&signature=opaque`,
     expiresAt: "2026-07-31T10:30:00.000Z", providerCreatedAt: createdAt,
     providerUpdatedAt: "2026-07-31T10:01:00.000Z", ...overrides,
   };
 }
 
-function harness(input: { providerSessionId?: string | null; claimOutcome?: "claimed" | "already_open" | "already_completed" | "already_claimed" | "manual_review"; completion?: "completed" | "claim_lost" } = {}) {
-  const calls = { claim: 0, complete: [] as CheckoutRecoveryAuditOutcome[], retrieve: 0, list: 0, mapping: 0, known: 0 };
+function harness(input: { providerSessionId?: string | null; claimOutcome?: "claimed" | "already_open" | "already_completed" | "already_claimed" | "manual_review"; completion?: "completed" | "claim_lost"; finalization?: CheckoutRecoveryFinalizationOutcome } = {}) {
+  const calls = { claim: 0, complete: [] as CheckoutRecoveryAuditOutcome[], finalize: [] as Array<Record<string, unknown>>, retrieve: 0, list: 0, mapping: 0, known: 0 };
   const repository: BillingCheckoutRecoveryRepository = {
     async claimCheckoutRecovery() {
       calls.claim += 1;
@@ -43,6 +44,15 @@ function harness(input: { providerSessionId?: string | null; claimOutcome?: "cla
       calls.complete.push(value.outcome);
       return { completionOutcome: input.completion ?? "completed", status: input.completion === "claim_lost" ? "abandoned" : "completed", outcome: input.completion === "claim_lost" ? "claim_lost" : value.outcome };
     },
+    async finalizeCheckoutRecovery(value) {
+      calls.finalize.push(value);
+      const finalizationOutcome = input.finalization ?? "finalized";
+      if (finalizationOutcome === "claim_lost") return { finalizationOutcome, recoveryAttemptId: attemptId, ledgerStatus: "creating", attemptStatus: "abandoned", auditOutcome: "claim_lost", attemptCompletedAt: "2026-07-31T10:06:00Z" };
+      if (finalizationOutcome === "provider_checkout_expired") return { finalizationOutcome, recoveryAttemptId: attemptId, ledgerStatus: "creating", attemptStatus: "completed", auditOutcome: "invalid_candidate", attemptCompletedAt: "2026-07-31T10:06:00Z" };
+      if (finalizationOutcome === "provider_id_conflict" || finalizationOutcome === "ledger_state_conflict") return { finalizationOutcome, recoveryAttemptId: attemptId, ledgerStatus: "creating", attemptStatus: "completed", auditOutcome: "manual_review", attemptCompletedAt: "2026-07-31T10:06:00Z" };
+      if (finalizationOutcome === "attempt_state_conflict") return { finalizationOutcome, recoveryAttemptId: attemptId, ledgerStatus: "creating", attemptStatus: "completed", auditOutcome: "still_pending", attemptCompletedAt: "2026-07-31T10:06:00Z" };
+      return { finalizationOutcome, recoveryAttemptId: attemptId, ledgerStatus: "open", attemptStatus: "completed", auditOutcome: "recovered_open", attemptCompletedAt: "2026-07-31T10:06:00Z" };
+    },
     async resolveTrustedProviderMapping() { calls.mapping += 1; return { storeId: "10", variantId: "20", planCode: "pro" }; },
     async listKnownProviderCheckoutIds() { calls.known += 1; return new Set(); },
   };
@@ -55,13 +65,14 @@ function harness(input: { providerSessionId?: string | null; claimOutcome?: "cla
 }
 
 async function run(h = harness()) {
-  return runBillingCheckoutRecovery({ checkoutSessionId: ledgerId, environment: "test", leaseSeconds: 300, pageSize: 50, maxPages: 5, providerStoreId: "10", repository: h.repository, provider: h.provider });
+  return runBillingCheckoutRecovery({ checkoutSessionId: ledgerId, environment: "test", leaseSeconds: 300, pageSize: 50, maxPages: 5, providerStoreId: "10", now: () => new Date("2026-07-31T10:05:00Z"), repository: h.repository, provider: h.provider });
 }
 
-test("known provider ID uses retrieve only and exact match is audit-only still_pending", async () => {
+test("known provider ID uses retrieve only and exact match finalizes once", async () => {
   const h = harness({ providerSessionId: providerCheckoutId });
-  assert.equal(await run(h), "still_pending");
-  assert.deepEqual(h.calls, { claim: 1, complete: ["still_pending"], retrieve: 1, list: 0, mapping: 1, known: 1 });
+  assert.equal(await run(h), "recovered_open");
+  assert.equal(h.calls.finalize.length, 1); assert.deepEqual(h.calls.complete, []);
+  assert.equal(h.calls.retrieve, 1); assert.equal(h.calls.list, 0);
 });
 
 test("retrieve-by-ID mismatch is audited as invalid_candidate without list fallback", async () => {
@@ -97,10 +108,10 @@ test("retrieve 404 does not fall back to list and is audited provider_not_found"
   assert.equal(h.calls.list, 0); assert.deepEqual(h.calls.complete, ["provider_not_found"]);
 });
 
-test("missing provider ID uses bounded list correlation", async () => {
+test("missing provider ID uses bounded list correlation and finalizes", async () => {
   const h = harness();
-  assert.equal(await run(h), "still_pending");
-  assert.equal(h.calls.retrieve, 0); assert.equal(h.calls.list, 1); assert.deepEqual(h.calls.complete, ["still_pending"]);
+  assert.equal(await run(h), "recovered_open");
+  assert.equal(h.calls.retrieve, 0); assert.equal(h.calls.list, 1); assert.equal(h.calls.finalize.length, 1); assert.deepEqual(h.calls.complete, []);
 });
 
 test("provider failures are audited and there is no automatic retry", async () => {
@@ -119,7 +130,7 @@ test("page-one miss can continue to a page-two exact match", async () => {
       ? { checkouts: [], nextPageUrl: "https://api.lemonsqueezy.com/v1/checkouts?filter%5Bstore_id%5D=10&filter%5Bvariant_id%5D=20&page%5Bnumber%5D=2&page%5Bsize%5D=50" }
       : { checkouts: [checkout()], nextPageUrl: null };
   };
-  assert.equal(await run(h), "still_pending");
+  assert.equal(await run(h), "recovered_open");
   assert.equal(h.calls.list, 2);
 });
 
@@ -129,7 +140,7 @@ test("pagination exhaustion and ambiguous candidates are audited without mutatio
     limit.calls.list += 1;
     return { checkouts: [], nextPageUrl: "https://api.lemonsqueezy.com/v1/checkouts?filter%5Bstore_id%5D=10&filter%5Bvariant_id%5D=20&page%5Bnumber%5D=2&page%5Bsize%5D=50" };
   };
-  const limitResult = await runBillingCheckoutRecovery({ checkoutSessionId: ledgerId, environment: "test", leaseSeconds: 300, pageSize: 50, maxPages: 1, providerStoreId: "10", repository: limit.repository, provider: limit.provider });
+  const limitResult = await runBillingCheckoutRecovery({ checkoutSessionId: ledgerId, environment: "test", leaseSeconds: 300, pageSize: 50, maxPages: 1, providerStoreId: "10", now: () => new Date("2026-07-31T10:05:00Z"), repository: limit.repository, provider: limit.provider });
   assert.equal(limitResult, "pagination_limit_reached");
   assert.deepEqual(limit.calls.complete, ["pagination_limit_reached"]);
 
@@ -142,7 +153,7 @@ test("pagination exhaustion and ambiguous candidates are audited without mutatio
 test("only one operator claim reaches provider lookup", async () => {
   const h = harness({ claimOutcome: "already_claimed" });
   assert.equal(await run(h), "already_claimed");
-  assert.deepEqual(h.calls, { claim: 1, complete: [], retrieve: 0, list: 0, mapping: 0, known: 0 });
+  assert.deepEqual(h.calls, { claim: 1, complete: [], finalize: [], retrieve: 0, list: 0, mapping: 0, known: 0 });
 });
 
 test("terminal claim outcomes return without provider lookup or audit completion", async () => {
@@ -154,9 +165,11 @@ test("terminal claim outcomes return without provider lookup or audit completion
   }
 });
 
-test("lease loss returned by completion overrides provider result", async () => {
-  const h = harness({ providerSessionId: providerCheckoutId, completion: "claim_lost" });
-  assert.equal(await run(h), "claim_lost"); assert.deepEqual(h.calls.complete, ["still_pending"]);
+test("finalizer outcomes map explicitly without generic completion", async () => {
+  for (const [finalization, expected] of [["already_finalized", "already_recovered_open"], ["finalization_conflict", "finalization_conflict"], ["provider_id_conflict", "provider_id_conflict"], ["ledger_state_conflict", "ledger_state_conflict"], ["attempt_state_conflict", "attempt_state_conflict"], ["provider_checkout_expired", "provider_checkout_expired"], ["claim_lost", "claim_lost"]] as const) {
+    const h = harness({ providerSessionId: providerCheckoutId, finalization });
+    assert.equal(await run(h), expected); assert.equal(h.calls.finalize.length, 1); assert.deepEqual(h.calls.complete, []);
+  }
 });
 
 test("mapping/store mismatch is completed as configuration_error before provider lookup", async () => {
@@ -180,8 +193,58 @@ test("unexpected repository and programming errors are rethrown without audit co
 
 test("completion failures are not hidden as provider outcomes", async () => {
   const h = harness({ providerSessionId: providerCheckoutId });
+  h.provider.retrieveById = async () => checkout({ storeId: "99" });
   h.repository.completeCheckoutRecoveryAttempt = async () => { throw new Error("DB private detail"); };
   await assert.rejects(() => run(h), /DB private detail/);
+});
+
+test("finalizer transport failure never falls back to generic completion", async () => {
+  const h = harness({ providerSessionId: providerCheckoutId });
+  h.repository.finalizeCheckoutRecovery = async () => { throw new Error("private DB transport"); };
+  await assert.rejects(() => run(h), /private DB transport/);
+  assert.deepEqual(h.calls.complete, []);
+});
+
+test("mutation-grade identity, expiry and URL failures are audited before finalization", async () => {
+  const invalid: Array<Partial<LemonSqueezyRetrievedCheckout>> = [
+    { customCheckoutSessionId: null }, { customCheckoutSessionId: secondProviderCheckoutId },
+    { customSalonId: null }, { customSalonId: secondProviderCheckoutId },
+    { customPlanCode: null }, { customPlanCode: "starter" },
+    { customIdempotencyKey: null }, { customIdempotencyKey: secondProviderCheckoutId },
+    { expiresAt: null }, { expiresAt: "2026-07-31T10:04:59Z" },
+    { checkoutUrl: `http://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785493800&signature=x` },
+    { checkoutUrl: `https://evil.example/checkout/custom/${providerCheckoutId}?expires=1785493800&signature=x` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com:444/checkout/custom/${providerCheckoutId}?expires=1785493800&signature=x` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${secondProviderCheckoutId}?expires=1785493800&signature=x` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?signature=x` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=&signature=x` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785493800&expires=1785493801&signature=x` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1.7854938e9&signature=x` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785492299&signature=x` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785493800000&signature=x` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785493800` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785493800&signature=` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785493800&signature=x&signature=y` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?signature=x&expires=1785493800&extra=no` },
+    { checkoutUrl: `https://user:pass@rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785493800&signature=x` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785493800&signature=x#fragment` },
+  ];
+  for (const overrides of invalid) {
+    const h = harness({ providerSessionId: providerCheckoutId });
+    h.provider.retrieveById = async () => { h.calls.retrieve += 1; return checkout(overrides); };
+    assert.equal(await run(h), "invalid_candidate");
+    assert.equal(h.calls.finalize.length, 0);
+    assert.deepEqual(h.calls.complete, ["invalid_candidate"]);
+  }
+});
+
+test("valid URL query order is irrelevant and hash uses the original provider string", async () => {
+  const h = harness({ providerSessionId: providerCheckoutId });
+  const original = `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?signature=opaque&expires=1785493800`;
+  h.provider.retrieveById = async () => checkout({ checkoutUrl: original });
+  assert.equal(await run(h), "recovered_open");
+  assert.equal(h.calls.finalize.length, 1);
+  assert.equal(h.calls.finalize[0]!.checkoutUrlHash, createHash("sha256").update(original).digest("hex"));
 });
 
 test("correlation mismatch is audited and never mutates checkout or subscription", async () => {

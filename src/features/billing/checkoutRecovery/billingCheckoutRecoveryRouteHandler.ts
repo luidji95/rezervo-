@@ -29,6 +29,7 @@ export async function handleBillingCheckoutRecoveryRoute(
         pageSize: config.pageSize,
         maxPages: config.maxPages,
         providerStoreId: config.provider.storeId,
+        now: () => new Date(),
         repository,
         provider: createLemonSqueezyRecoveryGateway({ client, providerConfig: config.provider }),
       });

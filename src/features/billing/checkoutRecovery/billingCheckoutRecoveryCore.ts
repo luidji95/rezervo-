@@ -1,4 +1,7 @@
+import { createHash } from "node:crypto";
+
 import type { BillingEnvironment } from "../config/billingEnvironment.ts";
+import { parseLemonSqueezyCheckoutId } from "../providers/lemonSqueezyResourceIds.ts";
 import {
   LemonSqueezyCheckoutRetrievalError,
   buildLemonSqueezyCheckoutListRequest,
@@ -18,6 +21,13 @@ export type BillingCheckoutRecoveryOutcome =
   | "already_completed"
   | "already_claimed"
   | "manual_review"
+  | "recovered_open"
+  | "already_recovered_open"
+  | "finalization_conflict"
+  | "attempt_state_conflict"
+  | "provider_id_conflict"
+  | "provider_checkout_expired"
+  | "ledger_state_conflict"
   | CheckoutRecoveryAuditOutcome
   | "claim_lost";
 
@@ -35,6 +45,82 @@ function providerErrorOutcome(error: unknown): CheckoutRecoveryAuditOutcome {
   return "invalid_provider_response";
 }
 
+export function validateCheckoutForRecoveryFinalization(input: {
+  checkout: LemonSqueezyRetrievedCheckout;
+  ledger: CheckoutRecoveryLedgerFacts;
+  now: Date;
+}): { checkoutUrlHash: string; providerExpiresAt: string } | null {
+  const { checkout, ledger, now } = input;
+  let checkoutId: string;
+  try { checkoutId = parseLemonSqueezyCheckoutId(checkout.providerCheckoutId); }
+  catch { return null; }
+  if (
+    checkout.customCheckoutSessionId !== ledger.ledgerId ||
+    checkout.customSalonId !== ledger.expectedSalonId ||
+    checkout.customPlanCode !== ledger.expectedPlanCode ||
+    checkout.customIdempotencyKey !== ledger.expectedIdempotencyKey ||
+    checkout.storeId !== ledger.expectedStoreId ||
+    checkout.variantId !== ledger.expectedVariantId ||
+    checkout.expiresAt === null
+  ) return null;
+
+  const nowMs = now.getTime();
+  const providerExpiryMs = Date.parse(checkout.expiresAt);
+  if (!Number.isFinite(nowMs) || !Number.isFinite(providerExpiryMs) || providerExpiryMs <= nowMs) return null;
+
+  let url: URL;
+  try { url = new URL(checkout.checkoutUrl); }
+  catch { return null; }
+  const keys = [...url.searchParams.keys()];
+  if (
+    url.protocol !== "https:" || url.hostname !== "rezervoo.lemonsqueezy.com" ||
+    url.port || url.username || url.password || url.hash ||
+    url.pathname !== `/checkout/custom/${checkoutId}` ||
+    keys.length !== 2 || keys.some((key) => key !== "expires" && key !== "signature") ||
+    url.searchParams.getAll("expires").length !== 1 ||
+    url.searchParams.getAll("signature").length !== 1
+  ) return null;
+  const expires = url.searchParams.get("expires");
+  const signature = url.searchParams.get("signature");
+  if (!expires || !/^[1-9]\d{0,9}$/.test(expires) || !signature?.trim()) return null;
+  const expiresSeconds = Number(expires);
+  if (!Number.isSafeInteger(expiresSeconds)) return null;
+  const urlExpiryMs = expiresSeconds * 1000;
+  if (!Number.isSafeInteger(urlExpiryMs) || !Number.isFinite(new Date(urlExpiryMs).getTime()) || urlExpiryMs <= nowMs) return null;
+
+  return {
+    checkoutUrlHash: createHash("sha256").update(checkout.checkoutUrl).digest("hex"),
+    providerExpiresAt: checkout.expiresAt,
+  };
+}
+
+async function finalizeExactMatch(input: {
+  checkout: LemonSqueezyRetrievedCheckout;
+  checkoutUrlHash: string;
+  providerExpiresAt: string;
+  recoveryAttemptId: string;
+  claimToken: string;
+  environment: BillingEnvironment;
+  repository: BillingCheckoutRecoveryRepository;
+}): Promise<BillingCheckoutRecoveryOutcome> {
+  const result = await input.repository.finalizeCheckoutRecovery({
+    recoveryAttemptId: input.recoveryAttemptId,
+    claimToken: input.claimToken,
+    environment: input.environment,
+    providerCheckoutId: input.checkout.providerCheckoutId,
+    checkoutUrlHash: input.checkoutUrlHash,
+    providerExpiresAt: input.providerExpiresAt,
+  });
+  switch (result.finalizationOutcome) {
+    case "finalized": return "recovered_open";
+    case "already_finalized": return "already_recovered_open";
+    case "finalization_conflict": case "attempt_state_conflict":
+    case "provider_id_conflict": case "provider_checkout_expired":
+    case "ledger_state_conflict": case "claim_lost":
+      return result.finalizationOutcome;
+  }
+}
+
 export async function runBillingCheckoutRecovery(input: {
   checkoutSessionId: string;
   environment: BillingEnvironment;
@@ -42,6 +128,7 @@ export async function runBillingCheckoutRecovery(input: {
   pageSize: number;
   maxPages: number;
   providerStoreId: string;
+  now: () => Date;
   repository: BillingCheckoutRecoveryRepository;
   provider: CheckoutRecoveryProviderGateway;
 }): Promise<BillingCheckoutRecoveryOutcome> {
@@ -91,11 +178,15 @@ export async function runBillingCheckoutRecovery(input: {
           outcome = "invalid_candidate";
         } else {
           const correlation = correlateLemonSqueezyCheckoutCandidates(ledger, [checkout]);
-          outcome = correlation.outcome === "exact_match"
-            ? "still_pending"
-            : correlation.outcome === "not_found"
-              ? "invalid_candidate"
-              : correlation.outcome;
+          if (correlation.outcome === "exact_match") {
+            const validated = validateCheckoutForRecoveryFinalization({ checkout: correlation.checkout, ledger, now: input.now() });
+            if (validated) return finalizeExactMatch({ checkout: correlation.checkout, ...validated, recoveryAttemptId: claim.recoveryAttemptId, claimToken: claim.claimToken, environment: input.environment, repository: input.repository });
+            outcome = "invalid_candidate";
+          } else {
+            outcome = correlation.outcome === "not_found"
+                ? "invalid_candidate"
+                : correlation.outcome;
+          }
         }
       } else {
         const firstPageUrl = input.provider.buildFirstListPageUrl({
@@ -112,11 +203,15 @@ export async function runBillingCheckoutRecovery(input: {
             variantId: mapping.variantId,
           }),
         });
-        outcome = search.outcome === "exact_match"
-          ? "still_pending"
-          : search.outcome === "search_exhausted_not_found"
-            ? "provider_not_found"
-            : search.outcome;
+        if (search.outcome === "exact_match") {
+          const validated = validateCheckoutForRecoveryFinalization({ checkout: search.checkout, ledger, now: input.now() });
+          if (validated) return finalizeExactMatch({ checkout: search.checkout, ...validated, recoveryAttemptId: claim.recoveryAttemptId, claimToken: claim.claimToken, environment: input.environment, repository: input.repository });
+          outcome = "invalid_candidate";
+        } else {
+          outcome = search.outcome === "search_exhausted_not_found"
+              ? "provider_not_found"
+              : search.outcome;
+        }
       }
     }
   } catch (error) {

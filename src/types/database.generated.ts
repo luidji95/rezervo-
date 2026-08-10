@@ -2425,6 +2425,24 @@ export type Database = {
           status: string | null
         }[]
       }
+      finalize_billing_checkout_recovery_v1: {
+        Args: {
+          p_checkout_url_hash: string
+          p_claim_token: string
+          p_environment: string
+          p_provider_checkout_id: string
+          p_provider_expires_at: string
+          p_recovery_attempt_id: string
+        }
+        Returns: {
+          attempt_completed_at: string | null
+          attempt_status: string | null
+          audit_outcome: string | null
+          finalization_outcome: string
+          ledger_status: string | null
+          recovery_attempt_id: string
+        }[]
+      }
       claim_next_linked_billing_subscription_for_reconciliation_v1: {
         Args: { p_lease_duration?: string; p_min_freshness?: string; p_now?: string; p_run_id: string }
         Returns: { check_id: string; claim_token: string; local_cancel_at_period_end: boolean; local_cancelled_at: string | null; local_current_period_ends_at: string | null; local_plan_id: string; local_provider_state_updated_at: string | null; local_status: string; mapped_product_id: string | null; mapped_store_id: string; mapped_variant_id: string; provider_customer_id: string; provider_subscription_id: string; subscription_id: string }[]

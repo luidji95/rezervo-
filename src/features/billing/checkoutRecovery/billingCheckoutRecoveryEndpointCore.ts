@@ -98,12 +98,17 @@ export async function handleBillingCheckoutRecoveryRequest(input: {
     const outcome = await input.runRecovery(checkoutSessionId, config);
     switch (outcome) {
       case "already_open": case "already_completed": case "still_pending":
+      case "recovered_open": case "already_recovered_open":
         return result(200, true, outcome);
       case "provider_not_found": case "invalid_candidate": case "ambiguous":
       case "pagination_limit_reached": case "manual_review": case "invalid_provider_response":
         return result(200, false, outcome);
       case "claim_lost": case "already_claimed":
+      case "finalization_conflict": case "attempt_state_conflict":
+      case "provider_id_conflict": case "ledger_state_conflict":
         return result(409, false, outcome);
+      case "provider_checkout_expired":
+        return result(200, false, outcome);
       case "provider_unavailable": case "configuration_error":
         return result(503, false, outcome);
     }

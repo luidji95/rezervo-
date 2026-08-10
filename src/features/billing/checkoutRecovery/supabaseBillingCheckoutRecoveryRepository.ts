@@ -3,6 +3,7 @@ import type {
   CheckoutRecoveryAuditOutcome,
   CheckoutRecoveryClaim,
   CheckoutRecoveryCompletion,
+  CheckoutRecoveryFinalization,
   CheckoutRecoveryProviderMapping,
 } from "./billingCheckoutRecoveryRepository";
 import type { BillingEnvironment } from "../config/billingEnvironment";
@@ -19,6 +20,10 @@ const AUDIT_OUTCOMES = new Set<CheckoutRecoveryAuditOutcome>([
   "still_pending", "provider_not_found", "provider_unavailable", "invalid_candidate",
   "ambiguous", "pagination_limit_reached", "manual_review", "configuration_error",
   "invalid_provider_response",
+]);
+const FINALIZATION_OUTCOMES = new Set([
+  "finalized", "already_finalized", "finalization_conflict", "attempt_state_conflict",
+  "provider_id_conflict", "provider_checkout_expired", "ledger_state_conflict", "claim_lost",
 ]);
 
 type QueryResult = { data: unknown; error: unknown };
@@ -131,6 +136,31 @@ export function parseCheckoutRecoveryCompletionRow(value: unknown): CheckoutReco
   fail(code);
 }
 
+export function parseCheckoutRecoveryFinalizationRow(value: unknown): CheckoutRecoveryFinalization {
+  const code = "BILLING_CHECKOUT_RECOVERY_FINALIZATION_INVALID";
+  const row = object(value, code);
+  if (typeof row.finalization_outcome !== "string" || !FINALIZATION_OUTCOMES.has(row.finalization_outcome)) fail(code);
+  const recoveryAttemptId = uuid(row.recovery_attempt_id, code);
+  const ledgerStatus = row.ledger_status === null ? null : typeof row.ledger_status === "string" && CHECKOUT_STATUSES.has(row.ledger_status) ? row.ledger_status : fail(code);
+  const attemptStatus = row.attempt_status === null ? null : typeof row.attempt_status === "string" && ["claimed", "completed", "abandoned"].includes(row.attempt_status) ? row.attempt_status : fail(code);
+  const auditOutcome = row.audit_outcome === null ? null :
+    typeof row.audit_outcome === "string" && (AUDIT_OUTCOMES.has(row.audit_outcome as CheckoutRecoveryAuditOutcome) || row.audit_outcome === "recovered_open" || row.audit_outcome === "claim_lost")
+      ? row.audit_outcome
+      : fail(code);
+  const attemptCompletedAt = timestamp(row.attempt_completed_at, true, code);
+  const outcome = row.finalization_outcome;
+  const valid =
+    ((outcome === "finalized" || outcome === "already_finalized") && ledgerStatus === "open" && attemptStatus === "completed" && auditOutcome === "recovered_open" && attemptCompletedAt !== null) ||
+    (outcome === "finalization_conflict" && ledgerStatus !== null && attemptStatus === "completed" && auditOutcome === "recovered_open" && attemptCompletedAt !== null) ||
+    (outcome === "provider_id_conflict" && ledgerStatus === "creating" && attemptStatus === "completed" && auditOutcome === "manual_review" && attemptCompletedAt !== null) ||
+    (outcome === "provider_checkout_expired" && ledgerStatus === "creating" && attemptStatus === "completed" && auditOutcome === "invalid_candidate" && attemptCompletedAt !== null) ||
+    (outcome === "ledger_state_conflict" && ledgerStatus !== null && attemptStatus === "completed" && auditOutcome === "manual_review" && attemptCompletedAt !== null) ||
+    (outcome === "attempt_state_conflict" && ledgerStatus !== null && attemptStatus === "completed" && auditOutcome !== null && AUDIT_OUTCOMES.has(auditOutcome as CheckoutRecoveryAuditOutcome) && attemptCompletedAt !== null) ||
+    (outcome === "claim_lost" && (attemptStatus === null || attemptStatus === "abandoned") && (auditOutcome === null || auditOutcome === "claim_lost") && (attemptStatus === null ? attemptCompletedAt === null : attemptCompletedAt !== null));
+  if (!valid) fail(code);
+  return { finalizationOutcome: outcome as CheckoutRecoveryFinalization["finalizationOutcome"], recoveryAttemptId, ledgerStatus, attemptStatus, auditOutcome, attemptCompletedAt };
+}
+
 export function parseCheckoutRecoveryMappingRows(value: unknown): CheckoutRecoveryProviderMapping | null {
   const code = "BILLING_CHECKOUT_RECOVERY_MAPPING_INVALID";
   if (!Array.isArray(value)) fail(code);
@@ -182,6 +212,19 @@ export class SupabaseBillingCheckoutRecoveryRepository implements BillingCheckou
     }).maybeSingle();
     if (error || !data) fail("BILLING_CHECKOUT_RECOVERY_COMPLETE_FAILED");
     return parseCheckoutRecoveryCompletionRow(data);
+  }
+
+  async finalizeCheckoutRecovery(input: { recoveryAttemptId: string; claimToken: string; environment: BillingEnvironment; providerCheckoutId: string; checkoutUrlHash: string; providerExpiresAt: string }) {
+    const { data, error } = await this.client.rpc("finalize_billing_checkout_recovery_v1", {
+      p_recovery_attempt_id: input.recoveryAttemptId,
+      p_claim_token: input.claimToken,
+      p_environment: input.environment,
+      p_provider_checkout_id: input.providerCheckoutId,
+      p_checkout_url_hash: input.checkoutUrlHash,
+      p_provider_expires_at: input.providerExpiresAt,
+    }).maybeSingle();
+    if (error || !data) fail("BILLING_CHECKOUT_RECOVERY_FINALIZATION_FAILED");
+    return parseCheckoutRecoveryFinalizationRow(data);
   }
 
   async resolveTrustedProviderMapping(input: { requestedPlanId: string; environment: BillingEnvironment }) {

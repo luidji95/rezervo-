@@ -55,9 +55,13 @@ test("body accepts only one internal UUID field and JSON", async () => {
 test("every recovery outcome has an explicit HTTP success matrix", async () => {
   for (const [outcome, status, success] of [
     ["already_open", 200, true], ["already_completed", 200, true], ["still_pending", 200, true],
+    ["recovered_open", 200, true], ["already_recovered_open", 200, true],
     ["provider_not_found", 200, false], ["invalid_candidate", 200, false], ["ambiguous", 200, false],
     ["pagination_limit_reached", 200, false], ["manual_review", 200, false], ["invalid_provider_response", 200, false],
     ["already_claimed", 409, false], ["claim_lost", 409, false],
+    ["finalization_conflict", 409, false], ["attempt_state_conflict", 409, false],
+    ["provider_id_conflict", 409, false], ["ledger_state_conflict", 409, false],
+    ["provider_checkout_expired", 200, false],
     ["provider_unavailable", 503, false], ["configuration_error", 503, false],
   ] as const) {
     const response = await run(request(), { runRecovery: async () => outcome });

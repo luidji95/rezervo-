@@ -213,7 +213,7 @@ begin
   exception when sqlstate '22023' then v_rejected:=sqlerrm='BILLING_CHECKOUT_RECOVERY_OUTCOME_INVALID'; end;
   if not v_rejected then raise exception 'GENERIC_COMPLETE_RECOVERED_OPEN_ALLOWED'; end if;
 
-  -- Successful atomic finalization and exact replay.
+  -- A NULL provider_session_id finalizes atomically and exact replay is stable.
   select * into v_fixture from pg_temp.make_recovery_fixture(
     v_salon,v_owner,v_plan,'test','creating',null,'claimed',null,interval '10 minutes');
   update public.billing_checkout_sessions
@@ -280,16 +280,41 @@ begin
   if v_result.finalization_outcome<>'claim_lost' or v_before is distinct from v_after
      or v_attempt_before is distinct from v_attempt_after then raise exception 'ENVIRONMENT_MISMATCH_MUTATED'; end if;
 
-  -- A creating ledger with any existing provider ID is a manual-review conflict.
+  -- An identical provider ID may already be present on a creating ledger.
   select * into v_fixture from pg_temp.make_recovery_fixture(
     v_salon,v_owner,v_plan,'test','creating','72510000-0000-0000-0000-000000000001','claimed',null,interval '10 minutes');
-  select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_before from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   select * into v_result from public.finalize_billing_checkout_recovery_v1(
     v_fixture.attempt_id,v_fixture.claim_token,'test','72510000-0000-0000-0000-000000000001',v_hash,v_expiry);
-  select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_after from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
+  if v_result.finalization_outcome<>'finalized' or v_result.ledger_status<>'open'
+     or v_result.attempt_status<>'completed' or v_result.audit_outcome<>'recovered_open'
+     or not exists(
+       select 1 from public.billing_checkout_sessions c
+       where c.id=v_fixture.checkout_id
+         and c.status='open'
+         and c.provider_session_id='72510000-0000-0000-0000-000000000001'
+         and c.checkout_url_hash=v_hash
+         and c.expires_at=v_expiry
+     ) then
+    raise exception 'CREATING_WITH_MATCHING_PROVIDER_ID_NOT_FINALIZED';
+  end if;
+
+  -- A different existing provider ID remains a manual-review conflict.
+  select * into v_fixture from pg_temp.make_recovery_fixture(
+    v_salon,v_owner,v_plan,'test','creating','72520000-0000-0000-0000-000000000002','claimed',null,interval '10 minutes');
+  select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_before
+  from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
+  select * into v_result from public.finalize_billing_checkout_recovery_v1(
+    v_fixture.attempt_id,v_fixture.claim_token,'test','72530000-0000-0000-0000-000000000003',v_hash,v_expiry);
+  select pg_catalog.md5(pg_catalog.row_to_json(c)::text) into v_after
+  from public.billing_checkout_sessions c where id=v_fixture.checkout_id;
   if v_result.finalization_outcome<>'ledger_state_conflict' or v_result.attempt_status<>'completed'
-     or v_result.audit_outcome<>'manual_review' or v_before is distinct from v_after then
-    raise exception 'CREATING_WITH_PROVIDER_ID_CONFLICT_INVALID';
+     or v_result.audit_outcome<>'manual_review' or v_before is distinct from v_after
+     or not exists(
+       select 1 from public.billing_checkout_sessions c
+       where c.id=v_fixture.checkout_id
+         and c.provider_session_id='72520000-0000-0000-0000-000000000002'
+     ) then
+    raise exception 'CREATING_WITH_DIFFERENT_PROVIDER_ID_CONFLICT_INVALID';
   end if;
 
   -- Completed non-finalization and abandoned attempts are deterministic.

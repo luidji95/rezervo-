@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAuthenticatedRequestUser } from "@/lib/server/requestAuth";
 import { BillingCheckoutError } from "@/features/billing/providers/billingCheckoutErrors";
 import { LemonSqueezyBillingProvider } from "@/features/billing/providers/lemonSqueezyBillingProvider";
+import { LemonSqueezyCheckoutRetrievalClient } from "@/features/billing/providers/lemonSqueezyCheckoutRetrievalCore";
 import { createBillingCheckout } from "@/features/billing/services/billingCheckoutCore";
 import { getBillingCheckoutConfig } from "@/features/billing/services/billingCheckoutConfig";
 import { parseBillingCheckoutRequest } from "@/features/billing/services/billingCheckoutRequest";
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
     const parsed = parseBillingCheckoutRequest(body);
 
     const provider = new LemonSqueezyBillingProvider(config.apiKey);
+    const retrievalProvider = new LemonSqueezyCheckoutRetrievalClient(config, fetch);
     const repository = new SupabaseBillingCheckoutRepository(
       config.environment,
     );
@@ -64,11 +66,13 @@ export async function POST(request: Request) {
         liveAllowedSalonIds: config.liveAllowedSalonIds,
         now: () => new Date(),
       },
+      retrievalProvider,
     );
 
+    const { responseStatus, ...checkout } = result;
     return NextResponse.json(
-      { success: true, checkout: result },
-      { status: 201, headers: { "Cache-Control": "no-store" } },
+      { success: true, checkout },
+      { status: responseStatus, headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
     return errorResponse(error);

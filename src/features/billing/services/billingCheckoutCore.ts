@@ -7,11 +7,17 @@ import type {
   CreateCheckoutSessionResult,
 } from "../providers/billingProvider.ts";
 import { BillingCheckoutError } from "../providers/billingCheckoutErrors.ts";
+import { expectedLemonSqueezyTestMode } from "../config/billingEnvironment.ts";
+import {
+  LemonSqueezyCheckoutRetrievalError,
+  type LemonSqueezyRetrievedCheckout,
+} from "../providers/lemonSqueezyCheckoutRetrievalCore.ts";
+import { validateCheckoutForRecoveryFinalization } from "../checkoutRecovery/billingCheckoutRecoveryCore.ts";
 
 export type BillingPriceMapping = {
   id: string;
   planId: string;
-  planCode: string;
+  planCode: CheckoutPlanCode;
   planActive: boolean;
   planMonthlyPrice: number;
   planCurrency: string;
@@ -51,6 +57,17 @@ export type BillingCheckoutIntentAcquisition = {
   providerSessionId: string | null;
 };
 
+export type BillingCheckoutCurrentState = BillingCheckoutLedger & {
+  provider: "lemonsqueezy";
+  environment: BillingEnvironment;
+  providerSessionId: string | null;
+  checkoutUrlHash: string | null;
+};
+
+export type BillingCheckoutRetrievalProvider = {
+  retrieveById(providerCheckoutId: string): Promise<LemonSqueezyRetrievedCheckout>;
+};
+
 export interface BillingCheckoutRepository {
   isSalonOwner(salonId: string, actorProfileId: string): Promise<boolean>;
   hasActiveOverride(salonId: string, now: string): Promise<boolean>;
@@ -60,6 +77,7 @@ export interface BillingCheckoutRepository {
     actorProfileId: string;
     planId: string;
   }): Promise<BillingCheckoutIntentAcquisition>;
+  getCheckoutSessionById(id: string): Promise<BillingCheckoutCurrentState | null>;
   findByIdempotencyKey(key: string): Promise<BillingCheckoutLedger | null>;
   findReusableOpenSession(input: {
     salonId: string;
@@ -98,11 +116,98 @@ export type BillingCheckoutRuntime = {
   now: () => Date;
 };
 
+function retrievalFailure(error: unknown): never {
+  if (error instanceof LemonSqueezyCheckoutRetrievalError) {
+    if (error.kind === "provider_unavailable" || error.kind === "configuration_error") {
+      throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+    }
+    throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+  }
+  throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+}
+
+async function resumeExistingOpenCheckout(input: {
+  request: CreateBillingCheckoutInput;
+  ledger: BillingCheckoutLedger;
+  providerSessionId: string | null;
+  mapping: BillingPriceMapping;
+  repository: BillingCheckoutRepository;
+  retrievalProvider: BillingCheckoutRetrievalProvider;
+  runtime: BillingCheckoutRuntime;
+}) {
+  if (!input.providerSessionId) {
+    throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+  }
+  let checkout: LemonSqueezyRetrievedCheckout;
+  try {
+    checkout = await input.retrievalProvider.retrieveById(input.providerSessionId);
+  } catch (error) {
+    retrievalFailure(error);
+  }
+  if (
+    checkout.providerCheckoutId !== input.providerSessionId ||
+    checkout.testMode !== expectedLemonSqueezyTestMode(input.runtime.environment)
+  ) {
+    throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+  }
+  const validated = validateCheckoutForRecoveryFinalization({
+    checkout,
+    ledger: {
+      ledgerId: input.ledger.id,
+      environment: input.runtime.environment,
+      expectedStoreId: input.runtime.storeId,
+      expectedVariantId: input.mapping.providerVariantId,
+      localCreatedAt: input.runtime.now().toISOString(),
+      localExpiresAt: input.ledger.expiresAt,
+      expectedSalonId: input.request.salonId,
+      expectedPlanCode: input.request.planCode,
+      expectedIdempotencyKey: input.ledger.idempotencyKey,
+      knownProviderCheckoutIds: new Set(),
+    },
+    now: input.runtime.now(),
+  });
+  if (!validated) {
+    throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+  }
+
+  let current: BillingCheckoutCurrentState | null;
+  try {
+    current = await input.repository.getCheckoutSessionById(input.ledger.id);
+  } catch {
+    throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+  }
+  if (
+    !current ||
+    current.id !== input.ledger.id ||
+    current.salonId !== input.request.salonId ||
+    current.actorProfileId !== input.ledger.actorProfileId ||
+    current.requestedPlanId !== input.mapping.planId ||
+    current.provider !== "lemonsqueezy" ||
+    current.environment !== input.runtime.environment ||
+    current.status !== "open" ||
+    current.providerSessionId !== input.providerSessionId ||
+    current.idempotencyKey !== input.ledger.idempotencyKey ||
+    current.checkoutUrlHash !== validated.checkoutUrlHash ||
+    current.expiresAt !== validated.providerExpiresAt ||
+    Date.parse(current.expiresAt) <= input.runtime.now().getTime()
+  ) {
+    throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+  }
+  return {
+    provider: "lemonsqueezy" as const,
+    environment: input.runtime.environment,
+    checkoutUrl: checkout.checkoutUrl,
+    expiresAt: checkout.expiresAt!,
+    responseStatus: 200 as const,
+  };
+}
+
 export async function createBillingCheckout(
   input: CreateBillingCheckoutInput,
   repository: BillingCheckoutRepository,
   provider: BillingProvider,
   runtime: BillingCheckoutRuntime,
+  retrievalProvider?: BillingCheckoutRetrievalProvider,
 ) {
   if (
     runtime.environment === "live" &&
@@ -157,6 +262,20 @@ export async function createBillingCheckout(
     }
     if (ledger.status !== "creating" && ledger.status !== "open") {
       throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+    }
+    if (ledger.status === "open") {
+      if (!retrievalProvider) {
+        throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+      }
+      return resumeExistingOpenCheckout({
+        request: input,
+        ledger,
+        providerSessionId: acquisition.providerSessionId,
+        mapping,
+        repository,
+        retrievalProvider,
+        runtime,
+      });
     }
     throw new BillingCheckoutError("BILLING_CHECKOUT_PENDING", 202);
   }
@@ -223,5 +342,6 @@ export async function createBillingCheckout(
     environment: result.environment,
     checkoutUrl: result.checkoutUrl,
     expiresAt: result.expiresAt,
+    responseStatus: 201 as const,
   };
 }

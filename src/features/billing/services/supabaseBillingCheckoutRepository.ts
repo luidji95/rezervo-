@@ -8,7 +8,10 @@ import type {
 } from "./billingCheckoutCore";
 import type { CheckoutPlanCode } from "../providers/billingProvider";
 import type { BillingEnvironment } from "../config/billingEnvironment";
-import { parseBillingCheckoutIntentAcquisition } from "./billingCheckoutIntent";
+import {
+  parseBillingCheckoutCurrentState,
+  parseBillingCheckoutIntentAcquisition,
+} from "./billingCheckoutIntent";
 
 type MappingResult = {
   id: string;
@@ -96,6 +99,9 @@ export class SupabaseBillingCheckoutRepository
     if (error) throw new Error("BILLING_MAPPING_LOOKUP_FAILED");
     if (!data) return null;
     const row = data as unknown as MappingResult;
+    if (row.plans.slug !== "starter" && row.plans.slug !== "pro") {
+      throw new Error("BILLING_MAPPING_LOOKUP_FAILED");
+    }
     return {
       id: row.id,
       planId: row.plan_id,
@@ -135,6 +141,18 @@ export class SupabaseBillingCheckoutRepository
       this.environment,
       input.salonId,
     );
+  }
+
+  async getCheckoutSessionById(id: string) {
+    const { data, error } = await supabaseServer
+      .from("billing_checkout_sessions")
+      .select(`${LEDGER_COLUMNS},provider,environment,provider_session_id,checkout_url_hash`)
+      .eq("id", id)
+      .eq("provider", "lemonsqueezy")
+      .eq("environment", this.environment)
+      .maybeSingle();
+    if (error) throw new Error("BILLING_SESSION_LOOKUP_FAILED");
+    return data ? parseBillingCheckoutCurrentState(data, this.environment) : null;
   }
 
   async findByIdempotencyKey(key: string) {

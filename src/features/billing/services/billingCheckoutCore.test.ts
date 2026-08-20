@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { MockBillingProvider } from "../providers/mockBillingProvider.ts";
 import { BillingCheckoutError } from "../providers/billingCheckoutErrors.ts";
+import {
+  LemonSqueezyCheckoutRetrievalError,
+  type LemonSqueezyRetrievedCheckout,
+} from "../providers/lemonSqueezyCheckoutRetrievalCore.ts";
 import {
   createBillingCheckout,
   type BillingCheckoutLedger,
@@ -18,6 +23,38 @@ const key = "20000000-0000-4000-8000-000000000003";
 const starterPlan = "20000000-0000-4000-8000-000000000010";
 const proPlan = "20000000-0000-4000-8000-000000000011";
 const now = new Date("2026-07-27T13:00:00.000Z");
+const providerCheckoutId = "50000000-0000-4000-8000-000000000001";
+
+function retrievedCheckout(overrides: Partial<LemonSqueezyRetrievedCheckout> = {}) {
+  const expiresAt = "2026-07-27T13:30:00.000Z";
+  const expires = Math.floor(Date.parse(expiresAt) / 1000);
+  return {
+    providerCheckoutId,
+    storeId: "123",
+    variantId: "456",
+    customCheckoutSessionId: "20000000-0000-4000-8000-000000000001",
+    customSalonId: salon,
+    customPlanCode: "starter" as const,
+    customIdempotencyKey: "30000000-0000-4000-8000-000000000001",
+    testMode: true,
+    checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=${expires}&signature=opaque`,
+    expiresAt,
+    providerCreatedAt: "2026-07-27T13:00:00.000Z",
+    providerUpdatedAt: "2026-07-27T13:00:01.000Z",
+    ...overrides,
+  };
+}
+
+class MockRetrievalProvider {
+  calls: string[] = [];
+  checkout = retrievedCheckout();
+  error: unknown = null;
+  async retrieveById(id: string) {
+    this.calls.push(id);
+    if (this.error) throw this.error;
+    return this.checkout;
+  }
+}
 
 class MemoryRepository implements BillingCheckoutRepository {
   owner = true;
@@ -44,6 +81,10 @@ class MemoryRepository implements BillingCheckoutRepository {
   acquiredStatus: BillingCheckoutLedger["status"] = "creating";
   environment: "test" | "live" = "test";
   acquireInputs: Array<{ salonId: string; actorProfileId: string; planId: string }> = [];
+  providerSessionId: string | null = null;
+  checkoutUrlHash: string | null = null;
+  recheckCalls = 0;
+  recheckOverride: BillingCheckoutLedger["status"] | null = null;
 
   async isSalonOwner() { return this.owner; }
   async hasActiveOverride() { return this.override; }
@@ -68,7 +109,20 @@ class MemoryRepository implements BillingCheckoutRepository {
       checkoutSession: row,
       provider: "lemonsqueezy" as const,
       environment: this.environment,
-      providerSessionId: null,
+      providerSessionId: this.providerSessionId,
+    };
+  }
+  async getCheckoutSessionById(id: string) {
+    this.recheckCalls += 1;
+    const row = [...this.ledgers.values()].find((ledger) => ledger.id === id);
+    if (!row) return null;
+    return {
+      ...row,
+      status: this.recheckOverride ?? row.status,
+      provider: "lemonsqueezy" as const,
+      environment: this.environment,
+      providerSessionId: this.providerSessionId,
+      checkoutUrlHash: this.checkoutUrlHash,
     };
   }
   async findByIdempotencyKey(value: string) { return this.ledgers.get(value) ?? null; }
@@ -269,22 +323,144 @@ test("two browser UUIDs share the acquired intent and only created calls provide
   assert.equal(provider.calls[0]?.checkoutSessionId, ledger.id);
   assert.equal(provider.calls[0]?.idempotencyKey, ledger.idempotencyKey);
   assert.notEqual(provider.calls[0]?.idempotencyKey, key);
-  await expectCode(() => createBillingCheckout(request, repo, provider, runtime), "BILLING_CHECKOUT_PENDING");
+  await expectCode(() => createBillingCheckout(request, repo, provider, runtime), "BILLING_PROVIDER_UNAVAILABLE");
 });
 
-test("existing creating and open intents are pending without provider retrieval or create", async () => {
-  for (const status of ["creating", "open"] as const) {
-    const repo = new MemoryRepository();
-    repo.acquiredStatus = status;
-    await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
-    const provider = new MockBillingProvider();
-    await assert.rejects(
-      () => createBillingCheckout(request, repo, provider, runtime),
-      (error: unknown) => error instanceof BillingCheckoutError &&
-        error.code === "BILLING_CHECKOUT_PENDING" && error.status === 202,
+test("existing creating remains pending without provider retrieval or create", async () => {
+  const repo = new MemoryRepository();
+  repo.acquiredStatus = "creating";
+  await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+  const provider = new MockBillingProvider();
+  const retrieval = new MockRetrievalProvider();
+  await assert.rejects(
+    () => createBillingCheckout(request, repo, provider, runtime, retrieval),
+    (error: unknown) => error instanceof BillingCheckoutError &&
+      error.code === "BILLING_CHECKOUT_PENDING" && error.status === 202,
+  );
+  assert.equal(provider.calls.length, 0);
+  assert.equal(retrieval.calls.length, 0);
+});
+
+function openResumeHarness() {
+  const repo = new MemoryRepository();
+  repo.acquiredStatus = "open";
+  repo.providerSessionId = providerCheckoutId;
+  const retrieval = new MockRetrievalProvider();
+  const provider = new MockBillingProvider();
+  return { repo, retrieval, provider };
+}
+
+async function seedOpenResume(h: ReturnType<typeof openResumeHarness>) {
+  const acquisition = await h.repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+  const row = acquisition.checkoutSession;
+  h.retrieval.checkout = retrievedCheckout({
+    customCheckoutSessionId: row.id,
+    customIdempotencyKey: row.idempotencyKey,
+  });
+  row.expiresAt = h.retrieval.checkout.expiresAt;
+  h.repo.checkoutUrlHash = createHash("sha256").update(h.retrieval.checkout.checkoutUrl).digest("hex");
+  return row;
+}
+
+test("existing open retrieves once, rechecks DB, and returns the original URL", async () => {
+  const h = openResumeHarness();
+  await seedOpenResume(h);
+  const events: string[] = [];
+  const retrieve = h.retrieval.retrieveById.bind(h.retrieval);
+  h.retrieval.retrieveById = async (id) => { events.push("retrieve"); return retrieve(id); };
+  const recheck = h.repo.getCheckoutSessionById.bind(h.repo);
+  h.repo.getCheckoutSessionById = async (id) => { events.push("recheck"); return recheck(id); };
+  const result = await createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval);
+  assert.equal(result.responseStatus, 200);
+  assert.equal(result.checkoutUrl, h.retrieval.checkout.checkoutUrl);
+  assert.deepEqual(h.retrieval.calls, [providerCheckoutId]);
+  assert.equal(h.repo.recheckCalls, 1);
+  assert.equal(h.provider.calls.length, 0);
+  assert.deepEqual(events, ["retrieve", "recheck"]);
+});
+
+test("existing open fails closed for provider identity and URL mismatches", async () => {
+  const cases: Array<Partial<LemonSqueezyRetrievedCheckout>> = [
+    { providerCheckoutId: "50000000-0000-4000-8000-000000000002" },
+    { storeId: "999" },
+    { variantId: "999" },
+    { testMode: false },
+    { customCheckoutSessionId: "50000000-0000-4000-8000-000000000002" },
+    { customIdempotencyKey: "50000000-0000-4000-8000-000000000002" },
+    { customSalonId: "50000000-0000-4000-8000-000000000002" },
+    { customPlanCode: "pro" },
+    { expiresAt: "2026-07-27T12:59:00.000Z" },
+    { checkoutUrl: "https://evil.example/checkout" },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/50000000-0000-4000-8000-000000000002?expires=1785159000&signature=opaque` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785159000` },
+  ];
+  for (const override of cases) {
+    const h = openResumeHarness();
+    await seedOpenResume(h);
+    h.retrieval.checkout = { ...h.retrieval.checkout, ...override };
+    await expectCode(
+      () => createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval),
+      "BILLING_RECONCILIATION_REQUIRED",
     );
-    assert.equal(provider.calls.length, 0);
+    assert.equal(h.provider.calls.length, 0);
   }
+});
+
+test("existing open never returns URL after terminal webhook race or DB identity change", async () => {
+  for (const change of ["completed", "failed", "expired", "cancelled"] as const) {
+    const h = openResumeHarness();
+    await seedOpenResume(h);
+    h.repo.recheckOverride = change;
+    await expectCode(() => createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval), "BILLING_RECONCILIATION_REQUIRED");
+    assert.equal(h.provider.calls.length, 0);
+  }
+  const changedId = openResumeHarness();
+  await seedOpenResume(changedId);
+  changedId.repo.providerSessionId = "50000000-0000-4000-8000-000000000002";
+  await expectCode(() => createBillingCheckout(request, changedId.repo, changedId.provider, runtime, changedId.retrieval), "BILLING_RECONCILIATION_REQUIRED");
+
+  for (const change of [
+    { salonId: "50000000-0000-4000-8000-000000000002" },
+    { requestedPlanId: proPlan },
+    { idempotencyKey: "50000000-0000-4000-8000-000000000002" },
+    { environment: "live" as const },
+    { provider: "other" as "lemonsqueezy" },
+    { checkoutUrlHash: "b".repeat(64) },
+    { expiresAt: "2026-07-27T13:29:00.000Z" },
+  ]) {
+    const h = openResumeHarness();
+    await seedOpenResume(h);
+    const recheck = h.repo.getCheckoutSessionById.bind(h.repo);
+    h.repo.getCheckoutSessionById = async (id) => ({ ...(await recheck(id))!, ...change });
+    await expectCode(() => createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval), "BILLING_RECONCILIATION_REQUIRED");
+  }
+});
+
+test("existing open without a provider checkout UUID fails before retrieval", async () => {
+  const h = openResumeHarness();
+  h.repo.providerSessionId = null;
+  await seedOpenResume(h);
+  await expectCode(() => createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval), "BILLING_RECONCILIATION_REQUIRED");
+  assert.equal(h.retrieval.calls.length, 0);
+  assert.equal(h.provider.calls.length, 0);
+});
+
+test("existing open provider and DB failures are sanitized without create fallback", async () => {
+  for (const kind of ["provider_not_found", "provider_unavailable", "invalid_provider_response"] as const) {
+    const h = openResumeHarness();
+    await seedOpenResume(h);
+    h.retrieval.error = new LemonSqueezyCheckoutRetrievalError(kind);
+    await expectCode(
+      () => createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval),
+      kind === "provider_unavailable" ? "BILLING_PROVIDER_UNAVAILABLE" : "BILLING_RECONCILIATION_REQUIRED",
+    );
+    assert.equal(h.provider.calls.length, 0);
+  }
+  const db = openResumeHarness();
+  await seedOpenResume(db);
+  db.repo.getCheckoutSessionById = async () => { throw new Error("private SQL detail"); };
+  await expectCode(() => createBillingCheckout(request, db.repo, db.provider, runtime, db.retrieval), "BILLING_PROVIDER_UNAVAILABLE");
+  assert.equal(db.provider.calls.length, 0);
 });
 
 test("existing intent for another plan is an in-progress conflict without mutation", async () => {
@@ -368,4 +544,6 @@ test("checkout route maps pending to a sanitized HTTP 202 response", () => {
   assert.match(route, /error\.code === "BILLING_CHECKOUT_PENDING"/);
   assert.match(route, /Checkout preparation is already in progress\. Please try again shortly\./);
   assert.doesNotMatch(route, /checkoutSessionId|providerSessionId|idempotencyKey/);
+  assert.match(route, /const \{ responseStatus, \.\.\.checkout \} = result/);
+  assert.match(route, /status: responseStatus/);
 });

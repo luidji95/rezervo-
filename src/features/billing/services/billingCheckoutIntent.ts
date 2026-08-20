@@ -1,5 +1,6 @@
 import type { BillingEnvironment } from "../config/billingEnvironment.ts";
 import type {
+  BillingCheckoutCurrentState,
   BillingCheckoutIntentAcquisition,
   BillingCheckoutLedger,
 } from "./billingCheckoutCore.ts";
@@ -72,4 +73,49 @@ export function parseBillingCheckoutIntentAcquisition(
       expiresAt: row.expires_at,
     },
   };
+}
+
+export function parseBillingCheckoutCurrentState(
+  value: unknown,
+  trustedEnvironment: BillingEnvironment,
+): BillingCheckoutCurrentState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("BILLING_CHECKOUT_CURRENT_STATE_INVALID");
+  }
+  const row = value as Record<string, unknown>;
+  const status = row.status;
+  const providerSessionId = row.provider_session_id;
+  const checkoutUrlHash = row.checkout_url_hash;
+  const expiresAt = row.expires_at;
+  if (
+    row.provider !== "lemonsqueezy" ||
+    row.environment !== trustedEnvironment ||
+    typeof status !== "string" ||
+    !CHECKOUT_STATUSES.has(status) ||
+    (providerSessionId !== null &&
+      (typeof providerSessionId !== "string" || !UUID_PATTERN.test(providerSessionId))) ||
+    (checkoutUrlHash !== null &&
+      (typeof checkoutUrlHash !== "string" || !/^[0-9a-f]{64}$/.test(checkoutUrlHash))) ||
+    (expiresAt !== null &&
+      (typeof expiresAt !== "string" || !Number.isFinite(Date.parse(expiresAt))))
+  ) {
+    throw new Error("BILLING_CHECKOUT_CURRENT_STATE_INVALID");
+  }
+  try {
+    return {
+      id: requiredUuid(row.id),
+      salonId: requiredUuid(row.salon_id),
+      actorProfileId: requiredUuid(row.actor_profile_id),
+      requestedPlanId: requiredUuid(row.requested_plan_id),
+      idempotencyKey: requiredUuid(row.idempotency_key),
+      status: status as BillingCheckoutCurrentState["status"],
+      expiresAt,
+      provider: "lemonsqueezy",
+      environment: trustedEnvironment,
+      providerSessionId,
+      checkoutUrlHash,
+    };
+  } catch {
+    throw new Error("BILLING_CHECKOUT_CURRENT_STATE_INVALID");
+  }
 }

@@ -18,6 +18,7 @@ import {
   type BillingPriceMapping,
 } from "./billingCheckoutCore.ts";
 import { parseBillingCheckoutRequest } from "./billingCheckoutRequest.ts";
+import { buildBillingCheckoutClientRequest } from "./billingCheckoutClientRequest.ts";
 
 const actor = "20000000-0000-4000-8000-000000000001";
 const salon = "20000000-0000-4000-8000-000000000002";
@@ -169,7 +170,7 @@ class MemoryRepository implements BillingCheckoutRepository {
 }
 
 const runtime = { appUrl: "https://rezervo.example", storeId: "123", environment: "test" as const, liveAllowedSalonIds: null, now: () => now };
-const request = { salonId: salon, actorProfileId: actor, planCode: "starter" as const, idempotencyKey: key };
+const request = { salonId: salon, actorProfileId: actor, planCode: "starter" as const };
 
 async function expectCode(action: () => Promise<unknown>, code: string) {
   await assert.rejects(
@@ -283,23 +284,24 @@ test("owner-only authorization, overrides, mappings and Premium fail closed", as
 test("acquire receives only server-resolved identity after authorization and mapping validation", async () => {
   const repo = new MemoryRepository();
   const provider = new MockBillingProvider();
-  await createBillingCheckout(
-    { ...request, idempotencyKey: "20000000-0000-4000-8000-000000000099" },
-    repo,
-    provider,
-    runtime,
-  );
+  await createBillingCheckout(request, repo, provider, runtime);
   assert.deepEqual(repo.acquireInputs, [{
     salonId: salon,
     actorProfileId: actor,
     planId: starterPlan,
   }]);
   assert.equal(provider.calls[0]?.idempotencyKey, [...repo.ledgers.values()][0]?.idempotencyKey);
-  assert.notEqual(provider.calls[0]?.idempotencyKey, "20000000-0000-4000-8000-000000000099");
 });
 
 test("request contract rejects browser-owned billing fields", () => {
+  assert.deepEqual(parseBillingCheckoutRequest({ salonId: salon, planCode: "starter" }), {
+    salonId: salon,
+    planCode: "starter",
+  });
   for (const extra of [
+    { idempotencyKey: key },
+    { idempotency_key: key },
+    { checkout_session_id: key },
     { amount: 1 },
     { currency: "USD" },
     { providerVariantId: "1" },
@@ -311,14 +313,18 @@ test("request contract rejects browser-owned billing fields", () => {
       (error: unknown) => error instanceof BillingCheckoutError && error.code === "INVALID_INPUT",
     );
   }
+  assert.throws(
+    () => parseBillingCheckoutRequest({ idempotencyKey: key }),
+    (error: unknown) => error instanceof BillingCheckoutError && error.code === "INVALID_INPUT",
+  );
 });
 
-test("two browser UUIDs share the acquired intent and only created calls provider", async () => {
+test("parallel browser requests have no identity field and only created calls provider", async () => {
   const repo = new MemoryRepository();
   const provider = new MockBillingProvider();
   const results = await Promise.allSettled([
-    createBillingCheckout({ ...request, idempotencyKey: key }, repo, provider, runtime),
-    createBillingCheckout({ ...request, idempotencyKey: "20000000-0000-4000-8000-000000000099" }, repo, provider, runtime),
+    createBillingCheckout(request, repo, provider, runtime),
+    createBillingCheckout(request, repo, provider, runtime),
   ]);
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
   assert.equal(provider.calls.length, 1);
@@ -326,8 +332,18 @@ test("two browser UUIDs share the acquired intent and only created calls provide
   const ledger = [...repo.ledgers.values()][0]!;
   assert.equal(provider.calls[0]?.checkoutSessionId, ledger.id);
   assert.equal(provider.calls[0]?.idempotencyKey, ledger.idempotencyKey);
-  assert.notEqual(provider.calls[0]?.idempotencyKey, key);
   await expectCode(() => createBillingCheckout(request, repo, provider, runtime), "BILLING_PROVIDER_UNAVAILABLE");
+});
+
+test("billing checkout client request contains only public salon and plan fields", () => {
+  assert.deepEqual(buildBillingCheckoutClientRequest(salon, "starter"), {
+    salonId: salon,
+    planCode: "starter",
+  });
+  const hook = readFileSync("src/features/billing/hooks/useBillingCheckout.ts", "utf8");
+  assert.match(hook, /buildBillingCheckoutClientRequest\(currentSalon\.id, planCode\)/);
+  assert.doesNotMatch(hook, /randomUUID|idempotencyKey/);
+  assert.match(hook, /window\.location\.assign\(body\.checkout\.checkoutUrl\)/);
 });
 
 test("existing creating remains pending without provider retrieval or create", async () => {

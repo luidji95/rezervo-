@@ -6,7 +6,6 @@ const schema = z
   .object({
     salonId: z.uuid(),
     planCode: z.enum(["starter", "pro"]),
-    idempotencyKey: z.uuid().optional(),
   })
   .strict();
 

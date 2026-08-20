@@ -127,7 +127,6 @@ export type CreateBillingCheckoutInput = {
   actorProfileId: string;
   actorEmail?: string;
   planCode: CheckoutPlanCode;
-  idempotencyKey?: string;
 };
 
 export type BillingCheckoutRuntime = {

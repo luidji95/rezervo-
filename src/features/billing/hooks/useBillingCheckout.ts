@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 
 import { useAuthorization } from "@/context/AuthorizationContext";
 import { supabase } from "@/lib/supabase/client";
+import { buildBillingCheckoutClientRequest } from "../services/billingCheckoutClientRequest";
 
 type CheckoutPlanCode = "starter" | "pro";
 
@@ -76,11 +77,9 @@ export function useBillingCheckout() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({
-            salonId: currentSalon.id,
-            planCode,
-            idempotencyKey: crypto.randomUUID(),
-          }),
+          body: JSON.stringify(
+            buildBillingCheckoutClientRequest(currentSalon.id, planCode),
+          ),
         });
         const body = (await response.json().catch(() => null)) as {
           success?: boolean;

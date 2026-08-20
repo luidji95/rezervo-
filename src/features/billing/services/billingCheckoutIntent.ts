@@ -20,10 +20,29 @@ type AcquireRow = {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const CHECKOUT_STATUSES = new Set(["creating", "open", "completed", "expired", "failed", "cancelled"]);
+const RFC3339_TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/;
 
 function requiredUuid(value: unknown) {
   if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
     throw new Error("BILLING_CHECKOUT_INTENT_RESULT_INVALID");
+  }
+  return value;
+}
+
+function requiredTimestamp(value: unknown) {
+  if (typeof value !== "string") throw new Error("BILLING_CHECKOUT_CURRENT_STATE_INVALID");
+  const match = RFC3339_TIMESTAMP_PATTERN.exec(value);
+  if (!match) throw new Error("BILLING_CHECKOUT_CURRENT_STATE_INVALID");
+  const [, yearRaw, monthRaw, dayRaw, hourRaw, minuteRaw, secondRaw, offsetHourRaw, offsetMinuteRaw] = match;
+  const year = Number(yearRaw), month = Number(monthRaw), day = Number(dayRaw);
+  const hour = Number(hourRaw), minute = Number(minuteRaw), second = Number(secondRaw);
+  const offsetHour = offsetHourRaw === undefined ? 0 : Number(offsetHourRaw);
+  const offsetMinute = offsetMinuteRaw === undefined ? 0 : Number(offsetMinuteRaw);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth || hour > 23 ||
+      minute > 59 || second > 59 || offsetHour > 23 || offsetMinute > 59 ||
+      !Number.isFinite(Date.parse(value))) {
+    throw new Error("BILLING_CHECKOUT_CURRENT_STATE_INVALID");
   }
   return value;
 }
@@ -104,6 +123,7 @@ export function parseBillingCheckoutCurrentState(
   try {
     return {
       id: requiredUuid(row.id),
+      createdAt: requiredTimestamp(row.created_at),
       salonId: requiredUuid(row.salon_id),
       actorProfileId: requiredUuid(row.actor_profile_id),
       requestedPlanId: requiredUuid(row.requested_plan_id),

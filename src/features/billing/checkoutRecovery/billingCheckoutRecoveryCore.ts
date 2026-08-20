@@ -296,7 +296,7 @@ export async function runBillingCheckoutDirectRecovery(input: {
   return runClaimedDirectRecovery({ ...input, claim });
 }
 
-export async function runBillingCheckoutRecovery(input: {
+export async function runBillingCheckoutBoundedRecovery(input: {
   checkoutSessionId: string;
   environment: BillingEnvironment;
   leaseSeconds: number;
@@ -306,19 +306,19 @@ export async function runBillingCheckoutRecovery(input: {
   now: () => Date;
   repository: BillingCheckoutRecoveryRepository;
   provider: CheckoutRecoveryProviderGateway;
-}): Promise<BillingCheckoutRecoveryOutcome> {
+}): Promise<BillingCheckoutDirectRecoveryResult> {
   const claim = await input.repository.claimCheckoutRecovery({
     checkoutSessionId: input.checkoutSessionId,
     environment: input.environment,
     leaseSeconds: input.leaseSeconds,
   });
-  if (claim.claimOutcome !== "claimed") return claim.claimOutcome;
+  if (claim.claimOutcome !== "claimed") return { outcome: claim.claimOutcome };
   if (
     !claim.recoveryAttemptId || !claim.claimToken || claim.ledgerStatus !== "creating" ||
     claim.environment !== input.environment || claim.provider !== "lemonsqueezy" ||
     claim.checkoutSessionId !== input.checkoutSessionId
   ) {
-    return "claim_lost";
+    return { outcome: "claim_lost" };
   }
 
   if (claim.providerSessionId) {
@@ -331,7 +331,7 @@ export async function runBillingCheckoutRecovery(input: {
       repository: input.repository,
       provider: input.provider,
     });
-    return direct.outcome;
+    return direct;
   }
 
   let outcome: CheckoutRecoveryAuditOutcome;
@@ -365,20 +365,31 @@ export async function runBillingCheckoutRecovery(input: {
         variantId: mapping.variantId,
         pageSize: input.pageSize,
       });
+      let reviewedCandidates = 0;
       const search = await searchLemonSqueezyCheckoutPages({
         ledger,
         firstPageUrl,
         maxPages: input.maxPages,
-        fetchPage: (url) => input.provider.fetchListPage(url, {
-          storeId: mapping.storeId,
-          variantId: mapping.variantId,
-        }),
+        fetchPage: async (url) => {
+          const page = await input.provider.fetchListPage(url, {
+            storeId: mapping.storeId,
+            variantId: mapping.variantId,
+          });
+          reviewedCandidates += page.checkouts.length;
+          if (
+            page.checkouts.length > input.pageSize ||
+            reviewedCandidates > input.pageSize * input.maxPages
+          ) {
+            throw new LemonSqueezyCheckoutRetrievalError("invalid_provider_response");
+          }
+          return page;
+        },
       });
       if (search.outcome === "exact_match") {
         const validated = validateCheckoutForRecoveryFinalization({ checkout: search.checkout, ledger, now: input.now() });
         if (validated) {
           const finalized = await finalizeExactMatch({ checkout: search.checkout, ...validated, recoveryAttemptId: claim.recoveryAttemptId, claimToken: claim.claimToken, environment: input.environment, repository: input.repository });
-          return finalized.outcome;
+          return finalized;
         }
         outcome = "invalid_candidate";
       } else {
@@ -398,7 +409,21 @@ export async function runBillingCheckoutRecovery(input: {
     outcome,
     repository: input.repository,
   });
-  return completed.outcome;
+  return completed;
+}
+
+export async function runBillingCheckoutRecovery(input: {
+  checkoutSessionId: string;
+  environment: BillingEnvironment;
+  leaseSeconds: number;
+  pageSize: number;
+  maxPages: number;
+  providerStoreId: string;
+  now: () => Date;
+  repository: BillingCheckoutRecoveryRepository;
+  provider: CheckoutRecoveryProviderGateway;
+}): Promise<BillingCheckoutRecoveryOutcome> {
+  return (await runBillingCheckoutBoundedRecovery(input)).outcome;
 }
 
 export function createLemonSqueezyRecoveryGateway(input: {

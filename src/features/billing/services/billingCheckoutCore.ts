@@ -59,6 +59,7 @@ export type BillingCheckoutIntentAcquisition = {
 };
 
 export type BillingCheckoutCurrentState = BillingCheckoutLedger & {
+  createdAt: string;
   provider: "lemonsqueezy";
   environment: BillingEnvironment;
   providerSessionId: string | null;
@@ -72,6 +73,22 @@ export type BillingCheckoutRetrievalProvider = {
 export type BillingCheckoutDirectRecoveryRunner = (
   checkoutSessionId: string,
 ) => Promise<BillingCheckoutDirectRecoveryResult>;
+
+export const AUTHENTICATED_CREATING_RECOVERY_STALE_AFTER_MS = 30_000;
+
+export function classifyAuthenticatedCreatingRecoveryStaleness(
+  createdAt: string,
+  now: Date,
+): "fresh" | "eligible" | "invalid" {
+  const createdAtMs = Date.parse(createdAt);
+  const nowMs = now.getTime();
+  if (!Number.isFinite(createdAtMs) || !Number.isFinite(nowMs) || createdAtMs > nowMs) {
+    return "invalid";
+  }
+  return nowMs - createdAtMs >= AUTHENTICATED_CREATING_RECOVERY_STALE_AFTER_MS
+    ? "eligible"
+    : "fresh";
+}
 
 export interface BillingCheckoutRepository {
   isSalonOwner(salonId: string, actorProfileId: string): Promise<boolean>;
@@ -238,6 +255,7 @@ export async function createBillingCheckout(
   runtime: BillingCheckoutRuntime,
   retrievalProvider?: BillingCheckoutRetrievalProvider,
   directRecovery?: BillingCheckoutDirectRecoveryRunner,
+  boundedRecovery?: BillingCheckoutDirectRecoveryRunner,
 ) {
   if (
     runtime.environment === "live" &&
@@ -307,15 +325,53 @@ export async function createBillingCheckout(
         runtime,
       });
     }
+    let recovery = directRecovery;
     if (!acquisition.providerSessionId) {
-      throw new BillingCheckoutError("BILLING_CHECKOUT_PENDING", 202);
+      let current: BillingCheckoutCurrentState | null;
+      try {
+        current = await repository.getCheckoutSessionById(ledger.id);
+      } catch {
+        throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+      }
+      if (
+        !current || current.id !== ledger.id || current.salonId !== input.salonId ||
+        current.actorProfileId !== ledger.actorProfileId ||
+        current.requestedPlanId !== mapping.planId || current.provider !== "lemonsqueezy" ||
+        current.environment !== runtime.environment ||
+        current.idempotencyKey !== ledger.idempotencyKey
+      ) {
+        throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+      }
+      if (current.status === "open") {
+        if (!retrievalProvider) throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+        return resumeExistingOpenCheckout({
+          request: input, ledger: current, providerSessionId: current.providerSessionId,
+          mapping, repository, retrievalProvider, runtime,
+        });
+      }
+      if (current.status !== "creating") {
+        throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+      }
+      if (current.providerSessionId) {
+        recovery = directRecovery;
+      } else {
+        const staleness = classifyAuthenticatedCreatingRecoveryStaleness(
+          current.createdAt,
+          runtime.now(),
+        );
+        if (staleness === "invalid") {
+          throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+        }
+        if (staleness === "fresh") {
+          throw new BillingCheckoutError("BILLING_CHECKOUT_PENDING", 202);
+        }
+        recovery = boundedRecovery;
+      }
     }
-    if (!directRecovery) {
-      throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
-    }
+    if (!recovery) throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
     let recovered: BillingCheckoutDirectRecoveryResult;
     try {
-      recovered = await directRecovery(ledger.id);
+      recovered = await recovery(ledger.id);
     } catch {
       throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
     }
@@ -326,10 +382,14 @@ export async function createBillingCheckout(
       if (!retrievalProvider) {
         throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
       }
+      const current = await repository.getCheckoutSessionById(ledger.id).catch(() => null);
+      if (!current || current.status !== "open") {
+        throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+      }
       return resumeExistingOpenCheckout({
         request: input,
-        ledger,
-        providerSessionId: acquisition.providerSessionId,
+        ledger: current,
+        providerSessionId: current.providerSessionId,
         mapping,
         repository,
         retrievalProvider,
@@ -343,7 +403,7 @@ export async function createBillingCheckout(
       return returnRecheckedOpenCheckout({
         request: input,
         ledger,
-        providerSessionId: acquisition.providerSessionId,
+        providerSessionId: recovered.checkout.providerCheckoutId,
         mapping,
         repository,
         runtime,

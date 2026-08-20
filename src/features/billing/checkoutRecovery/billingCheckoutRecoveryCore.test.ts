@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 
 import { LemonSqueezyCheckoutRetrievalError, type LemonSqueezyRetrievedCheckout } from "../providers/lemonSqueezyCheckoutRetrievalCore.ts";
-import { runBillingCheckoutDirectRecovery, runBillingCheckoutRecovery, type CheckoutRecoveryProviderGateway } from "./billingCheckoutRecoveryCore.ts";
+import { runBillingCheckoutBoundedRecovery, runBillingCheckoutDirectRecovery, runBillingCheckoutRecovery, type CheckoutRecoveryProviderGateway } from "./billingCheckoutRecoveryCore.ts";
 import type { BillingCheckoutRecoveryRepository, CheckoutRecoveryAuditOutcome, CheckoutRecoveryFinalizationOutcome } from "./billingCheckoutRecoveryRepository.ts";
 import { parseKnownProviderCheckoutIdRows } from "./supabaseBillingCheckoutRecoveryRepository.ts";
 
@@ -95,6 +95,47 @@ test("authenticated direct recovery returns the validated checkout only after fi
     assert.deepEqual(h.calls.complete, []);
     assert.equal(h.calls.list, 0);
   }
+});
+
+test("authenticated bounded recovery uses a trusted 25 by 2 budget and returns validated exact match", async () => {
+  const h = harness();
+  const pageSizes: number[] = [];
+  const first = "https://api.lemonsqueezy.com/v1/checkouts?filter%5Bstore_id%5D=10&filter%5Bvariant_id%5D=20&page%5Bnumber%5D=1&page%5Bsize%5D=25";
+  const second = "https://api.lemonsqueezy.com/v1/checkouts?filter%5Bstore_id%5D=10&filter%5Bvariant_id%5D=20&page%5Bnumber%5D=2&page%5Bsize%5D=25";
+  h.provider.buildFirstListPageUrl = ({ pageSize }) => { pageSizes.push(pageSize); return first; };
+  h.provider.fetchListPage = async (url) => {
+    h.calls.list += 1;
+    return url === first
+      ? { checkouts: [], nextPageUrl: second }
+      : { checkouts: [checkout()], nextPageUrl: null };
+  };
+  const result = await runBillingCheckoutBoundedRecovery({
+    checkoutSessionId: ledgerId, environment: "test", leaseSeconds: 300,
+    pageSize: 25, maxPages: 2, providerStoreId: "10",
+    now: () => new Date("2026-07-31T10:05:00Z"), repository: h.repository, provider: h.provider,
+  });
+  assert.equal(result.outcome, "recovered_open");
+  assert.deepEqual(pageSizes, [25]);
+  assert.equal(h.calls.list, 2);
+  assert.equal(h.calls.finalize.length, 1);
+  assert.deepEqual(h.calls.complete, []);
+});
+
+test("authenticated bounded recovery never inspects more than the trusted candidate budget", async () => {
+  const h = harness();
+  h.provider.fetchListPage = async () => {
+    h.calls.list += 1;
+    return { checkouts: Array.from({ length: 26 }, () => checkout()), nextPageUrl: null };
+  };
+  const result = await runBillingCheckoutBoundedRecovery({
+    checkoutSessionId: ledgerId, environment: "test", leaseSeconds: 300,
+    pageSize: 25, maxPages: 2, providerStoreId: "10",
+    now: () => new Date("2026-07-31T10:05:00Z"), repository: h.repository, provider: h.provider,
+  });
+  assert.deepEqual(result, { outcome: "invalid_provider_response" });
+  assert.equal(h.calls.list, 1);
+  assert.equal(h.calls.finalize.length, 0);
+  assert.deepEqual(h.calls.complete, ["invalid_provider_response"]);
 });
 
 test("authenticated direct recovery preserves claim and provider failure contracts", async () => {

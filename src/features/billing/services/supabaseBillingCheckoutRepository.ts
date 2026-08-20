@@ -146,7 +146,7 @@ export class SupabaseBillingCheckoutRepository
   async getCheckoutSessionById(id: string) {
     const { data, error } = await supabaseServer
       .from("billing_checkout_sessions")
-      .select(`${LEDGER_COLUMNS},provider,environment,provider_session_id,checkout_url_hash`)
+      .select(`${LEDGER_COLUMNS},created_at,provider,environment,provider_session_id,checkout_url_hash`)
       .eq("id", id)
       .eq("provider", "lemonsqueezy")
       .eq("environment", this.environment)

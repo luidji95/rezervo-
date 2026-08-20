@@ -108,6 +108,7 @@ test("current-state parser validates every resume authority field", () => {
     requested_plan_id: acquireRow.requested_plan_id,
     idempotency_key: acquireRow.idempotency_key,
     status: "open",
+    created_at: "2026-08-20T13:00:00.000Z",
     expires_at: "2026-08-20T13:30:00.000Z",
     provider: "lemonsqueezy",
     environment: "test",
@@ -116,6 +117,7 @@ test("current-state parser validates every resume authority field", () => {
   };
   const parsed = parseBillingCheckoutCurrentState(current, "test");
   assert.equal(parsed.status, "open");
+  assert.equal(parsed.createdAt, current.created_at);
   assert.equal(parsed.providerSessionId, current.provider_session_id);
   assert.equal(parsed.checkoutUrlHash, current.checkout_url_hash);
   for (const invalid of [
@@ -126,6 +128,8 @@ test("current-state parser validates every resume authority field", () => {
     { provider_session_id: "bad" },
     { checkout_url_hash: "bad" },
     { expires_at: "bad" },
+    { created_at: "bad" },
+    { created_at: "2026-02-30T10:00:00Z" },
   ]) {
     assert.throws(
       () => parseBillingCheckoutCurrentState({ ...current, ...invalid }, "test"),
@@ -136,7 +140,7 @@ test("current-state parser validates every resume authority field", () => {
 
 test("current-state recheck is read-only and scoped by ID, provider and environment", () => {
   const method = methodSource("getCheckoutSessionById", "findByIdempotencyKey");
-  assert.match(method, /provider_session_id,checkout_url_hash/);
+  assert.match(method, /created_at,provider,environment,provider_session_id,checkout_url_hash/);
   assert.match(method, /\.eq\("id", id\)/);
   assert.match(method, /\.eq\("provider", "lemonsqueezy"\)/);
   assert.match(method, /\.eq\("environment", this\.environment\)/);

@@ -8,7 +8,11 @@ import { createBillingCheckout } from "@/features/billing/services/billingChecko
 import { getBillingCheckoutConfig } from "@/features/billing/services/billingCheckoutConfig";
 import { parseBillingCheckoutRequest } from "@/features/billing/services/billingCheckoutRequest";
 import { SupabaseBillingCheckoutRepository } from "@/features/billing/services/supabaseBillingCheckoutRepository";
-import { runBillingCheckoutDirectRecovery } from "@/features/billing/checkoutRecovery/billingCheckoutRecoveryCore";
+import {
+  createLemonSqueezyRecoveryGateway,
+  runBillingCheckoutBoundedRecovery,
+  runBillingCheckoutDirectRecovery,
+} from "@/features/billing/checkoutRecovery/billingCheckoutRecoveryCore";
 import { createSupabaseBillingCheckoutRecoveryRepository } from "@/features/billing/checkoutRecovery/supabaseBillingCheckoutRecoveryRepository.server";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +59,10 @@ export async function POST(request: Request) {
     );
     const recoveryRepository =
       createSupabaseBillingCheckoutRecoveryRepository();
+    const recoveryGateway = createLemonSqueezyRecoveryGateway({
+      client: retrievalProvider,
+      providerConfig: config,
+    });
     const result = await createBillingCheckout(
       {
         ...parsed,
@@ -83,6 +91,18 @@ export async function POST(request: Request) {
             retrieveById: (providerCheckoutId) =>
               retrievalProvider.retrieveById(providerCheckoutId),
           },
+        }),
+      (checkoutSessionId) =>
+        runBillingCheckoutBoundedRecovery({
+          checkoutSessionId,
+          environment: config.environment,
+          leaseSeconds: 300,
+          pageSize: 25,
+          maxPages: 2,
+          providerStoreId: config.storeId,
+          now: () => new Date(),
+          repository: recoveryRepository,
+          provider: recoveryGateway,
         }),
     );
 

@@ -10,6 +10,8 @@ import {
   type LemonSqueezyRetrievedCheckout,
 } from "../providers/lemonSqueezyCheckoutRetrievalCore.ts";
 import {
+  AUTHENTICATED_CREATING_RECOVERY_STALE_AFTER_MS,
+  classifyAuthenticatedCreatingRecoveryStaleness,
   createBillingCheckout,
   type BillingCheckoutLedger,
   type BillingCheckoutRepository,
@@ -83,6 +85,7 @@ class MemoryRepository implements BillingCheckoutRepository {
   acquireInputs: Array<{ salonId: string; actorProfileId: string; planId: string }> = [];
   providerSessionId: string | null = null;
   checkoutUrlHash: string | null = null;
+  createdAt = "2026-07-27T12:59:30.001Z";
   recheckCalls = 0;
   recheckOverride: BillingCheckoutLedger["status"] | null = null;
 
@@ -118,6 +121,7 @@ class MemoryRepository implements BillingCheckoutRepository {
     if (!row) return null;
     return {
       ...row,
+      createdAt: this.createdAt,
       status: this.recheckOverride ?? row.status,
       provider: "lemonsqueezy" as const,
       environment: this.environment,
@@ -339,6 +343,106 @@ test("existing creating remains pending without provider retrieval or create", a
   );
   assert.equal(provider.calls.length, 0);
   assert.equal(retrieval.calls.length, 0);
+});
+
+test("authenticated creating recovery staleness is pure and exact at 30 seconds", () => {
+  assert.equal(AUTHENTICATED_CREATING_RECOVERY_STALE_AFTER_MS, 30_000);
+  assert.equal(classifyAuthenticatedCreatingRecoveryStaleness("2026-07-27T12:59:30.001Z", now), "fresh");
+  assert.equal(classifyAuthenticatedCreatingRecoveryStaleness("2026-07-27T12:59:30.000Z", now), "eligible");
+  assert.equal(classifyAuthenticatedCreatingRecoveryStaleness("2026-07-27T12:59:29.999Z", now), "eligible");
+  assert.equal(classifyAuthenticatedCreatingRecoveryStaleness("2026-07-27T13:00:00.001Z", now), "invalid");
+  assert.equal(classifyAuthenticatedCreatingRecoveryStaleness("not-a-timestamp", now), "invalid");
+});
+
+test("stale creating without provider UUID uses bounded recovery and never create", async () => {
+  for (const createdAt of ["2026-07-27T12:59:30.000Z", "2026-07-27T12:59:29.999Z"]) {
+    const repo = new MemoryRepository();
+    repo.acquiredStatus = "creating";
+    repo.createdAt = createdAt;
+    const acquisition = await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+    const checkout = retrievedCheckout({
+      customCheckoutSessionId: acquisition.checkoutSession.id,
+      customIdempotencyKey: acquisition.checkoutSession.idempotencyKey,
+    });
+    let boundedCalls = 0;
+    const provider = new MockBillingProvider();
+    const result = await createBillingCheckout(
+      request, repo, provider, runtime, new MockRetrievalProvider(), undefined,
+      async (checkoutSessionId) => {
+        boundedCalls += 1;
+        assert.equal(checkoutSessionId, acquisition.checkoutSession.id);
+        acquisition.checkoutSession.status = "open";
+        acquisition.checkoutSession.expiresAt = checkout.expiresAt;
+        repo.providerSessionId = checkout.providerCheckoutId;
+        repo.checkoutUrlHash = createHash("sha256").update(checkout.checkoutUrl).digest("hex");
+        return {
+          outcome: "recovered_open",
+          checkout,
+          checkoutUrlHash: repo.checkoutUrlHash,
+          providerExpiresAt: checkout.expiresAt!,
+        };
+      },
+    );
+    assert.equal(result.responseStatus, 200);
+    assert.equal(boundedCalls, 1);
+    assert.equal(provider.calls.length, 0);
+  }
+});
+
+test("fresh, future, malformed and terminal current state never starts bounded recovery or create", async () => {
+  for (const scenario of [
+    { createdAt: "2026-07-27T12:59:30.001Z", status: "creating" as const, code: "BILLING_CHECKOUT_PENDING" },
+    { createdAt: "2026-07-27T13:00:00.001Z", status: "creating" as const, code: "BILLING_RECONCILIATION_REQUIRED" },
+    { createdAt: "private malformed", status: "creating" as const, code: "BILLING_RECONCILIATION_REQUIRED" },
+    { createdAt: "2026-07-27T12:59:00.000Z", status: "completed" as const, code: "BILLING_RECONCILIATION_REQUIRED" },
+  ]) {
+    const repo = new MemoryRepository();
+    repo.acquiredStatus = "creating";
+    repo.createdAt = scenario.createdAt;
+    await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+    repo.recheckOverride = scenario.status;
+    let boundedCalls = 0;
+    const provider = new MockBillingProvider();
+    await expectCode(
+      () => createBillingCheckout(
+        request, repo, provider, runtime, new MockRetrievalProvider(), undefined,
+        async () => { boundedCalls += 1; return { outcome: "provider_not_found" }; },
+      ),
+      scenario.code,
+    );
+    assert.equal(boundedCalls, 0);
+    assert.equal(provider.calls.length, 0);
+  }
+});
+
+test("provider UUID appearing during pre-claim recheck switches to direct recovery without list", async () => {
+  const repo = new MemoryRepository();
+  repo.acquiredStatus = "creating";
+  repo.createdAt = "2026-07-27T12:59:00.000Z";
+  const acquisition = await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+  const originalAcquire = repo.acquireCheckoutIntent.bind(repo);
+  repo.acquireCheckoutIntent = async (input) => {
+    const result = await originalAcquire(input);
+    repo.providerSessionId = providerCheckoutId;
+    return { ...result, providerSessionId: null };
+  };
+  const checkout = retrievedCheckout({ customCheckoutSessionId: acquisition.checkoutSession.id, customIdempotencyKey: acquisition.checkoutSession.idempotencyKey });
+  let directCalls = 0;
+  let boundedCalls = 0;
+  const resultPromise = createBillingCheckout(
+    request, repo, new MockBillingProvider(), runtime, new MockRetrievalProvider(),
+    async () => {
+      directCalls += 1;
+      acquisition.checkoutSession.status = "open";
+      acquisition.checkoutSession.expiresAt = checkout.expiresAt;
+      repo.checkoutUrlHash = createHash("sha256").update(checkout.checkoutUrl).digest("hex");
+      return { outcome: "recovered_open", checkout, checkoutUrlHash: repo.checkoutUrlHash, providerExpiresAt: checkout.expiresAt! };
+    },
+    async () => { boundedCalls += 1; return { outcome: "provider_not_found" }; },
+  );
+  assert.equal((await resultPromise).responseStatus, 200);
+  assert.equal(directCalls, 1);
+  assert.equal(boundedCalls, 0);
 });
 
 test("existing creating with a provider UUID uses direct recovery and rechecks before returning URL", async () => {
@@ -674,4 +778,9 @@ test("checkout route maps pending to a sanitized HTTP 202 response", () => {
   assert.match(route, /const \{ responseStatus, \.\.\.checkout \} = result/);
   assert.match(route, /\{ success: true, checkout \}/);
   assert.match(route, /status: responseStatus/);
+  assert.match(route, /runBillingCheckoutBoundedRecovery/);
+  assert.match(route, /pageSize: 25/);
+  assert.match(route, /maxPages: 2/);
+  assert.doesNotMatch(route, /BILLING_CHECKOUT_RECOVERY_PAGE_SIZE/);
+  assert.doesNotMatch(route, /BILLING_CHECKOUT_RECOVERY_MAX_PAGES/);
 });

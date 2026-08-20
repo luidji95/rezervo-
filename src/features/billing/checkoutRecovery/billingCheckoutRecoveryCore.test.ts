@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 
 import { LemonSqueezyCheckoutRetrievalError, type LemonSqueezyRetrievedCheckout } from "../providers/lemonSqueezyCheckoutRetrievalCore.ts";
-import { runBillingCheckoutRecovery, type CheckoutRecoveryProviderGateway } from "./billingCheckoutRecoveryCore.ts";
+import { runBillingCheckoutDirectRecovery, runBillingCheckoutRecovery, type CheckoutRecoveryProviderGateway } from "./billingCheckoutRecoveryCore.ts";
 import type { BillingCheckoutRecoveryRepository, CheckoutRecoveryAuditOutcome, CheckoutRecoveryFinalizationOutcome } from "./billingCheckoutRecoveryRepository.ts";
 import { parseKnownProviderCheckoutIdRows } from "./supabaseBillingCheckoutRecoveryRepository.ts";
 
@@ -67,6 +67,106 @@ function harness(input: { providerSessionId?: string | null; claimOutcome?: "cla
 async function run(h = harness()) {
   return runBillingCheckoutRecovery({ checkoutSessionId: ledgerId, environment: "test", leaseSeconds: 300, pageSize: 50, maxPages: 5, providerStoreId: "10", now: () => new Date("2026-07-31T10:05:00Z"), repository: h.repository, provider: h.provider });
 }
+
+async function runDirect(h = harness({ providerSessionId: providerCheckoutId })) {
+  return runBillingCheckoutDirectRecovery({
+    checkoutSessionId: ledgerId,
+    environment: "test",
+    leaseSeconds: 300,
+    providerStoreId: "10",
+    now: () => new Date("2026-07-31T10:05:00Z"),
+    repository: h.repository,
+    provider: { retrieveById: (id) => h.provider.retrieveById(id) },
+  });
+}
+
+test("authenticated direct recovery returns the validated checkout only after finalization", async () => {
+  for (const finalization of ["finalized", "already_finalized"] as const) {
+    const h = harness({ providerSessionId: providerCheckoutId, finalization });
+    const result = await runDirect(h);
+    assert.equal(
+      result.outcome,
+      finalization === "finalized" ? "recovered_open" : "already_recovered_open",
+    );
+    assert.equal("checkout" in result && result.checkout.checkoutUrl, checkout().checkoutUrl);
+    assert.equal(h.calls.claim, 1);
+    assert.equal(h.calls.retrieve, 1);
+    assert.equal(h.calls.finalize.length, 1);
+    assert.deepEqual(h.calls.complete, []);
+    assert.equal(h.calls.list, 0);
+  }
+});
+
+test("authenticated direct recovery preserves claim and provider failure contracts", async () => {
+  const claimed = harness({ claimOutcome: "already_claimed", providerSessionId: providerCheckoutId });
+  assert.deepEqual(await runDirect(claimed), { outcome: "already_claimed" });
+  assert.equal(claimed.calls.retrieve, 0);
+
+  const missing = harness({ providerSessionId: null });
+  assert.deepEqual(await runDirect(missing), { outcome: "still_pending" });
+  assert.equal(missing.calls.retrieve, 0);
+  assert.deepEqual(missing.calls.complete, ["still_pending"]);
+
+  for (const kind of ["provider_not_found", "provider_unavailable", "invalid_provider_response"] as const) {
+    const h = harness({ providerSessionId: providerCheckoutId });
+    h.provider.retrieveById = async () => {
+      h.calls.retrieve += 1;
+      throw new LemonSqueezyCheckoutRetrievalError(kind);
+    };
+    assert.deepEqual(await runDirect(h), {
+      outcome: kind === "invalid_provider_response" ? "invalid_provider_response" : kind,
+    });
+    assert.equal(h.calls.retrieve, 1);
+    assert.equal(h.calls.finalize.length, 0);
+    assert.deepEqual(h.calls.complete, [kind === "invalid_provider_response" ? "invalid_provider_response" : kind]);
+  }
+});
+
+test("authenticated direct recovery rejects correlation mismatches before finalization", async () => {
+  const cases: Array<Partial<LemonSqueezyRetrievedCheckout>> = [
+    { storeId: "99" },
+    { variantId: "99" },
+    { testMode: false },
+    { customCheckoutSessionId: secondProviderCheckoutId },
+    { customIdempotencyKey: secondProviderCheckoutId },
+    { customSalonId: secondProviderCheckoutId },
+    { customPlanCode: "starter" },
+    { providerCreatedAt: "2026-07-31T11:00:00.000Z" },
+    { expiresAt: "2026-07-31T10:04:59.000Z" },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785493800` },
+  ];
+  for (const overrides of cases) {
+    const h = harness({ providerSessionId: providerCheckoutId });
+    h.provider.retrieveById = async () => {
+      h.calls.retrieve += 1;
+      return checkout(overrides);
+    };
+    assert.deepEqual(await runDirect(h), { outcome: "invalid_candidate" });
+    assert.equal(h.calls.finalize.length, 0);
+    assert.deepEqual(h.calls.complete, ["invalid_candidate"]);
+    assert.equal(h.calls.list, 0);
+  }
+
+  const collision = harness({ providerSessionId: providerCheckoutId });
+  collision.repository.listKnownProviderCheckoutIds = async () => new Set([providerCheckoutId]);
+  assert.deepEqual(await runDirect(collision), { outcome: "invalid_candidate" });
+  assert.equal(collision.calls.finalize.length, 0);
+  assert.deepEqual(collision.calls.complete, ["invalid_candidate"]);
+});
+
+test("finalizer transport ambiguity escapes direct recovery without retry or generic completion", async () => {
+  const h = harness({ providerSessionId: providerCheckoutId });
+  let attempts = 0;
+  h.repository.finalizeCheckoutRecovery = async () => {
+    attempts += 1;
+    throw new Error("private finalizer transport");
+  };
+  await assert.rejects(() => runDirect(h), /private finalizer transport/);
+  assert.equal(attempts, 1);
+  assert.deepEqual(h.calls.complete, []);
+  assert.equal(h.calls.retrieve, 1);
+  assert.equal(h.calls.list, 0);
+});
 
 test("known provider ID uses retrieve only and exact match finalizes once", async () => {
   const h = harness({ providerSessionId: providerCheckoutId });

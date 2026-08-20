@@ -13,6 +13,7 @@ import {
   type LemonSqueezyRetrievedCheckout,
 } from "../providers/lemonSqueezyCheckoutRetrievalCore.ts";
 import { validateCheckoutForRecoveryFinalization } from "../checkoutRecovery/billingCheckoutRecoveryCore.ts";
+import type { BillingCheckoutDirectRecoveryResult } from "../checkoutRecovery/billingCheckoutRecoveryCore.ts";
 
 export type BillingPriceMapping = {
   id: string;
@@ -67,6 +68,10 @@ export type BillingCheckoutCurrentState = BillingCheckoutLedger & {
 export type BillingCheckoutRetrievalProvider = {
   retrieveById(providerCheckoutId: string): Promise<LemonSqueezyRetrievedCheckout>;
 };
+
+export type BillingCheckoutDirectRecoveryRunner = (
+  checkoutSessionId: string,
+) => Promise<BillingCheckoutDirectRecoveryResult>;
 
 export interface BillingCheckoutRepository {
   isSalonOwner(salonId: string, actorProfileId: string): Promise<boolean>;
@@ -170,6 +175,30 @@ async function resumeExistingOpenCheckout(input: {
     throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
   }
 
+  return returnRecheckedOpenCheckout({
+    request: input.request,
+    ledger: input.ledger,
+    providerSessionId: input.providerSessionId,
+    mapping: input.mapping,
+    repository: input.repository,
+    runtime: input.runtime,
+    checkout,
+    checkoutUrlHash: validated.checkoutUrlHash,
+    providerExpiresAt: validated.providerExpiresAt,
+  });
+}
+
+async function returnRecheckedOpenCheckout(input: {
+  request: CreateBillingCheckoutInput;
+  ledger: BillingCheckoutLedger;
+  providerSessionId: string;
+  mapping: BillingPriceMapping;
+  repository: BillingCheckoutRepository;
+  runtime: BillingCheckoutRuntime;
+  checkout: LemonSqueezyRetrievedCheckout;
+  checkoutUrlHash: string;
+  providerExpiresAt: string;
+}) {
   let current: BillingCheckoutCurrentState | null;
   try {
     current = await input.repository.getCheckoutSessionById(input.ledger.id);
@@ -187,8 +216,8 @@ async function resumeExistingOpenCheckout(input: {
     current.status !== "open" ||
     current.providerSessionId !== input.providerSessionId ||
     current.idempotencyKey !== input.ledger.idempotencyKey ||
-    current.checkoutUrlHash !== validated.checkoutUrlHash ||
-    current.expiresAt !== validated.providerExpiresAt ||
+    current.checkoutUrlHash !== input.checkoutUrlHash ||
+    current.expiresAt !== input.providerExpiresAt ||
     Date.parse(current.expiresAt) <= input.runtime.now().getTime()
   ) {
     throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
@@ -196,8 +225,8 @@ async function resumeExistingOpenCheckout(input: {
   return {
     provider: "lemonsqueezy" as const,
     environment: input.runtime.environment,
-    checkoutUrl: checkout.checkoutUrl,
-    expiresAt: checkout.expiresAt!,
+    checkoutUrl: input.checkout.checkoutUrl,
+    expiresAt: input.checkout.expiresAt!,
     responseStatus: 200 as const,
   };
 }
@@ -208,6 +237,7 @@ export async function createBillingCheckout(
   provider: BillingProvider,
   runtime: BillingCheckoutRuntime,
   retrievalProvider?: BillingCheckoutRetrievalProvider,
+  directRecovery?: BillingCheckoutDirectRecoveryRunner,
 ) {
   if (
     runtime.environment === "live" &&
@@ -277,7 +307,55 @@ export async function createBillingCheckout(
         runtime,
       });
     }
-    throw new BillingCheckoutError("BILLING_CHECKOUT_PENDING", 202);
+    if (!acquisition.providerSessionId) {
+      throw new BillingCheckoutError("BILLING_CHECKOUT_PENDING", 202);
+    }
+    if (!directRecovery) {
+      throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+    }
+    let recovered: BillingCheckoutDirectRecoveryResult;
+    try {
+      recovered = await directRecovery(ledger.id);
+    } catch {
+      throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+    }
+    if (recovered.outcome === "already_claimed") {
+      throw new BillingCheckoutError("BILLING_CHECKOUT_PENDING", 202);
+    }
+    if (recovered.outcome === "already_open") {
+      if (!retrievalProvider) {
+        throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+      }
+      return resumeExistingOpenCheckout({
+        request: input,
+        ledger,
+        providerSessionId: acquisition.providerSessionId,
+        mapping,
+        repository,
+        retrievalProvider,
+        runtime,
+      });
+    }
+    if (
+      recovered.outcome === "recovered_open" ||
+      recovered.outcome === "already_recovered_open"
+    ) {
+      return returnRecheckedOpenCheckout({
+        request: input,
+        ledger,
+        providerSessionId: acquisition.providerSessionId,
+        mapping,
+        repository,
+        runtime,
+        checkout: recovered.checkout,
+        checkoutUrlHash: recovered.checkoutUrlHash,
+        providerExpiresAt: recovered.providerExpiresAt,
+      });
+    }
+    if (recovered.outcome === "provider_unavailable") {
+      throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+    }
+    throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
   }
   if (
     ledger.status !== "creating" ||

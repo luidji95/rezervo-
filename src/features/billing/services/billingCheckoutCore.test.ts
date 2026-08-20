@@ -341,6 +341,134 @@ test("existing creating remains pending without provider retrieval or create", a
   assert.equal(retrieval.calls.length, 0);
 });
 
+test("existing creating with a provider UUID uses direct recovery and rechecks before returning URL", async () => {
+  for (const outcome of ["recovered_open", "already_recovered_open"] as const) {
+    const repo = new MemoryRepository();
+    repo.acquiredStatus = "creating";
+    repo.providerSessionId = providerCheckoutId;
+    const acquisition = await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+    const checkout = retrievedCheckout({
+      customCheckoutSessionId: acquisition.checkoutSession.id,
+      customIdempotencyKey: acquisition.checkoutSession.idempotencyKey,
+    });
+    const provider = new MockBillingProvider();
+    const retrieval = new MockRetrievalProvider();
+    let recoveryCalls = 0;
+    const result = await createBillingCheckout(
+      request,
+      repo,
+      provider,
+      runtime,
+      retrieval,
+      async (checkoutSessionId) => {
+        recoveryCalls += 1;
+        assert.equal(checkoutSessionId, acquisition.checkoutSession.id);
+        acquisition.checkoutSession.status = "open";
+        acquisition.checkoutSession.expiresAt = checkout.expiresAt;
+        repo.checkoutUrlHash = createHash("sha256").update(checkout.checkoutUrl).digest("hex");
+        return {
+          outcome,
+          checkout,
+          checkoutUrlHash: repo.checkoutUrlHash,
+          providerExpiresAt: checkout.expiresAt!,
+        };
+      },
+    );
+    assert.equal(result.responseStatus, 200);
+    assert.equal(result.checkoutUrl, checkout.checkoutUrl);
+    assert.equal(recoveryCalls, 1);
+    assert.equal(repo.recheckCalls, 1);
+    assert.equal(retrieval.calls.length, 0);
+    assert.equal(provider.calls.length, 0);
+  }
+});
+
+test("existing creating recovery outcomes are terminal and never reach provider create", async () => {
+  const outcomes = [
+    ["already_claimed", "BILLING_CHECKOUT_PENDING"],
+    ["provider_unavailable", "BILLING_PROVIDER_UNAVAILABLE"],
+    ["provider_not_found", "BILLING_RECONCILIATION_REQUIRED"],
+    ["invalid_candidate", "BILLING_RECONCILIATION_REQUIRED"],
+    ["finalization_conflict", "BILLING_RECONCILIATION_REQUIRED"],
+    ["claim_lost", "BILLING_RECONCILIATION_REQUIRED"],
+  ] as const;
+  for (const [outcome, expectedCode] of outcomes) {
+    const repo = new MemoryRepository();
+    repo.acquiredStatus = "creating";
+    repo.providerSessionId = providerCheckoutId;
+    await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+    const provider = new MockBillingProvider();
+    const retrieval = new MockRetrievalProvider();
+    let recoveryCalls = 0;
+    await expectCode(
+      () => createBillingCheckout(request, repo, provider, runtime, retrieval, async () => {
+        recoveryCalls += 1;
+        return { outcome };
+      }),
+      expectedCode,
+    );
+    assert.equal(recoveryCalls, 1);
+    assert.equal(provider.calls.length, 0);
+    assert.equal(retrieval.calls.length, 0);
+  }
+});
+
+test("existing creating finalizer ambiguity is reconciliation-required without fallback", async () => {
+  const repo = new MemoryRepository();
+  repo.acquiredStatus = "creating";
+  repo.providerSessionId = providerCheckoutId;
+  await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+  const provider = new MockBillingProvider();
+  let recoveryCalls = 0;
+  await expectCode(
+    () => createBillingCheckout(request, repo, provider, runtime, new MockRetrievalProvider(), async () => {
+      recoveryCalls += 1;
+      throw new Error("private RPC ambiguity");
+    }),
+    "BILLING_RECONCILIATION_REQUIRED",
+  );
+  assert.equal(recoveryCalls, 1);
+  assert.equal(provider.calls.length, 0);
+});
+
+test("terminal lifecycle state wins after direct recovery finalization", async () => {
+  for (const terminalStatus of ["completed", "failed", "expired", "cancelled"] as const) {
+    const repo = new MemoryRepository();
+    repo.acquiredStatus = "creating";
+    repo.providerSessionId = providerCheckoutId;
+    const acquisition = await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+    const checkout = retrievedCheckout({
+      customCheckoutSessionId: acquisition.checkoutSession.id,
+      customIdempotencyKey: acquisition.checkoutSession.idempotencyKey,
+    });
+    repo.recheckOverride = terminalStatus;
+    const provider = new MockBillingProvider();
+    await expectCode(
+      () => createBillingCheckout(
+        request,
+        repo,
+        provider,
+        runtime,
+        new MockRetrievalProvider(),
+        async () => {
+          acquisition.checkoutSession.status = "open";
+          acquisition.checkoutSession.expiresAt = checkout.expiresAt;
+          repo.checkoutUrlHash = createHash("sha256").update(checkout.checkoutUrl).digest("hex");
+          return {
+            outcome: "recovered_open",
+            checkout,
+            checkoutUrlHash: repo.checkoutUrlHash,
+            providerExpiresAt: checkout.expiresAt!,
+          };
+        },
+      ),
+      "BILLING_RECONCILIATION_REQUIRED",
+    );
+    assert.equal(repo.recheckCalls, 1);
+    assert.equal(provider.calls.length, 0);
+  }
+});
+
 function openResumeHarness() {
   const repo = new MemoryRepository();
   repo.acquiredStatus = "open";
@@ -543,7 +671,7 @@ test("checkout route maps pending to a sanitized HTTP 202 response", () => {
   const route = readFileSync("src/app/api/billing/checkout/route.ts", "utf8");
   assert.match(route, /error\.code === "BILLING_CHECKOUT_PENDING"/);
   assert.match(route, /Checkout preparation is already in progress\. Please try again shortly\./);
-  assert.doesNotMatch(route, /checkoutSessionId|providerSessionId|idempotencyKey/);
   assert.match(route, /const \{ responseStatus, \.\.\.checkout \} = result/);
+  assert.match(route, /\{ success: true, checkout \}/);
   assert.match(route, /status: responseStatus/);
 });

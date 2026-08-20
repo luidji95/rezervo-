@@ -8,6 +8,8 @@ import { createBillingCheckout } from "@/features/billing/services/billingChecko
 import { getBillingCheckoutConfig } from "@/features/billing/services/billingCheckoutConfig";
 import { parseBillingCheckoutRequest } from "@/features/billing/services/billingCheckoutRequest";
 import { SupabaseBillingCheckoutRepository } from "@/features/billing/services/supabaseBillingCheckoutRepository";
+import { runBillingCheckoutDirectRecovery } from "@/features/billing/checkoutRecovery/billingCheckoutRecoveryCore";
+import { createSupabaseBillingCheckoutRecoveryRepository } from "@/features/billing/checkoutRecovery/supabaseBillingCheckoutRecoveryRepository.server";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +53,8 @@ export async function POST(request: Request) {
     const repository = new SupabaseBillingCheckoutRepository(
       config.environment,
     );
+    const recoveryRepository =
+      createSupabaseBillingCheckoutRecoveryRepository();
     const result = await createBillingCheckout(
       {
         ...parsed,
@@ -67,6 +71,19 @@ export async function POST(request: Request) {
         now: () => new Date(),
       },
       retrievalProvider,
+      (checkoutSessionId) =>
+        runBillingCheckoutDirectRecovery({
+          checkoutSessionId,
+          environment: config.environment,
+          leaseSeconds: 300,
+          providerStoreId: config.storeId,
+          now: () => new Date(),
+          repository: recoveryRepository,
+          provider: {
+            retrieveById: (providerCheckoutId) =>
+              retrievalProvider.retrieveById(providerCheckoutId),
+          },
+        }),
     );
 
     const { responseStatus, ...checkout } = result;

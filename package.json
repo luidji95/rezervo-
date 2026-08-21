@@ -41,7 +41,7 @@
     "test:primary-salon-concurrency": "node scripts/test-primary-salon-concurrency.mjs",
     "test:plan-catalog": "node --experimental-strip-types --test src/features/billing/services/planCatalog.test.ts",
     "test:pricing": "node --experimental-strip-types --test src/features/pricing/services/publicPlanCatalogCore.test.ts src/features/pricing/services/acquisitionRouting.test.ts src/features/billing/services/billingPricingPresentation.test.ts src/lib/appUrl.test.ts",
-    "test:billing-sandbox-db": "docker exec -i supabase_db_rezervo psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/tests/billing_sandbox_foundation_contract.sql",
+    "test:billing-sandbox-db": "node scripts/test-billing-sandbox-contract.mjs",
     "test:billing-sandbox": "node --experimental-strip-types --test src/features/billing/config/lemonSqueezyProviderConfigCore.test.ts src/features/billing/providers/lemonSqueezyCheckoutCore.test.ts src/features/billing/providers/lemonSqueezyCheckoutRetrievalCore.test.ts src/features/billing/services/billingCheckoutConfig.test.ts src/features/billing/services/billingCheckoutCore.test.ts src/features/billing/services/supabaseBillingCheckoutRepository.test.ts",
     "test:billing-sandbox-concurrency": "node scripts/test-billing-checkout-concurrency.mjs",
     "test:billing-checkout-active-intent-db": "node scripts/test-billing-checkout-active-intent-contract.mjs",

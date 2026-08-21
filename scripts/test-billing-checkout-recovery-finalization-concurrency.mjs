@@ -104,10 +104,15 @@ function jsonQuery(query, label) {
 }
 
 function fixtureSql(fixtures, leaseSeconds = 600) {
-  const ownerId = randomUUID();
-  const salonId = randomUUID();
+  const owners = fixtures.map((fixture) => `(
+    ${quote(fixture.ownerId)}::uuid,${quote(`${fixture.ownerId}@example.invalid`)},'{}','{}'
+  )`).join(",");
+  const salons = fixtures.map((fixture) => `(
+    ${quote(fixture.salonId)}::uuid,${quote(fixture.ownerId)}::uuid,
+    'Finalization concurrency',${quote(`finalize-${fixture.salonId}`)}
+  )`).join(",");
   const values = fixtures.map((fixture) => `(
-    ${quote(fixture.checkoutId)}::uuid,${quote(salonId)}::uuid,${quote(ownerId)}::uuid,
+    ${quote(fixture.checkoutId)}::uuid,${quote(fixture.salonId)}::uuid,${quote(fixture.ownerId)}::uuid,
     (select id from public.plans where slug='pro'),
     'lemonsqueezy','test',${quote(randomUUID())}::uuid,'creating',clock_timestamp(),clock_timestamp()
   )`).join(",");
@@ -119,9 +124,9 @@ function fixtureSql(fixtures, leaseSeconds = 600) {
   )`).join(",");
   return `
     insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data)
-      values(${quote(ownerId)}::uuid,${quote(`${ownerId}@example.invalid`)},'{}','{}');
+      values ${owners};
     insert into public.salons(id,owner_id,name,slug)
-      values(${quote(salonId)}::uuid,${quote(ownerId)}::uuid,'Finalization concurrency',${quote(`finalize-${salonId.slice(0, 8)}`)});
+      values ${salons};
     insert into public.billing_checkout_sessions(
       id,salon_id,actor_profile_id,requested_plan_id,provider,environment,idempotency_key,status,created_at,updated_at
     ) values ${values};
@@ -133,7 +138,13 @@ function fixtureSql(fixtures, leaseSeconds = 600) {
 }
 
 function newFixture() {
-  return { checkoutId: randomUUID(), attemptId: randomUUID(), token: randomUUID() };
+  return {
+    ownerId: randomUUID(),
+    salonId: randomUUID(),
+    checkoutId: randomUUID(),
+    attemptId: randomUUID(),
+    token: randomUUID(),
+  };
 }
 
 async function concurrentPair(label, leftSql, rightSql, barrierKey) {

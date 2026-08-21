@@ -172,7 +172,9 @@ $$;
 do $$
 declare
   v_owner uuid := extensions.gen_random_uuid();
+  v_open_owner uuid := extensions.gen_random_uuid();
   v_salon uuid := extensions.gen_random_uuid();
+  v_open_salon uuid := extensions.gen_random_uuid();
   v_plan uuid;
   v_subscription uuid;
   v_test_checkout uuid := extensions.gen_random_uuid();
@@ -197,9 +199,13 @@ declare
 begin
   select id into v_plan from public.plans where slug='pro';
   insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data)
-  values(v_owner,v_owner||'@example.invalid','{}','{}');
+  values
+    (v_owner,v_owner||'@example.invalid','{}','{}'),
+    (v_open_owner,v_open_owner||'@example.invalid','{}','{}');
   insert into public.salons(id,owner_id,name,slug)
-  values(v_salon,v_owner,'Checkout recovery contract','checkout-recovery-'||substr(v_salon::text,1,8));
+  values
+    (v_salon,v_owner,'Checkout recovery contract','checkout-recovery-'||substr(v_salon::text,1,8)),
+    (v_open_salon,v_open_owner,'Open recovery contract','checkout-recovery-open-'||substr(v_open_salon::text,1,8));
   if (select count(*) from public.subscriptions where salon_id=v_salon)<>1 then
     raise exception 'RECOVERY_FIXTURE_SUBSCRIPTION_COUNT_INVALID';
   end if;
@@ -212,7 +218,7 @@ begin
   ) values
     (v_test_checkout,v_salon,v_owner,v_plan,'lemonsqueezy','test',extensions.gen_random_uuid(),'creating',null,'2026-07-31T11:00:00Z','2026-07-31T10:00:00Z','2026-07-31T10:00:00Z',null,null),
     (v_live_checkout,v_salon,v_owner,v_plan,'lemonsqueezy','live',extensions.gen_random_uuid(),'creating','9002','2026-07-31T11:00:00Z','2026-07-31T10:00:00Z','2026-07-31T10:00:00Z',null,null),
-    (v_open_checkout,v_salon,v_owner,v_plan,'lemonsqueezy','test',extensions.gen_random_uuid(),'open','9003','2026-07-31T11:00:00Z','2026-07-31T10:00:00Z','2026-07-31T10:00:00Z',null,null),
+    (v_open_checkout,v_open_salon,v_open_owner,v_plan,'lemonsqueezy','test',extensions.gen_random_uuid(),'open','9003','2026-07-31T11:00:00Z','2026-07-31T10:00:00Z','2026-07-31T10:00:00Z',null,null),
     (v_completed_checkout,v_salon,v_owner,v_plan,'lemonsqueezy','test',extensions.gen_random_uuid(),'completed','9004','2026-07-31T11:00:00Z','2026-07-31T10:00:00Z','2026-07-31T10:05:00Z','2026-07-31T10:05:00Z',null),
     (v_failed_checkout,v_salon,v_owner,v_plan,'lemonsqueezy','test',extensions.gen_random_uuid(),'failed',null,'2026-07-31T11:00:00Z','2026-07-31T10:00:00Z','2026-07-31T10:05:00Z',null,'2026-07-31T10:05:00Z'),
     (v_expired_checkout,v_salon,v_owner,v_plan,'lemonsqueezy','test',extensions.gen_random_uuid(),'expired','9005','2026-07-31T10:05:00Z','2026-07-31T09:00:00Z','2026-07-31T10:05:00Z',null,null),

@@ -72,7 +72,29 @@ language plpgsql
 as $$
 declare
   v_now timestamptz := pg_catalog.clock_timestamp();
+  v_fixture_owner uuid := p_owner;
+  v_fixture_salon uuid := p_salon;
 begin
+  if exists (
+    select 1
+    from public.billing_checkout_sessions c
+    where c.salon_id = p_salon
+      and c.provider = 'lemonsqueezy'
+      and c.environment = p_environment
+      and c.status in ('creating', 'open')
+  ) then
+    v_fixture_owner := extensions.gen_random_uuid();
+    v_fixture_salon := extensions.gen_random_uuid();
+    insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data)
+    values(v_fixture_owner,v_fixture_owner||'@example.invalid','{}','{}');
+    insert into public.salons(id,owner_id,name,slug)
+    values(
+      v_fixture_salon,
+      v_fixture_owner,
+      'Recovery finalization fixture',
+      'recovery-finalize-'||substr(v_fixture_salon::text,1,8)
+    );
+  end if;
   checkout_id := extensions.gen_random_uuid();
   attempt_id := extensions.gen_random_uuid();
   claim_token := extensions.gen_random_uuid();
@@ -81,7 +103,7 @@ begin
     provider_session_id,idempotency_key,status,expires_at,created_at,updated_at,
     completed_at,failed_at
   ) values (
-    checkout_id,p_salon,p_owner,p_plan,'lemonsqueezy',p_environment,
+    checkout_id,v_fixture_salon,v_fixture_owner,p_plan,'lemonsqueezy',p_environment,
     p_provider_session_id,extensions.gen_random_uuid(),p_ledger_status,v_now+interval '1 hour',v_now,v_now,
     case when p_ledger_status='completed' then v_now else null end,
     case when p_ledger_status='failed' then v_now else null end

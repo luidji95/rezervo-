@@ -1,30 +1,15 @@
-import { createReadStream } from "node:fs";
-import { spawn } from "node:child_process";
+import { createDisposableSupabasePostgres } from "./lib/disposable-supabase-postgres.mjs";
 
-const container = process.env.BILLING_CHECKOUT_RECOVERY_DB_CONTAINER ?? "supabase_db_rezervo";
-const database = process.env.BILLING_CHECKOUT_RECOVERY_DB ?? "postgres";
+const postgres = createDisposableSupabasePostgres("rezervo-checkout-recovery-contract");
 const contracts = [
   "supabase/tests/billing_checkout_recovery_claim_contract.sql",
   "supabase/tests/billing_checkout_recovery_finalization_contract.sql",
 ];
 
-for (const contract of contracts) {
-  const child = spawn("docker", [
-    "exec", "-i", container, "psql", "-X", "-v", "ON_ERROR_STOP=1",
-    "-U", "postgres", "-d", database,
-  ], { stdio: ["pipe", "inherit", "inherit"] });
-
-  const completion = new Promise((resolve, reject) => {
-    child.on("error", reject);
-    child.on("close", (code) => code === 0
-      ? resolve()
-      : reject(new Error(`Checkout recovery SQL contract failed for ${contract} (exit ${code})`)));
-  });
-
-  createReadStream(contract).on("error", (error) => {
-    child.stdin.destroy(error);
-  }).pipe(child.stdin);
-
-  await completion;
+try {
+  await postgres.initialize();
+  for (const contract of contracts) await postgres.applySqlFile(contract, contract);
+  console.log("Billing checkout recovery SQL contract passed on disposable PostgreSQL (2 contracts).");
+} finally {
+  postgres.cleanup();
 }
-console.log("Billing checkout recovery SQL contract passed.");

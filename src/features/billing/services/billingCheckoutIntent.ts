@@ -4,6 +4,7 @@ import type {
   BillingCheckoutIntentAcquisition,
   BillingCheckoutLedger,
 } from "./billingCheckoutCore.ts";
+import { parseBillingCheckoutTimestampInstant } from "./billingCheckoutTimestamp.ts";
 
 type AcquireRow = {
   acquisition_outcome: unknown;
@@ -20,7 +21,6 @@ type AcquireRow = {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const CHECKOUT_STATUSES = new Set(["creating", "open", "completed", "expired", "failed", "cancelled"]);
-const RFC3339_TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/;
 
 function requiredUuid(value: unknown) {
   if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
@@ -30,18 +30,7 @@ function requiredUuid(value: unknown) {
 }
 
 function requiredTimestamp(value: unknown) {
-  if (typeof value !== "string") throw new Error("BILLING_CHECKOUT_CURRENT_STATE_INVALID");
-  const match = RFC3339_TIMESTAMP_PATTERN.exec(value);
-  if (!match) throw new Error("BILLING_CHECKOUT_CURRENT_STATE_INVALID");
-  const [, yearRaw, monthRaw, dayRaw, hourRaw, minuteRaw, secondRaw, offsetHourRaw, offsetMinuteRaw] = match;
-  const year = Number(yearRaw), month = Number(monthRaw), day = Number(dayRaw);
-  const hour = Number(hourRaw), minute = Number(minuteRaw), second = Number(secondRaw);
-  const offsetHour = offsetHourRaw === undefined ? 0 : Number(offsetHourRaw);
-  const offsetMinute = offsetMinuteRaw === undefined ? 0 : Number(offsetMinuteRaw);
-  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  if (month < 1 || month > 12 || day < 1 || day > daysInMonth || hour > 23 ||
-      minute > 59 || second > 59 || offsetHour > 23 || offsetMinute > 59 ||
-      !Number.isFinite(Date.parse(value))) {
+  if (typeof value !== "string" || parseBillingCheckoutTimestampInstant(value) === null) {
     throw new Error("BILLING_CHECKOUT_CURRENT_STATE_INVALID");
   }
   return value;
@@ -65,7 +54,7 @@ export function parseBillingCheckoutIntentAcquisition(
     (row.provider_session_id !== null &&
       (typeof row.provider_session_id !== "string" || !UUID_PATTERN.test(row.provider_session_id))) ||
     (row.expires_at !== null &&
-      (typeof row.expires_at !== "string" || !Number.isFinite(Date.parse(row.expires_at))))
+      (typeof row.expires_at !== "string" || parseBillingCheckoutTimestampInstant(row.expires_at) === null))
   ) {
     throw new Error("BILLING_CHECKOUT_INTENT_RESULT_INVALID");
   }
@@ -116,7 +105,7 @@ export function parseBillingCheckoutCurrentState(
     (checkoutUrlHash !== null &&
       (typeof checkoutUrlHash !== "string" || !/^[0-9a-f]{64}$/.test(checkoutUrlHash))) ||
     (expiresAt !== null &&
-      (typeof expiresAt !== "string" || !Number.isFinite(Date.parse(expiresAt))))
+      (typeof expiresAt !== "string" || parseBillingCheckoutTimestampInstant(expiresAt) === null))
   ) {
     throw new Error("BILLING_CHECKOUT_CURRENT_STATE_INVALID");
   }

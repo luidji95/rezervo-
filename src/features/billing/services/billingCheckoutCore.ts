@@ -13,6 +13,7 @@ import {
   type LemonSqueezyRetrievedCheckout,
 } from "../providers/lemonSqueezyCheckoutRetrievalCore.ts";
 import { validateCheckoutForRecoveryFinalization } from "../checkoutRecovery/billingCheckoutRecoveryCore.ts";
+import { parseBillingCheckoutTimestampInstant } from "./billingCheckoutTimestamp.ts";
 import type { BillingCheckoutDirectRecoveryResult } from "../checkoutRecovery/billingCheckoutRecoveryCore.ts";
 
 export type BillingPriceMapping = {
@@ -221,6 +222,8 @@ async function returnRecheckedOpenCheckout(input: {
   } catch {
     throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
   }
+  const currentExpiryInstant = parseBillingCheckoutTimestampInstant(current?.expiresAt);
+  const providerExpiryInstant = parseBillingCheckoutTimestampInstant(input.providerExpiresAt);
   if (
     !current ||
     current.id !== input.ledger.id ||
@@ -233,8 +236,10 @@ async function returnRecheckedOpenCheckout(input: {
     current.providerSessionId !== input.providerSessionId ||
     current.idempotencyKey !== input.ledger.idempotencyKey ||
     current.checkoutUrlHash !== input.checkoutUrlHash ||
-    current.expiresAt !== input.providerExpiresAt ||
-    Date.parse(current.expiresAt) <= input.runtime.now().getTime()
+    currentExpiryInstant === null ||
+    providerExpiryInstant === null ||
+    currentExpiryInstant !== providerExpiryInstant ||
+    currentExpiryInstant <= input.runtime.now().getTime()
   ) {
     throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
   }

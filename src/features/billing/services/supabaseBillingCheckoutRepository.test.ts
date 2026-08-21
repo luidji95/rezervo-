@@ -128,6 +128,7 @@ test("current-state parser validates every resume authority field", () => {
     { provider_session_id: "bad" },
     { checkout_url_hash: "bad" },
     { expires_at: "bad" },
+    { expires_at: "2026-08-20 13:30:00+00" },
     { created_at: "bad" },
     { created_at: "2026-02-30T10:00:00Z" },
   ]) {

@@ -19,6 +19,7 @@ import {
 } from "./billingCheckoutCore.ts";
 import { parseBillingCheckoutRequest } from "./billingCheckoutRequest.ts";
 import { buildBillingCheckoutClientRequest } from "./billingCheckoutClientRequest.ts";
+import { parseBillingCheckoutTimestampInstant } from "./billingCheckoutTimestamp.ts";
 
 const actor = "20000000-0000-4000-8000-000000000001";
 const salon = "20000000-0000-4000-8000-000000000002";
@@ -627,6 +628,60 @@ test("existing open retrieves once, rechecks DB, and returns the original URL", 
   assert.deepEqual(events, ["retrieve", "recheck"]);
 });
 
+test("checkout expiry parser accepts equivalent RFC3339 instants and rejects invalid representations", () => {
+  const instant = Date.parse("2026-07-27T13:30:00.000Z");
+  for (const value of [
+    "2026-07-27T13:30:00.000Z",
+    "2026-07-27T13:30:00.000+00:00",
+    "2026-07-27T15:30:00.000+02:00",
+  ]) assert.equal(parseBillingCheckoutTimestampInstant(value), instant);
+  for (const value of [
+    "2026-07-27 13:30:00+00",
+    "2026-02-30T13:30:00Z",
+    "2026-07-27T24:00:00Z",
+    "2026-07-27T13:60:00Z",
+    "2026-07-27T13:30:60Z",
+    "2026-07-27T13:30:00+24:00",
+    "Infinity",
+    "",
+    null,
+    undefined,
+  ]) assert.equal(parseBillingCheckoutTimestampInstant(value), null);
+});
+
+test("existing-open expiry recheck compares exact instants instead of timestamp text", async () => {
+  for (const equivalentDbExpiry of [
+    "2026-07-27T13:30:00.000+00:00",
+    "2026-07-27T15:30:00.000+02:00",
+  ]) {
+    const h = openResumeHarness();
+    await seedOpenResume(h);
+    const recheck = h.repo.getCheckoutSessionById.bind(h.repo);
+    h.repo.getCheckoutSessionById = async (id) => ({ ...(await recheck(id))!, expiresAt: equivalentDbExpiry });
+    const result = await createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval);
+    assert.equal(result.responseStatus, 200);
+    assert.equal(h.provider.calls.length, 0);
+  }
+
+  for (const mismatchedDbExpiry of [
+    "2026-07-27T13:30:01.000Z",
+    "2026-07-27T13:30:00.001Z",
+    "2026-07-27 13:30:00+00",
+    "not-a-timestamp",
+    null,
+  ]) {
+    const h = openResumeHarness();
+    await seedOpenResume(h);
+    const recheck = h.repo.getCheckoutSessionById.bind(h.repo);
+    h.repo.getCheckoutSessionById = async (id) => ({ ...(await recheck(id))!, expiresAt: mismatchedDbExpiry });
+    await expectCode(
+      () => createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval),
+      "BILLING_RECONCILIATION_REQUIRED",
+    );
+    assert.equal(h.provider.calls.length, 0);
+  }
+});
+
 test("existing open fails closed for provider identity and URL mismatches", async () => {
   const cases: Array<Partial<LemonSqueezyRetrievedCheckout>> = [
     { providerCheckoutId: "50000000-0000-4000-8000-000000000002" },
@@ -638,6 +693,8 @@ test("existing open fails closed for provider identity and URL mismatches", asyn
     { customSalonId: "50000000-0000-4000-8000-000000000002" },
     { customPlanCode: "pro" },
     { expiresAt: "2026-07-27T12:59:00.000Z" },
+    { expiresAt: "not-a-timestamp" },
+    { expiresAt: null },
     { checkoutUrl: "https://evil.example/checkout" },
     { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/50000000-0000-4000-8000-000000000002?expires=1785159000&signature=opaque` },
     { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785159000` },

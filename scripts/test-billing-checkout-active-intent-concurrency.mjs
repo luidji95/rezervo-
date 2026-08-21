@@ -142,6 +142,45 @@ async function runScenario(label, planSlugs) {
   return results;
 }
 
+async function runExpiredOpenScenario() {
+  const label = "expired-open parallel replacement";
+  const fixture = createFixture(label);
+  const original = parseResult(sql(acquireSql(fixture, "starter"), `${label}:seed`), label);
+  const providerCheckoutId = randomUUID();
+  sql(`
+    update public.billing_checkout_sessions
+    set status='open',
+        provider_session_id=${quote(providerCheckoutId)},
+        checkout_url_hash=repeat('a',64),
+        expires_at=pg_catalog.clock_timestamp()-interval '1 second'
+    where id=${quote(original.checkoutSessionId)}::uuid and status='creating';
+  `, `${label}:expire-seed`);
+
+  const outputs = await Promise.all(["starter", "starter", "starter", "starter"].map((planSlug, index) =>
+    sqlSession(acquireSql(fixture, planSlug), `${label}:caller-${index + 1}`),
+  ));
+  const results = outputs.map((output) => parseResult(output, label));
+  const created = results.filter((result) => result.outcome === "created");
+  const existing = results.filter((result) => result.outcome === "existing");
+  const checkoutIds = new Set(results.map((result) => result.checkoutSessionId));
+  const idempotencyKeys = new Set(results.map((result) => result.idempotencyKey));
+  if (created.length !== 1 || existing.length !== 3 || checkoutIds.size !== 1 || idempotencyKeys.size !== 1) {
+    fail(label, `replacement acquisition invalid: ${JSON.stringify(results)}`);
+  }
+  if (checkoutIds.has(original.checkoutSessionId)) fail(label, "expired checkout was returned as active");
+  const state = sql(`
+    select
+      count(*) filter (where id=${quote(original.checkoutSessionId)}::uuid and status='expired')||'|'||
+      count(*) filter (where status in ('creating','open'))||'|'||
+      count(distinct id) filter (where status in ('creating','open'))||'|'||
+      count(distinct idempotency_key) filter (where status in ('creating','open'))
+    from public.billing_checkout_sessions
+    where salon_id=${quote(fixture.salonId)}::uuid
+      and provider='lemonsqueezy' and environment='test';
+  `, label);
+  if (state !== "1|1|1|1") fail(label, `replacement ledger state invalid: ${state}`);
+}
+
 let initialized = false;
 try {
   await initializeDatabase();
@@ -153,6 +192,8 @@ try {
     fail("different-plan parallel acquire", "different plans did not collide at database scope");
   }
   console.log("SCENARIO 2 PASS: different-plan callers -> one created, remaining existing, one active ledger");
+  await runExpiredOpenScenario();
+  console.log("SCENARIO 3 PASS: expired open -> one created replacement, remaining existing, one active ledger");
   console.log("Billing checkout active intent concurrency contract passed on disposable PostgreSQL.");
 } finally {
   if (initialized || spawnSync("docker", ["inspect", container], { stdio: "ignore" }).status === 0) {

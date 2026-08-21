@@ -48,6 +48,8 @@ begin
     into v_function_definition;
   perform pg_temp.assert_true(v_function_definition ilike '%on conflict (provider, environment, salon_id)%where status in (%creating%, %open%)%do nothing%', 'ACTIVE_INTENT_PARTIAL_CONFLICT_TARGET_MISSING');
   perform pg_temp.assert_true(v_function_definition ilike '%for update%', 'ACTIVE_INTENT_EXISTING_ROW_NOT_LOCKED');
+  perform pg_temp.assert_true(v_function_definition ilike '%pg_advisory_xact_lock%clock_timestamp()%update public.billing_checkout_sessions%', 'EXPIRED_OPEN_CLOCK_NOT_AFTER_ADVISORY_LOCK');
+  perform pg_temp.assert_true(v_function_definition ilike '%c.status = %open%%c.expires_at is not null%c.expires_at <= v_now%', 'EXPIRED_OPEN_GUARD_INVALID');
 end;
 $$;
 
@@ -142,6 +144,89 @@ begin
     v_rejected := sqlerrm = 'BILLING_CHECKOUT_INTENT_PROVIDER_INVALID';
   end;
   perform pg_temp.assert_true(v_rejected, 'UNSUPPORTED_PROVIDER_ACCEPTED');
+end;
+$$;
+
+do $$
+declare
+  v_owner uuid;
+  v_starter uuid;
+  v_salon uuid;
+  v_old record;
+  v_acquired record;
+  v_old_status text;
+  v_old_updated_at timestamptz;
+  v_case integer;
+begin
+  select id into strict v_starter from public.plans where slug = 'starter';
+  for v_case in 1..9 loop
+    v_owner := extensions.gen_random_uuid();
+    v_salon := extensions.gen_random_uuid();
+    insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data)
+    values(v_owner, v_owner || '@example.invalid', '{}', '{}');
+    insert into public.salons(id,owner_id,name,slug)
+    values(v_salon,v_owner,'Expiry case ' || v_case,'expiry-case-' || replace(v_salon::text,'-',''));
+
+    select * into strict v_old
+    from public.acquire_billing_checkout_intent_v1(v_salon,v_owner,v_starter,'lemonsqueezy','test');
+
+    if v_case = 1 then
+      update public.billing_checkout_sessions
+      set status='open', provider_session_id=extensions.gen_random_uuid()::text,
+          expires_at=pg_catalog.clock_timestamp()-interval '1 second',
+          updated_at=pg_catalog.clock_timestamp()-interval '1 minute'
+      where id=v_old.checkout_session_id;
+      select * into strict v_acquired
+      from public.acquire_billing_checkout_intent_v1(v_salon,v_owner,v_starter,'lemonsqueezy','test');
+      select status,updated_at into v_old_status,v_old_updated_at from public.billing_checkout_sessions where id=v_old.checkout_session_id;
+      perform pg_temp.assert_true(v_old_status='expired' and v_old_updated_at is not null, 'EXPIRED_OPEN_NOT_TERMINALIZED');
+      perform pg_temp.assert_true(v_acquired.acquisition_outcome='created' and v_acquired.checkout_session_id<>v_old.checkout_session_id, 'EXPIRED_OPEN_NOT_REPLACED');
+      select * into strict v_acquired from public.acquire_billing_checkout_intent_v1(v_salon,v_owner,v_starter,'lemonsqueezy','test');
+      perform pg_temp.assert_true(v_acquired.acquisition_outcome='existing', 'EXPIRED_OPEN_REPLACEMENT_NOT_REUSED');
+    elsif v_case = 2 then
+      update public.billing_checkout_sessions set status='open',expires_at=pg_catalog.clock_timestamp()+interval '1 hour' where id=v_old.checkout_session_id;
+      select * into strict v_acquired from public.acquire_billing_checkout_intent_v1(v_salon,v_owner,v_starter,'lemonsqueezy','test');
+      perform pg_temp.assert_true(v_acquired.acquisition_outcome='existing' and v_acquired.checkout_session_id=v_old.checkout_session_id and v_acquired.status='open', 'FUTURE_OPEN_REPLACED');
+    elsif v_case = 3 then
+      update public.billing_checkout_sessions set status='open',expires_at=null where id=v_old.checkout_session_id;
+      select * into strict v_acquired from public.acquire_billing_checkout_intent_v1(v_salon,v_owner,v_starter,'lemonsqueezy','test');
+      perform pg_temp.assert_true(v_acquired.acquisition_outcome='existing' and v_acquired.checkout_session_id=v_old.checkout_session_id and v_acquired.status='open', 'NULL_EXPIRY_OPEN_REPLACED');
+    elsif v_case = 4 then
+      update public.billing_checkout_sessions set expires_at=pg_catalog.clock_timestamp()-interval '1 hour' where id=v_old.checkout_session_id;
+      select * into strict v_acquired from public.acquire_billing_checkout_intent_v1(v_salon,v_owner,v_starter,'lemonsqueezy','test');
+      perform pg_temp.assert_true(v_acquired.acquisition_outcome='existing' and v_acquired.checkout_session_id=v_old.checkout_session_id and v_acquired.status='creating', 'CREATING_INTENT_EXPIRED');
+    elsif v_case = 5 then
+      update public.billing_checkout_sessions set status='completed',completed_at=pg_catalog.clock_timestamp(),expires_at=pg_catalog.clock_timestamp()-interval '1 hour' where id=v_old.checkout_session_id;
+      select * into strict v_acquired from public.acquire_billing_checkout_intent_v1(v_salon,v_owner,v_starter,'lemonsqueezy','test');
+      select status into v_old_status from public.billing_checkout_sessions where id=v_old.checkout_session_id;
+      perform pg_temp.assert_true(v_old_status='completed' and v_acquired.acquisition_outcome='created', 'COMPLETED_STATE_OVERWRITTEN');
+    elsif v_case = 6 then
+      update public.billing_checkout_sessions set status='failed',failed_at=pg_catalog.clock_timestamp(),error_code='fixture_failed',expires_at=pg_catalog.clock_timestamp()-interval '1 hour' where id=v_old.checkout_session_id;
+      select * into strict v_acquired from public.acquire_billing_checkout_intent_v1(v_salon,v_owner,v_starter,'lemonsqueezy','test');
+      select status into v_old_status from public.billing_checkout_sessions where id=v_old.checkout_session_id;
+      perform pg_temp.assert_true(v_old_status='failed' and v_acquired.acquisition_outcome='created', 'FAILED_STATE_OVERWRITTEN');
+    elsif v_case = 7 then
+      update public.billing_checkout_sessions set status='expired',expires_at=pg_catalog.clock_timestamp()-interval '1 hour' where id=v_old.checkout_session_id;
+      select * into strict v_acquired from public.acquire_billing_checkout_intent_v1(v_salon,v_owner,v_starter,'lemonsqueezy','test');
+      select status into v_old_status from public.billing_checkout_sessions where id=v_old.checkout_session_id;
+      perform pg_temp.assert_true(v_old_status='expired' and v_acquired.acquisition_outcome='created', 'EXPIRED_STATE_OVERWRITTEN');
+    elsif v_case = 8 then
+      update public.billing_checkout_sessions set status='cancelled',expires_at=pg_catalog.clock_timestamp()-interval '1 hour' where id=v_old.checkout_session_id;
+      select * into strict v_acquired from public.acquire_billing_checkout_intent_v1(v_salon,v_owner,v_starter,'lemonsqueezy','test');
+      select status into v_old_status from public.billing_checkout_sessions where id=v_old.checkout_session_id;
+      perform pg_temp.assert_true(v_old_status='cancelled' and v_acquired.acquisition_outcome='created', 'CANCELLED_STATE_OVERWRITTEN');
+    else
+      update public.billing_checkout_sessions set status='open',expires_at=pg_catalog.clock_timestamp() where id=v_old.checkout_session_id;
+      select * into strict v_acquired from public.acquire_billing_checkout_intent_v1(v_salon,v_owner,v_starter,'lemonsqueezy','test');
+      select status into v_old_status from public.billing_checkout_sessions where id=v_old.checkout_session_id;
+      perform pg_temp.assert_true(v_old_status='expired' and v_acquired.acquisition_outcome='created', 'DB_NOW_BOUNDARY_NOT_EXPIRED');
+    end if;
+
+    perform pg_temp.assert_true(
+      (select count(*)=1 from public.billing_checkout_sessions where salon_id=v_salon and provider='lemonsqueezy' and environment='test' and status in ('creating','open')),
+      'EXPIRY_CASE_ACTIVE_SCOPE_INVALID'
+    );
+  end loop;
 end;
 $$;
 

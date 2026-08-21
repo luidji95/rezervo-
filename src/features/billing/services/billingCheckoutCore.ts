@@ -444,19 +444,15 @@ export async function createBillingCheckout(
       expiresAt,
     });
   } catch (error) {
-    if (
-      error instanceof BillingCheckoutError &&
-      error.code === "BILLING_RECONCILIATION_REQUIRED"
-    ) {
-      throw error;
-    }
     if (!(error instanceof BillingCheckoutError)) {
       throw new BillingCheckoutError(
         "BILLING_RECONCILIATION_REQUIRED",
         503,
       );
     }
-    await repository.markFailed(ledger.id, error.code);
+    if (error.code === "BILLING_PROVIDER_REJECTED") {
+      await repository.markFailed(ledger.id, error.code);
+    }
     throw error;
   }
 

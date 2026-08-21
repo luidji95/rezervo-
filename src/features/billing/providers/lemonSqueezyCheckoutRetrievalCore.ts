@@ -9,6 +9,7 @@ import {
   parseLemonSqueezyCheckoutId,
   parseLemonSqueezyNumericObjectId,
 } from "./lemonSqueezyResourceIds.ts";
+import { isLemonSqueezyJsonApiContentType } from "./lemonSqueezyCheckoutValidation.ts";
 
 const API_ORIGIN = "https://api.lemonsqueezy.com";
 const CHECKOUT_PATH = "/v1/checkouts";
@@ -114,7 +115,7 @@ function httpsUrl(value: unknown): string {
   if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
     throw new LemonSqueezyCheckoutRetrievalError("invalid_provider_response");
   }
-  return parsed.toString();
+  return value;
 }
 
 function normalizeCheckoutResource(resource: unknown): LemonSqueezyRetrievedCheckout {
@@ -264,10 +265,6 @@ function validateNextPageUrl(value: unknown, expectedStoreId: string, expectedVa
   return validateCheckoutListPageUrl(value, expectedStoreId, expectedVariantId);
 }
 
-function isJsonApiContentType(value: string | null): boolean {
-  return value?.split(";", 1)[0]?.trim().toLowerCase() === JSON_API;
-}
-
 export function parseLemonSqueezyCheckoutListResponse(
   payload: unknown,
   expected: { storeId: string; variantId: string },
@@ -301,7 +298,7 @@ async function parseJsonApiResponse(response: Response, requestKind: LemonSqueez
   }
   if (response.status === 429 || response.status >= 500) throw new LemonSqueezyCheckoutRetrievalError("provider_unavailable");
   if (!response.ok) throw new LemonSqueezyCheckoutRetrievalError("invalid_provider_response");
-  if (!isJsonApiContentType(response.headers.get("content-type"))) {
+  if (!isLemonSqueezyJsonApiContentType(response.headers.get("content-type"))) {
     throw new LemonSqueezyCheckoutRetrievalError("invalid_provider_response");
   }
   try { return await response.json() as unknown; }

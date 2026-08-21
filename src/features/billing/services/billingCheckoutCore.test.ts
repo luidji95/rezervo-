@@ -746,6 +746,14 @@ test("provider rejection fails the ledger while timeout remains creating for rec
   assert.equal(timeoutRepo.ledgers.size, 1);
   assert.equal(timeoutRepo.markFailedCalls, 0);
   assert.equal(timeoutProvider.calls.length, 0);
+
+  const unavailableRepo = new MemoryRepository();
+  await expectCode(
+    () => createBillingCheckout(request, unavailableRepo, new MockBillingProvider("unavailable"), runtime),
+    "BILLING_PROVIDER_UNAVAILABLE",
+  );
+  assert.equal([...unavailableRepo.ledgers.values()][0]?.status, "creating");
+  assert.equal(unavailableRepo.markFailedCalls, 0);
 });
 
 test("markOpen failure after provider success remains reconciliation-required and idempotent", async () => {

@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import type { BillingEnvironment } from "../config/billingEnvironment.ts";
 import { parseLemonSqueezyCheckoutId } from "../providers/lemonSqueezyResourceIds.ts";
 import {
@@ -15,6 +13,7 @@ import type {
   BillingCheckoutRecoveryRepository,
   CheckoutRecoveryAuditOutcome,
 } from "./billingCheckoutRecoveryRepository.ts";
+import { validateLemonSqueezyCheckoutAccess } from "../providers/lemonSqueezyCheckoutValidation.ts";
 
 export type BillingCheckoutRecoveryOutcome =
   | "already_open"
@@ -70,8 +69,7 @@ export function validateCheckoutForRecoveryFinalization(input: {
   now: Date;
 }): { checkoutUrlHash: string; providerExpiresAt: string } | null {
   const { checkout, ledger, now } = input;
-  let checkoutId: string;
-  try { checkoutId = parseLemonSqueezyCheckoutId(checkout.providerCheckoutId); }
+  try { parseLemonSqueezyCheckoutId(checkout.providerCheckoutId); }
   catch { return null; }
   if (
     checkout.customCheckoutSessionId !== ledger.ledgerId ||
@@ -79,38 +77,14 @@ export function validateCheckoutForRecoveryFinalization(input: {
     checkout.customPlanCode !== ledger.expectedPlanCode ||
     checkout.customIdempotencyKey !== ledger.expectedIdempotencyKey ||
     checkout.storeId !== ledger.expectedStoreId ||
-    checkout.variantId !== ledger.expectedVariantId ||
-    checkout.expiresAt === null
+    checkout.variantId !== ledger.expectedVariantId
   ) return null;
-
-  const nowMs = now.getTime();
-  const providerExpiryMs = Date.parse(checkout.expiresAt);
-  if (!Number.isFinite(nowMs) || !Number.isFinite(providerExpiryMs) || providerExpiryMs <= nowMs) return null;
-
-  let url: URL;
-  try { url = new URL(checkout.checkoutUrl); }
-  catch { return null; }
-  const keys = [...url.searchParams.keys()];
-  if (
-    url.protocol !== "https:" || url.hostname !== "rezervoo.lemonsqueezy.com" ||
-    url.port || url.username || url.password || url.hash ||
-    url.pathname !== `/checkout/custom/${checkoutId}` ||
-    keys.length !== 2 || keys.some((key) => key !== "expires" && key !== "signature") ||
-    url.searchParams.getAll("expires").length !== 1 ||
-    url.searchParams.getAll("signature").length !== 1
-  ) return null;
-  const expires = url.searchParams.get("expires");
-  const signature = url.searchParams.get("signature");
-  if (!expires || !/^[1-9]\d{0,9}$/.test(expires) || !signature?.trim()) return null;
-  const expiresSeconds = Number(expires);
-  if (!Number.isSafeInteger(expiresSeconds)) return null;
-  const urlExpiryMs = expiresSeconds * 1000;
-  if (!Number.isSafeInteger(urlExpiryMs) || !Number.isFinite(new Date(urlExpiryMs).getTime()) || urlExpiryMs <= nowMs) return null;
-
-  return {
-    checkoutUrlHash: createHash("sha256").update(checkout.checkoutUrl).digest("hex"),
+  return validateLemonSqueezyCheckoutAccess({
+    providerCheckoutId: checkout.providerCheckoutId,
+    checkoutUrl: checkout.checkoutUrl,
     providerExpiresAt: checkout.expiresAt,
-  };
+    now,
+  });
 }
 
 async function finalizeExactMatch(input: {

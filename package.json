@@ -21,6 +21,8 @@
     "baseline:parity": "node scripts/check-baseline-schema-parity.mjs",
     "test:subscription-access": "node --experimental-strip-types --test src/features/billing/services/subscriptionAccess.test.ts",
     "test:billing-override": "node --experimental-strip-types --test src/features/billing/services/billingOverrideAccess.test.ts src/features/billing/services/billingAccessPresentation.test.ts src/features/billing/services/entitlementApiContract.test.ts",
+    "test:billing-environment-authority-db": "node scripts/test-billing-environment-entitlement-authority.mjs",
+    "test:billing-environment-gateways-db": "node scripts/test-billing-environment-entitlement-gateways.mjs",
     "billing-override:audit": "node scripts/audit-billing-access.mjs",
     "billing-catalog:audit": "node scripts/audit-plan-catalog.mjs",
     "employee-capacity:audit": "node scripts/audit-employee-capacity.mjs",

@@ -74,6 +74,16 @@ select '92000000-0000-4000-8000-000000000013',id,'support','starter override','2
 update public.subscriptions set status='active',trial_ends_at=null,current_period_ends_at='2026-08-01T12:00:00Z'
 where salon_id='92000000-0000-4000-8000-000000000014';
 
+-- Provider-backed lifecycle fixtures are authoritative only in the configured
+-- test environment. Provider-free trial fixtures intentionally remain null.
+update public.subscriptions
+set billing_provider='lemonsqueezy',billing_environment='test',
+    provider_customer_id='b9-reminder-customer-'||salon_id::text,
+    provider_subscription_id='b9-reminder-subscription-'||salon_id::text,
+    current_period_starts_at=case when status='active' then coalesce(current_period_starts_at,'2026-07-01T00:00:00Z') else current_period_starts_at end,
+    provider_state_updated_at='2026-07-01T00:00:00Z'
+where status <> 'trialing';
+
 -- A finite fixture quota makes send-time reservation boundaries observable.
 update public.plans set max_monthly_reminders=2 where slug='pro';
 

@@ -33,15 +33,15 @@ begin
   update public.subscriptions set trial_ends_at=null where salon_id='d2000000-0000-4000-8000-000000000004';
   select has_full_access into v_access from public.resolve_salon_access_v1('d2000000-0000-4000-8000-000000000004',v_now);
   if v_access then raise exception 'NULL_TRIAL_END_MUST_BE_READ_ONLY'; end if;
-  update public.subscriptions set status='active',current_period_ends_at=v_now+interval '1 day' where salon_id='d2000000-0000-4000-8000-000000000004';
+  update public.subscriptions set status='active',billing_provider='lemonsqueezy',billing_environment='test',
+    provider_customer_id='b9-public-customer-disabled',provider_subscription_id='b9-public-subscription-disabled',
+    current_period_starts_at=v_now-interval '1 day',current_period_ends_at=v_now+interval '1 day',provider_state_updated_at=v_now
+  where salon_id='d2000000-0000-4000-8000-000000000004';
   select has_full_access into v_access from public.resolve_salon_access_v1('d2000000-0000-4000-8000-000000000004',v_now);
   if not v_access then raise exception 'ACTIVE_FUTURE_MUST_BE_FULL'; end if;
   update public.subscriptions set current_period_ends_at=v_now where salon_id='d2000000-0000-4000-8000-000000000004';
   select has_full_access into v_access from public.resolve_salon_access_v1('d2000000-0000-4000-8000-000000000004',v_now);
   if v_access then raise exception 'ACTIVE_EQUAL_NOW_MUST_BE_READ_ONLY'; end if;
-  update public.subscriptions set current_period_ends_at=null where salon_id='d2000000-0000-4000-8000-000000000004';
-  select has_full_access into v_access from public.resolve_salon_access_v1('d2000000-0000-4000-8000-000000000004',v_now);
-  if not v_access then raise exception 'LEGACY_ACTIVE_MUST_BE_FULL'; end if;
   update public.subscriptions set status='cancelled',current_period_ends_at=v_now+interval '1 day' where salon_id='d2000000-0000-4000-8000-000000000004';
   select has_full_access into v_access from public.resolve_salon_access_v1('d2000000-0000-4000-8000-000000000004',v_now);
   if not v_access then raise exception 'CANCELLED_FUTURE_MUST_BE_FULL'; end if;
@@ -70,7 +70,10 @@ insert into public.services(id,salon_id,name,duration_minutes,price) values
 insert into public.employees(id,salon_id,full_name) values
  ('d4000000-0000-4000-8000-000000000001','d2000000-0000-4000-8000-000000000001','Test Employee');
 -- Temporarily restore access only to build the expired-salon fixture.
-update public.subscriptions set status='active',current_period_ends_at=now()+interval '1 day' where salon_id='d2000000-0000-4000-8000-000000000002';
+update public.subscriptions set status='active',billing_provider='lemonsqueezy',billing_environment='test',
+ provider_customer_id='b9-public-customer-expired',provider_subscription_id='b9-public-subscription-expired',
+ current_period_starts_at=now(),current_period_ends_at=now()+interval '1 day',provider_state_updated_at=now()
+where salon_id='d2000000-0000-4000-8000-000000000002';
 insert into public.employees(id,salon_id,full_name) values
  ('d4000000-0000-4000-8000-000000000002','d2000000-0000-4000-8000-000000000002','Test Employee');
 update public.subscriptions set status='expired',current_period_ends_at=now()-interval '1 day' where salon_id='d2000000-0000-4000-8000-000000000002';

@@ -6,6 +6,7 @@ import {
   resolveSubscriptionAccess,
   type SubscriptionAccessPlan,
 } from "./subscriptionAccess.ts";
+import type { BillingEnvironment } from "../config/billingEnvironment.ts";
 
 export type BillingOverrideRecord = {
   enabled: boolean;
@@ -47,12 +48,22 @@ export function resolveEffectiveAccess(input: {
   subscriptionAccess: SalonEntitlements;
   billingOverride: BillingOverrideRecord | null;
   overridePlan: SubscriptionAccessPlan | null;
+  trustedEnvironment: BillingEnvironment;
   now: Date;
 }): SalonEntitlements {
-  const state = resolveBillingOverrideState(input);
+  const state = resolveBillingOverrideState({
+    billingOverride: input.billingOverride,
+    overridePlan: input.overridePlan,
+    now: input.now,
+  });
   if (state !== "active") {
     if (state !== "plan_missing") return input.subscriptionAccess;
-    const failed = resolveSubscriptionAccess({ subscription: null, plan: null, now: input.now });
+    const failed = resolveSubscriptionAccess({
+      subscription: null,
+      plan: null,
+      trustedEnvironment: input.trustedEnvironment,
+      now: input.now,
+    });
     return {
       ...failed,
       rawSubscriptionStatus: input.subscriptionAccess.rawSubscriptionStatus,
@@ -71,8 +82,13 @@ export function resolveEffectiveAccess(input: {
       status: "active",
       trialEndsAt: null,
       currentPeriodEndsAt: billingOverride.endsAt,
+      billingProvider: "lemonsqueezy",
+      billingEnvironment: input.trustedEnvironment,
+      providerCustomerId: "billing-override",
+      providerSubscriptionId: "billing-override",
     },
     plan: overridePlan,
+    trustedEnvironment: input.trustedEnvironment,
     now: input.now,
   });
 

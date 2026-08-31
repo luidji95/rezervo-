@@ -15,14 +15,20 @@ const plan = {
 
 test("entitlement API success serializes active override without internal audit fields", () => {
   const subscriptionAccess = resolveSubscriptionAccess({
-    subscription: { status: "expired", trialEndsAt: null, currentPeriodEndsAt: null },
+    subscription: {
+      status: "expired", trialEndsAt: null, currentPeriodEndsAt: null,
+      billingProvider: "lemonsqueezy", billingEnvironment: "test",
+      providerCustomerId: "customer-1", providerSubscriptionId: "subscription-1",
+    },
     plan,
+    trustedEnvironment: "test",
     now,
   });
   const entitlements = resolveEffectiveAccess({
     subscriptionAccess,
     billingOverride: { enabled: true, overrideType: "pilot", startsAt: "2026-07-01T00:00:00Z", endsAt: null },
     overridePlan: plan,
+    trustedEnvironment: "test",
     now,
   });
   const payload = JSON.parse(JSON.stringify(buildEntitlementApiSuccess(entitlements)));

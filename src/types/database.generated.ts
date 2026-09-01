@@ -1024,6 +1024,66 @@ export type Database = {
           },
         ]
       }
+      billing_webhook_subscription_invoice_facts: {
+        Row: {
+          billing_reason: string
+          created_at: string
+          environment: string
+          evidence_status: string
+          id: string
+          invoice_status: string
+          provider: string
+          provider_customer_id: string
+          provider_invoice_created_at: string
+          provider_invoice_id: string
+          provider_invoice_updated_at: string
+          provider_store_id: string
+          provider_subscription_id: string
+          updated_at: string
+          webhook_event_id: string
+        }
+        Insert: {
+          billing_reason: string
+          created_at?: string
+          environment: string
+          evidence_status?: string
+          id?: string
+          invoice_status: string
+          provider: string
+          provider_customer_id: string
+          provider_invoice_created_at: string
+          provider_invoice_id: string
+          provider_invoice_updated_at: string
+          provider_store_id: string
+          provider_subscription_id: string
+          updated_at?: string
+          webhook_event_id: string
+        }
+        Update: {
+          billing_reason?: string
+          created_at?: string
+          environment?: string
+          evidence_status?: string
+          id?: string
+          invoice_status?: string
+          provider?: string
+          provider_customer_id?: string
+          provider_invoice_created_at?: string
+          provider_invoice_id?: string
+          provider_invoice_updated_at?: string
+          provider_store_id?: string
+          provider_subscription_id?: string
+          updated_at?: string
+          webhook_event_id?: string
+        }
+        Relationships: [{
+          foreignKeyName: "billing_webhook_subscription_invoice_facts_webhook_event_id_fkey"
+          columns: ["webhook_event_id"]
+          isOneToOne: true
+          referencedRelation: "billing_webhook_events"
+          referencedColumns: ["id"]
+        }]
+      }
       clients: {
         Row: {
           avatar_url: string | null
@@ -2585,6 +2645,32 @@ export type Database = {
           p_provider_trial_ends_at: string | null
           p_provider_updated_at: string | null
           p_provider_variant_id: string | null
+          p_semantic_fingerprint: string
+          p_test_mode: boolean
+        }
+        Returns: {
+          event_id: string
+          outcome: string
+          stored_status: string
+        }[]
+      }
+      ingest_billing_subscription_invoice_evidence_v1: {
+        Args: {
+          p_billing_reason: string
+          p_environment: string
+          p_event_name: string
+          p_invoice_status: string
+          p_now?: string
+          p_payload_hash: string
+          p_provider: string
+          p_provider_customer_id: string
+          p_provider_invoice_created_at: string
+          p_provider_invoice_id: string
+          p_provider_invoice_updated_at: string
+          p_provider_object_id: string
+          p_provider_object_type: string
+          p_provider_store_id: string
+          p_provider_subscription_id: string
           p_semantic_fingerprint: string
           p_test_mode: boolean
         }

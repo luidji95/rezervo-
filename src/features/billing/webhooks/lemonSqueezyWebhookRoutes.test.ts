@@ -22,6 +22,10 @@ const configSource = readFileSync(
   "src/features/billing/webhooks/billingWebhookConfigCore.ts",
   "utf8",
 );
+const repositorySource = readFileSync(
+  "src/features/billing/webhooks/supabaseBillingWebhookEventRepository.ts",
+  "utf8",
+);
 
 test("routes bind compile-time environments to one shared handler", () => {
   assert.match(legacyRoute, /handleLemonSqueezyWebhookRequest\(request, "test"\)/);
@@ -55,4 +59,12 @@ test("live capability has a distinct flag and secret with no test fallback", () 
     /trustedEnvironment === "test"[\s\S]*LEMONSQUEEZY_WEBHOOK_SECRET[\s\S]*LEMONSQUEEZY_LIVE_WEBHOOK_SECRET/,
   );
   assert.doesNotMatch(configSource, /NODE_ENV|VERCEL_ENV/);
+});
+
+test("invoice evidence uses one narrow RPC and does not forward PII or raw payload", () => {
+  assert.match(repositorySource, /ingest_billing_subscription_invoice_evidence_v1/);
+  assert.match(repositorySource, /providerInvoiceId/);
+  for (const forbidden of ["customer_email", "billing_address", "card_brand", "invoice_url", "rawBody", "signature", "authorization"]) {
+    assert.doesNotMatch(repositorySource, new RegExp(forbidden, "i"));
+  }
 });

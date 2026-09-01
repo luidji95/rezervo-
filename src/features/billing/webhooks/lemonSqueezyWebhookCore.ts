@@ -12,6 +12,9 @@ export const LEMON_SQUEEZY_SUBSCRIPTION_EVENTS = new Set([
   "subscription_created",
   "subscription_updated",
 ]);
+export const LEMON_SQUEEZY_INVOICE_EVIDENCE_EVENTS = new Set([
+  "subscription_payment_success",
+]);
 
 const nonBlankString = z.string().refine((value) => value.trim().length > 0);
 
@@ -34,6 +37,22 @@ const providerIdSchema = z.union([
   nonBlankString,
   z.number().int().nonnegative(),
 ]).transform(String);
+
+const canonicalInvoiceProviderIdSchema = z.union([
+  z.string().regex(/^[1-9][0-9]*$/),
+  z.number().int().positive().safe(),
+]).transform(String);
+
+const subscriptionInvoiceAttributesSchema = z.object({
+  test_mode: z.boolean(),
+  store_id: canonicalInvoiceProviderIdSchema,
+  subscription_id: canonicalInvoiceProviderIdSchema,
+  customer_id: canonicalInvoiceProviderIdSchema,
+  billing_reason: z.enum(["initial", "renewal", "updated"]),
+  status: z.literal("paid"),
+  created_at: z.iso.datetime({ offset: true }),
+  updated_at: z.iso.datetime({ offset: true }),
+}).passthrough();
 
 const subscriptionAttributesSchema = z.object({
   test_mode: z.boolean(),
@@ -97,6 +116,25 @@ export type BillingWebhookEventInput = {
   subscriptionFacts: BillingWebhookSubscriptionFactsInput | null;
 };
 
+export type BillingWebhookSubscriptionInvoiceFactsInput = {
+  providerInvoiceId: string;
+  providerSubscriptionId: string;
+  providerCustomerId: string;
+  providerStoreId: string;
+  billingReason: "initial" | "renewal" | "updated";
+  invoiceStatus: "paid";
+  providerInvoiceCreatedAt: string;
+  providerInvoiceUpdatedAt: string;
+  testMode: boolean;
+};
+
+export type BillingWebhookInvoiceEvidenceInput = Omit<
+  BillingWebhookEventInput,
+  "processingStatus" | "processedAt" | "subscriptionFacts"
+> & {
+  invoiceFacts: BillingWebhookSubscriptionInvoiceFactsInput;
+};
+
 export interface BillingWebhookEventRepository {
   insertEvent(
     input: BillingWebhookEventInput,
@@ -116,6 +154,15 @@ export interface BillingWebhookEventRepository {
       | "stale_ignored"
       | "manual_review"
       | "dependency_pending";
+  }>;
+  recordSubscriptionInvoiceEvidence(
+    input: BillingWebhookInvoiceEvidenceInput,
+  ): Promise<{
+    outcome:
+      | "invoice_evidence_recorded"
+      | "invoice_evidence_already_recorded"
+      | "invoice_evidence_conflict";
+    storedStatus: "processed" | "manual_review";
   }>;
 }
 
@@ -255,6 +302,33 @@ export function normalizeLemonSqueezySubscriptionFacts(
   };
 }
 
+export function normalizeLemonSqueezySubscriptionInvoiceFacts(
+  payload: z.infer<typeof envelopeSchema>,
+): BillingWebhookSubscriptionInvoiceFactsInput {
+  if (payload.data.type !== "subscription-invoices") {
+    throw new BillingWebhookError("BILLING_WEBHOOK_PAYLOAD_INVALID", 400);
+  }
+  const invoiceId = canonicalInvoiceProviderIdSchema.safeParse(payload.data.id);
+  const attributes = subscriptionInvoiceAttributesSchema.safeParse(payload.data.attributes);
+  if (!invoiceId.success || !attributes.success) {
+    throw new BillingWebhookError("BILLING_WEBHOOK_PAYLOAD_INVALID", 400);
+  }
+  if (Date.parse(attributes.data.updated_at) < Date.parse(attributes.data.created_at)) {
+    throw new BillingWebhookError("BILLING_WEBHOOK_PAYLOAD_INVALID", 400);
+  }
+  return {
+    providerInvoiceId: invoiceId.data,
+    providerSubscriptionId: attributes.data.subscription_id,
+    providerCustomerId: attributes.data.customer_id,
+    providerStoreId: attributes.data.store_id,
+    billingReason: attributes.data.billing_reason,
+    invoiceStatus: attributes.data.status,
+    providerInvoiceCreatedAt: attributes.data.created_at,
+    providerInvoiceUpdatedAt: attributes.data.updated_at,
+    testMode: attributes.data.test_mode,
+  };
+}
+
 export async function ingestLemonSqueezyWebhook(input: {
   rawBody: string;
   signature: string | null;
@@ -296,26 +370,50 @@ export async function ingestLemonSqueezyWebhook(input: {
     );
   }
 
-  const supported = LEMON_SQUEEZY_SUBSCRIPTION_EVENTS.has(
+  const supportedSubscription = LEMON_SQUEEZY_SUBSCRIPTION_EVENTS.has(
     parsed.data.meta.event_name,
   );
-  const processingStatus = supported ? "received" : "ignored";
-  const subscriptionFacts = supported
+  const supportedInvoiceEvidence = LEMON_SQUEEZY_INVOICE_EVIDENCE_EVENTS.has(
+    parsed.data.meta.event_name,
+  );
+  const processingStatus = supportedSubscription ? "received" : "ignored";
+  const subscriptionFacts = supportedSubscription
     ? normalizeLemonSqueezySubscriptionFacts(parsed.data)
     : null;
+  const commonEvent = {
+    provider: "lemonsqueezy" as const,
+    environment: input.environment,
+    eventName: parsed.data.meta.event_name,
+    providerObjectType: parsed.data.data.type,
+    providerObjectId: parsed.data.data.id,
+    payloadHash: createHash("sha256").update(input.rawBody).digest("hex"),
+    semanticFingerprint: createLemonSqueezySemanticFingerprint(parsed.data),
+    testMode: parsed.data.data.attributes.test_mode,
+  };
+  if (supportedInvoiceEvidence) {
+    const invoiceFacts = normalizeLemonSqueezySubscriptionInvoiceFacts(parsed.data);
+    try {
+      const recorded = await input.repository.recordSubscriptionInvoiceEvidence({
+        ...commonEvent,
+        invoiceFacts,
+      });
+      if (recorded.outcome === "invoice_evidence_already_recorded") {
+        return { status: "duplicate" as const };
+      }
+      if (recorded.outcome === "invoice_evidence_conflict") {
+        return { status: "manual_review" as const };
+      }
+      return { status: "processed" as const };
+    } catch {
+      throw new BillingWebhookError("BILLING_WEBHOOK_STORAGE_FAILED", 503);
+    }
+  }
   let stored: Awaited<ReturnType<BillingWebhookEventRepository["insertEvent"]>>;
   try {
     stored = await input.repository.insertEvent({
-      provider: "lemonsqueezy",
-      environment: input.environment,
-      eventName: parsed.data.meta.event_name,
-      providerObjectType: parsed.data.data.type,
-      providerObjectId: parsed.data.data.id,
-      payloadHash: createHash("sha256").update(input.rawBody).digest("hex"),
-      semanticFingerprint: createLemonSqueezySemanticFingerprint(parsed.data),
+      ...commonEvent,
       processingStatus,
-      processedAt: supported ? null : (input.now?.() ?? new Date()).toISOString(),
-      testMode: parsed.data.data.attributes.test_mode,
+      processedAt: supportedSubscription ? null : (input.now?.() ?? new Date()).toISOString(),
       subscriptionFacts,
     });
   } catch {

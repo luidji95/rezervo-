@@ -99,4 +99,45 @@ export class SupabaseBillingWebhookEventRepository
       outcome: typeof outcomes[number];
     };
   }
+
+  async recordSubscriptionInvoiceEvidence(input: import("./lemonSqueezyWebhookCore").BillingWebhookInvoiceEvidenceInput) {
+    const facts = input.invoiceFacts;
+    const { data, error } = await supabaseServer.rpc(
+      "ingest_billing_subscription_invoice_evidence_v1",
+      {
+        p_provider: input.provider,
+        p_environment: input.environment,
+        p_event_name: input.eventName,
+        p_provider_object_type: input.providerObjectType,
+        p_provider_object_id: input.providerObjectId,
+        p_payload_hash: input.payloadHash,
+        p_semantic_fingerprint: input.semanticFingerprint,
+        p_test_mode: input.testMode,
+        p_provider_invoice_id: facts.providerInvoiceId,
+        p_provider_subscription_id: facts.providerSubscriptionId,
+        p_provider_customer_id: facts.providerCustomerId,
+        p_provider_store_id: facts.providerStoreId,
+        p_billing_reason: facts.billingReason,
+        p_invoice_status: facts.invoiceStatus,
+        p_provider_invoice_created_at: facts.providerInvoiceCreatedAt,
+        p_provider_invoice_updated_at: facts.providerInvoiceUpdatedAt,
+      },
+    ).single();
+    const row = data as { outcome: string; stored_status: string } | null;
+    const outcomes = [
+      "invoice_evidence_recorded",
+      "invoice_evidence_already_recorded",
+      "invoice_evidence_conflict",
+    ] as const;
+    if (error || !row || !outcomes.includes(row.outcome as typeof outcomes[number])) {
+      throw new Error("BILLING_WEBHOOK_STORAGE_FAILED");
+    }
+    return {
+      outcome: row.outcome,
+      storedStatus: row.stored_status,
+    } as {
+      outcome: typeof outcomes[number];
+      storedStatus: "processed" | "manual_review";
+    };
+  }
 }

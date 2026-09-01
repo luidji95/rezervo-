@@ -9,6 +9,7 @@ import {
   ingestLemonSqueezyWebhook as ingestLemonSqueezyWebhookCore,
   verifyLemonSqueezyWebhookSignature,
   type BillingWebhookEventInput,
+  type BillingWebhookInvoiceEvidenceInput,
   type BillingWebhookEventRepository,
 } from "./lemonSqueezyWebhookCore.ts";
 import type { BillingEnvironment } from "../config/billingEnvironment.ts";
@@ -73,6 +74,7 @@ function paymentPayload(
     | "subscription_payment_failed"
     | "subscription_payment_recovered" = "subscription_payment_success",
   webhookId = "00000000-0000-4000-8000-00000000000c",
+  attributeOverrides: Record<string, unknown> = {},
 ) {
   return JSON.stringify({
     meta: {
@@ -84,14 +86,20 @@ function paymentPayload(
     },
     data: {
       type: "subscription-invoices",
-      id: "invoice-81001",
+      id: "81001",
       attributes: {
         test_mode: true,
+        store_id: 440512,
         subscription_id: 2383060,
+        customer_id: 99110,
+        billing_reason: "renewal",
         status: "paid",
+        created_at: "2026-07-28T10:59:00.000Z",
+        updated_at: "2026-07-28T11:00:00.000Z",
         customer_email: "not-persisted@example.test",
         billing_address: { line_1: "Not persisted" },
         urls: { invoice_url: "https://provider.example.invalid/private/invoice" },
+        ...attributeOverrides,
       },
     },
   });
@@ -103,6 +111,7 @@ function sign(rawBody: string) {
 
 class MemoryRepository implements BillingWebhookEventRepository {
   readonly rows: BillingWebhookEventInput[] = [];
+  readonly invoiceRows: BillingWebhookInvoiceEvidenceInput[] = [];
   processorCalls = 0;
   private readonly rawHashes = new Set<string>();
   private readonly semanticFingerprints = new Set<string>();
@@ -138,6 +147,25 @@ class MemoryRepository implements BillingWebhookEventRepository {
     this.storedStatus = "processed";
     await Promise.resolve();
     return { outcome: "processed" as const };
+  }
+
+  async recordSubscriptionInvoiceEvidence(input: BillingWebhookInvoiceEvidenceInput) {
+    if (this.rawHashes.has(input.payloadHash) || this.semanticFingerprints.has(input.semanticFingerprint)) {
+      return { outcome: "invoice_evidence_already_recorded" as const, storedStatus: "processed" as const };
+    }
+    this.rawHashes.add(input.payloadHash);
+    this.semanticFingerprints.add(input.semanticFingerprint);
+    const existing = this.invoiceRows.find((row) =>
+      row.provider === input.provider && row.environment === input.environment &&
+      row.invoiceFacts.providerInvoiceId === input.invoiceFacts.providerInvoiceId);
+    if (existing) {
+      const same = JSON.stringify(existing.invoiceFacts) === JSON.stringify(input.invoiceFacts);
+      return same
+        ? { outcome: "invoice_evidence_already_recorded" as const, storedStatus: "processed" as const }
+        : { outcome: "invoice_evidence_conflict" as const, storedStatus: "manual_review" as const };
+    }
+    this.invoiceRows.push(input);
+    return { outcome: "invoice_evidence_recorded" as const, storedStatus: "processed" as const };
   }
 }
 
@@ -485,6 +513,9 @@ test("duplicate subscription_created retries a received durable event", async ()
     async processSubscriptionUpdated() {
       return { outcome: "processed" };
     },
+    async recordSubscriptionInvoiceEvidence() {
+      return { outcome: "invoice_evidence_recorded", storedStatus: "processed" };
+    },
   };
   assert.deepEqual(
     await ingestLemonSqueezyWebhook({
@@ -514,14 +545,10 @@ test("unsupported signed event is stored as ignored", async () => {
   assert.equal(repository.rows[0]?.subscriptionFacts, null);
 });
 
-test("signed subscription payment invoice events are durably ignored", async () => {
-  for (const eventName of [
-    "subscription_payment_success",
-    "subscription_payment_failed",
-    "subscription_payment_recovered",
-  ] as const) {
+test("payment success records PII-minimized initial, renewal and updated invoice evidence", async () => {
+  for (const billingReason of ["initial", "renewal", "updated"] as const) {
     const repository = new MemoryRepository();
-    const rawBody = paymentPayload(eventName);
+    const rawBody = paymentPayload("subscription_payment_success", `payment-${billingReason}`, { billing_reason: billingReason });
     assert.deepEqual(
       await ingestLemonSqueezyWebhook({
         rawBody,
@@ -530,19 +557,29 @@ test("signed subscription payment invoice events are durably ignored", async () 
         repository,
         now: () => new Date("2026-07-28T11:00:00.000Z"),
       }),
-      { status: "ignored" },
+      { status: "processed" },
     );
-    assert.equal(repository.rows.length, 1);
-    assert.equal(repository.rows[0]?.eventName, eventName);
-    assert.equal(repository.rows[0]?.providerObjectType, "subscription-invoices");
-    assert.equal(repository.rows[0]?.processingStatus, "ignored");
-    assert.equal(repository.rows[0]?.processedAt, "2026-07-28T11:00:00.000Z");
-    assert.equal(repository.rows[0]?.subscriptionFacts, null);
+    assert.equal(repository.rows.length, 0);
+    assert.equal(repository.invoiceRows.length, 1);
+    assert.equal(repository.invoiceRows[0]?.eventName, "subscription_payment_success");
+    assert.equal(repository.invoiceRows[0]?.providerObjectType, "subscription-invoices");
+    assert.equal(repository.invoiceRows[0]?.invoiceFacts.billingReason, billingReason);
+    assert.equal(repository.invoiceRows[0]?.invoiceFacts.invoiceStatus, "paid");
     assert.equal(repository.processorCalls, 0);
-    const persisted = JSON.stringify(repository.rows[0]);
+    const persisted = JSON.stringify(repository.invoiceRows[0]);
     for (const forbidden of ["not-persisted@example.test", "billing_address", "invoice_url", "private/invoice"]) {
       assert.equal(persisted.includes(forbidden), false);
     }
+  }
+});
+
+test("payment failed and recovered remain ignored", async () => {
+  for (const eventName of ["subscription_payment_failed", "subscription_payment_recovered"] as const) {
+    const repository = new MemoryRepository();
+    const rawBody = paymentPayload(eventName);
+    assert.deepEqual(await ingestLemonSqueezyWebhook({ rawBody, signature: sign(rawBody), webhookSecret: secret, repository }), { status: "ignored" });
+    assert.equal(repository.rows[0]?.processingStatus, "ignored");
+    assert.equal(repository.invoiceRows.length, 0);
   }
 });
 
@@ -552,15 +589,76 @@ test("subscription payment resend is a duplicate and never calls processor", asy
   const resend = paymentPayload("subscription_payment_success", "payment-delivery-b");
   assert.deepEqual(
     await ingestLemonSqueezyWebhook({ rawBody: original, signature: sign(original), webhookSecret: secret, repository }),
-    { status: "ignored" },
+    { status: "processed" },
   );
   assert.deepEqual(
     await ingestLemonSqueezyWebhook({ rawBody: resend, signature: sign(resend), webhookSecret: secret, repository }),
     { status: "duplicate" },
   );
-  assert.equal(repository.rows.length, 1);
-  assert.equal(repository.rows[0]?.subscriptionFacts, null);
+  assert.equal(repository.invoiceRows.length, 1);
   assert.equal(repository.processorCalls, 0);
+});
+
+test("invoice evidence rejects mutation-grade invalid provider facts", async () => {
+  type PaymentBody = { data: { type?: string; id?: unknown; attributes: Record<string, unknown> } };
+  const cases: Array<[string, (body: PaymentBody) => void]> = [
+    ["wrong resource", (body) => { body.data.type = "subscriptions"; }],
+    ["missing invoice id", (body) => { delete body.data.id; }],
+    ["invalid invoice id", (body) => { body.data.id = "invoice-81001"; }],
+    ["invalid subscription id", (body) => { body.data.attributes.subscription_id = "bad"; }],
+    ["invalid customer id", (body) => { body.data.attributes.customer_id = "bad"; }],
+    ["invalid store id", (body) => { body.data.attributes.store_id = "bad"; }],
+    ["unknown billing reason", (body) => { body.data.attributes.billing_reason = "manual"; }],
+    ["incompatible status", (body) => { body.data.attributes.status = "pending"; }],
+    ["malformed created at", (body) => { body.data.attributes.created_at = "bad"; }],
+    ["malformed updated at", (body) => { body.data.attributes.updated_at = "bad"; }],
+    ["timestamp inversion", (body) => { body.data.attributes.updated_at = "2026-07-28T10:58:00.000Z"; }],
+  ];
+  for (const [name, mutate] of cases) {
+    const body = JSON.parse(paymentPayload()) as PaymentBody;
+    mutate(body);
+    const rawBody = JSON.stringify(body);
+    await assert.rejects(
+      ingestLemonSqueezyWebhook({ rawBody, signature: sign(rawBody), webhookSecret: secret, repository: new MemoryRepository() }),
+      (error: unknown) => error instanceof BillingWebhookError && error.code === "BILLING_WEBHOOK_PAYLOAD_INVALID",
+      name,
+    );
+  }
+});
+
+test("invoice evidence rejects route environment mismatch before storage", async () => {
+  const repository = new MemoryRepository();
+  const rawBody = paymentPayload("subscription_payment_success", "live-mismatch", { test_mode: false });
+  await assert.rejects(
+    ingestLemonSqueezyWebhook({ rawBody, signature: sign(rawBody), webhookSecret: secret, repository }),
+    (error: unknown) => error instanceof BillingWebhookError && error.code === "BILLING_WEBHOOK_ENVIRONMENT_MISMATCH",
+  );
+  assert.equal(repository.invoiceRows.length, 0);
+});
+
+test("same invoice facts are idempotent while conflicting facts become manual review", async () => {
+  const repository = new MemoryRepository();
+  const first = paymentPayload("subscription_payment_success", "delivery-one", { harmless_provider_field: "one" });
+  const sameFacts = paymentPayload("subscription_payment_success", "delivery-two", { harmless_provider_field: "two" });
+  const conflict = paymentPayload("subscription_payment_success", "delivery-three", { billing_reason: "updated" });
+  assert.deepEqual(await ingestLemonSqueezyWebhook({ rawBody: first, signature: sign(first), webhookSecret: secret, repository }), { status: "processed" });
+  assert.deepEqual(await ingestLemonSqueezyWebhook({ rawBody: sameFacts, signature: sign(sameFacts), webhookSecret: secret, repository }), { status: "duplicate" });
+  assert.deepEqual(await ingestLemonSqueezyWebhook({ rawBody: conflict, signature: sign(conflict), webhookSecret: secret, repository }), { status: "manual_review" });
+  assert.equal(repository.invoiceRows.length, 1);
+  assert.equal(repository.processorCalls, 0);
+});
+
+test("transient invoice evidence storage failure is sanitized and remains provider-retryable", async () => {
+  const repository = new MemoryRepository();
+  repository.recordSubscriptionInvoiceEvidence = async () => { throw new Error("private invoice database detail 81001"); };
+  const rawBody = paymentPayload();
+  await assert.rejects(
+    ingestLemonSqueezyWebhook({ rawBody, signature: sign(rawBody), webhookSecret: secret, repository }),
+    (error: unknown) => error instanceof BillingWebhookError &&
+      error.code === "BILLING_WEBHOOK_STORAGE_FAILED" && error.status === 503 &&
+      !error.message.includes("81001"),
+  );
+  assert.equal(repository.invoiceRows.length, 0);
 });
 
 test("legacy and invalid custom data remain durable but never ready", async () => {
@@ -618,6 +716,7 @@ test("repository failures remain a sanitized storage error", async () => {
         async insertEvent() { throw new Error("private database detail"); },
         async processSubscriptionCreated() { return { outcome: "processed" as const }; },
         async processSubscriptionUpdated() { return { outcome: "processed" as const }; },
+        async recordSubscriptionInvoiceEvidence() { throw new Error("private database detail"); },
       },
     }),
     "BILLING_WEBHOOK_STORAGE_FAILED",
@@ -644,8 +743,9 @@ test("sequential and parallel duplicate deliveries create one row", async () => 
     ingestLemonSqueezyWebhook(parallelInput),
     ingestLemonSqueezyWebhook(parallelInput),
   ]);
-  assert.deepEqual(results.map((result) => result.status).sort(), ["duplicate", "ignored"]);
-  assert.equal(repository.rows.length, 2);
+  assert.deepEqual(results.map((result) => result.status).sort(), ["duplicate", "processed"]);
+  assert.equal(repository.rows.length, 1);
+  assert.equal(repository.invoiceRows.length, 1);
 });
 
 test("original and resend webhook IDs produce one semantic event", async () => {
@@ -841,6 +941,9 @@ test("duplicate subscription_updated retries received state and dependency stays
       assert.equal(eventId, "updated-event");
       updatedCalls += 1;
       return { outcome: "dependency_pending" };
+    },
+    async recordSubscriptionInvoiceEvidence() {
+      return { outcome: "invoice_evidence_recorded", storedStatus: "processed" };
     },
   };
   await expectCode(

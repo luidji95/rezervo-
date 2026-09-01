@@ -38,7 +38,7 @@ begin
   perform pg_temp.assert_true(not ('p_environment'=any(v_args)),'CALLER_ENVIRONMENT_ACCEPTED');
   select pg_catalog.pg_get_functiondef('public.acquire_billing_checkout_intent_v2(uuid,uuid,uuid,text)'::regprocedure) into v_definition;
   perform pg_temp.assert_true(v_definition ilike '%security definer%' and v_definition ilike '%SET search_path TO %''''%','V2_SECURITY_CONTRACT_INVALID');
-  perform pg_temp.assert_true(v_definition ilike '%pg_advisory_xact_lock%insert into public.billing_checkout_sessions%for update%select s.*%for update%','V2_LOCK_ORDER_INVALID');
+  perform pg_temp.assert_true(v_definition ilike '%pg_advisory_xact_lock%from public.billing_checkout_sessions%for update%select s.*%for update%insert into public.billing_checkout_sessions%','V2_LOCK_ORDER_INVALID');
   perform pg_temp.assert_true(v_definition ilike '%private.billing_runtime_config%' and v_definition not ilike '%p_environment%','DB_ENVIRONMENT_AUTHORITY_INVALID');
 
   v_owner:=extensions.gen_random_uuid(); v_salon:=extensions.gen_random_uuid();
@@ -67,6 +67,9 @@ begin
     v_owner:=extensions.gen_random_uuid(); v_salon:=extensions.gen_random_uuid();
     insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values(v_owner,v_owner||'@example.invalid','{}','{}');
     insert into public.salons(id,owner_id,name,slug) values(v_salon,v_owner,'B10 linked','b10-'||replace(v_salon::text,'-',''));
+    perform * from public.acquire_billing_checkout_intent_v2(v_salon,v_owner,v_plan,'lemonsqueezy');
+    update public.billing_checkout_sessions set status='completed',completed_at=now()
+      where salon_id=v_salon and status='creating';
     v_status:=case v_i when 1 then 'active' when 2 then 'cancelled' when 3 then 'past_due' when 4 then 'expired' when 5 then 'cancelled' else 'trialing' end;
     v_expected:=case when v_i in (1,2,6) then 'BILLING_SUBSCRIPTION_ALREADY_ACTIVE'
       when v_i=3 then 'BILLING_SUBSCRIPTION_PAYMENT_REQUIRED'
@@ -87,6 +90,9 @@ begin
   for v_owner,v_salon in select extensions.gen_random_uuid(),extensions.gen_random_uuid() loop
     insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values(v_owner,v_owner||'@example.invalid','{}','{}');
     insert into public.salons(id,owner_id,name,slug) values(v_salon,v_owner,'B10 inconsistent','b10-'||replace(v_salon::text,'-',''));
+    perform * from public.acquire_billing_checkout_intent_v2(v_salon,v_owner,v_plan,'lemonsqueezy');
+    update public.billing_checkout_sessions set status='completed',completed_at=now()
+      where salon_id=v_salon and status='creating';
     update public.subscriptions set status='active',billing_provider='lemonsqueezy',billing_environment='live',
       provider_customer_id='customer',provider_subscription_id='subscription-'||v_salon,
       current_period_starts_at=now()-interval '1 day',current_period_ends_at=now()+interval '29 days',

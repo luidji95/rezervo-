@@ -91,12 +91,21 @@ test("acquire result parser accepts only the trusted active-intent contract", ()
 
 test("acquire RPC receives only trusted server identity arguments", () => {
   const method = methodSource("acquireCheckoutIntent", "getCheckoutSessionById");
-  assert.match(method, /"acquire_billing_checkout_intent_v1"/);
+  assert.match(method, /"acquire_billing_checkout_intent_v2"/);
   assert.match(method, /p_salon_id: input\.salonId/);
   assert.match(method, /p_actor_profile_id: input\.actorProfileId/);
   assert.match(method, /p_requested_plan_id: input\.planId/);
   assert.match(method, /p_provider: "lemonsqueezy"/);
-  assert.match(method, /p_environment: this\.environment/);
+  assert.doesNotMatch(method, /p_environment/);
+  assert.match(method, /BILLING_SUBSCRIPTION_ALREADY_ACTIVE/);
+  assert.match(method, /BILLING_SUBSCRIPTION_PAYMENT_REQUIRED/);
+  assert.match(method, /BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED/);
+  assert.match(method, /BILLING_RECONCILIATION_REQUIRED_/);
+  assert.match(method, /BILLING_RECONCILIATION_REQUIRED", 503/);
+  assert.match(method, /BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED"[\s\S]*?, 409/);
+  assert.doesNotMatch(method, /BillingCheckoutError\("BILLING_RECONCILIATION_REQUIRED", 409\)/);
+  assert.match(method, /parseBillingCheckoutIntentAcquisition[\s\S]*catch[\s\S]*BILLING_RECONCILIATION_REQUIRED", 503/);
+  assert.doesNotMatch(method, /throw new Error\("BILLING_CHECKOUT_INTENT_ACQUIRE_FAILED"\)/);
   assert.doesNotMatch(method, /idempotencyKey|insertCreating|findByIdempotencyKey/);
 });
 

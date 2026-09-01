@@ -12,6 +12,7 @@ import {
   parseBillingCheckoutCurrentState,
   parseBillingCheckoutIntentAcquisition,
 } from "./billingCheckoutIntent";
+import { BillingCheckoutError } from "../providers/billingCheckoutErrors";
 
 type MappingResult = {
   id: string;
@@ -124,23 +125,41 @@ export class SupabaseBillingCheckoutRepository
     planId: string;
   }) {
     const { data, error } = await supabaseServer.rpc(
-      "acquire_billing_checkout_intent_v1",
+      "acquire_billing_checkout_intent_v2",
       {
         p_salon_id: input.salonId,
         p_actor_profile_id: input.actorProfileId,
         p_requested_plan_id: input.planId,
         p_provider: "lemonsqueezy",
-        p_environment: this.environment,
       },
     );
-    if (error || !Array.isArray(data) || data.length !== 1) {
-      throw new Error("BILLING_CHECKOUT_INTENT_ACQUIRE_FAILED");
+    if (error) {
+      const code = [
+        "BILLING_SUBSCRIPTION_ALREADY_ACTIVE",
+        "BILLING_SUBSCRIPTION_PAYMENT_REQUIRED",
+        "BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED",
+      ].find((candidate) => error.message === candidate);
+      if (code) throw new BillingCheckoutError(code as
+        | "BILLING_SUBSCRIPTION_ALREADY_ACTIVE"
+        | "BILLING_SUBSCRIPTION_PAYMENT_REQUIRED"
+        | "BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED", 409);
+      if (error.message.startsWith("BILLING_RECONCILIATION_REQUIRED_")) {
+        throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+      }
+      throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
     }
-    return parseBillingCheckoutIntentAcquisition(
-      data[0],
-      this.environment,
-      input.salonId,
-    );
+    if (!Array.isArray(data) || data.length !== 1) {
+      throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+    }
+    try {
+      return parseBillingCheckoutIntentAcquisition(
+        data[0],
+        this.environment,
+        input.salonId,
+      );
+    } catch {
+      throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+    }
   }
 
   async getCheckoutSessionById(id: string) {

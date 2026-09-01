@@ -79,6 +79,7 @@ async function initializeDatabase() {
   for (const migration of migrations) {
     await applySqlFile(join("supabase/migrations", migration), migration);
   }
+  sql("insert into private.billing_runtime_config(singleton,environment) values(true,'test');", "runtime environment");
 }
 
 function createFixture(label) {
@@ -98,12 +99,11 @@ function acquireSql(fixture, planSlug) {
     set lock_timeout='10s';
     set statement_timeout='30s';
     select acquisition_outcome||'|'||checkout_session_id||'|'||idempotency_key||'|'||requested_plan_id
-    from public.acquire_billing_checkout_intent_v1(
+    from public.acquire_billing_checkout_intent_v2(
       ${quote(fixture.salonId)}::uuid,
       ${quote(fixture.ownerId)}::uuid,
       (select id from public.plans where slug=${quote(planSlug)}),
-      'lemonsqueezy',
-      'test'
+      'lemonsqueezy'
     );
   `;
 }
@@ -181,6 +181,59 @@ async function runExpiredOpenScenario() {
   if (state !== "1|1|1|1") fail(label, `replacement ledger state invalid: ${state}`);
 }
 
+function guardedAcquireSql(fixture, expected) {
+  return `
+    set lock_timeout='10s'; set statement_timeout='30s';
+    do $guard$ begin
+      perform * from public.acquire_billing_checkout_intent_v2(
+        ${quote(fixture.salonId)}::uuid,${quote(fixture.ownerId)}::uuid,
+        (select id from public.plans where slug='starter'),'lemonsqueezy');
+      raise exception 'EXPECTED_B10_BLOCK';
+    exception when others then
+      if sqlerrm is distinct from ${quote(expected)} then raise; end if;
+    end $guard$;
+    select count(*) from public.billing_checkout_sessions
+    where salon_id=${quote(fixture.salonId)}::uuid and status in ('creating','open');
+  `;
+}
+
+async function runLifecycleRaces() {
+  const created = createFixture("acquire-vs-created");
+  const seed = parseResult(sql(acquireSql(created,"starter"),"acquire-vs-created:seed"),"acquire-vs-created");
+  const lifecycle = sqlSession(`
+    begin; set lock_timeout='10s'; set statement_timeout='30s';
+    select id from public.billing_checkout_sessions where id=${quote(seed.checkoutSessionId)}::uuid for update;
+    select id from public.subscriptions where salon_id=${quote(created.salonId)}::uuid for update;
+    update public.subscriptions set status='active',billing_provider='lemonsqueezy',billing_environment='test',
+      provider_customer_id='race-customer',provider_subscription_id='race-subscription-created',
+      current_period_starts_at=now(),current_period_ends_at=now()+interval '30 days',provider_state_updated_at=now()
+    where salon_id=${quote(created.salonId)}::uuid;
+    select pg_catalog.pg_sleep(1); commit;
+  `,"acquire-vs-created:lifecycle");
+  await new Promise((resolve) => setTimeout(resolve,200));
+  const blocked = await sqlSession(guardedAcquireSql(created,"BILLING_SUBSCRIPTION_ALREADY_ACTIVE"),"acquire-vs-created:acquire");
+  await lifecycle;
+  if (!blocked.split(/\r?\n/).includes("1")) fail("acquire-vs-created","original creating ledger was not preserved");
+
+  const updated = createFixture("acquire-vs-updated");
+  const updatedSeed = parseResult(sql(acquireSql(updated,"starter"),"acquire-vs-updated:seed"),"acquire-vs-updated");
+  sql(`update public.subscriptions set status='active',billing_provider='lemonsqueezy',billing_environment='test',
+    provider_customer_id='race-customer',provider_subscription_id='race-subscription-updated',
+    current_period_starts_at=now(),current_period_ends_at=now()+interval '30 days',provider_state_updated_at=now()
+    where salon_id=${quote(updated.salonId)}::uuid;`,"acquire-vs-updated:link");
+  const updater = sqlSession(`
+    begin; set lock_timeout='10s'; set statement_timeout='30s';
+    select id from public.subscriptions where salon_id=${quote(updated.salonId)}::uuid for update;
+    update public.subscriptions set status='past_due',provider_state_updated_at=now() where salon_id=${quote(updated.salonId)}::uuid;
+    select pg_catalog.pg_sleep(1); commit;
+  `,"acquire-vs-updated:lifecycle");
+  await new Promise((resolve) => setTimeout(resolve,200));
+  const paymentBlocked = await sqlSession(guardedAcquireSql(updated,"BILLING_SUBSCRIPTION_PAYMENT_REQUIRED"),"acquire-vs-updated:acquire");
+  await updater;
+  if (!paymentBlocked.split(/\r?\n/).includes("1")) fail("acquire-vs-updated","original creating ledger was not preserved");
+  void updatedSeed;
+}
+
 let initialized = false;
 try {
   await initializeDatabase();
@@ -194,6 +247,9 @@ try {
   console.log("SCENARIO 2 PASS: different-plan callers -> one created, remaining existing, one active ledger");
   await runExpiredOpenScenario();
   console.log("SCENARIO 3 PASS: expired open -> one created replacement, remaining existing, one active ledger");
+  await runLifecycleRaces();
+  console.log("SCENARIO 4 PASS: acquire vs subscription_created follows checkout -> subscription and blocks linked ownership");
+  console.log("SCENARIO 5 PASS: acquire vs subscription_updated waits for subscription and returns payment-required");
   console.log("Billing checkout active intent concurrency contract passed on disposable PostgreSQL.");
 } finally {
   if (initialized || spawnSync("docker", ["inspect", container], { stdio: "ignore" }).status === 0) {

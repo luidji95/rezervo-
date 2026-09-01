@@ -2405,6 +2405,26 @@ export type Database = {
           status: string
         }[]
       }
+      acquire_billing_checkout_intent_v2: {
+        Args: {
+          p_actor_profile_id: string
+          p_provider: string
+          p_requested_plan_id: string
+          p_salon_id: string
+        }
+        Returns: {
+          acquisition_outcome: string
+          actor_profile_id: string
+          checkout_session_id: string
+          environment: string
+          expires_at: string | null
+          idempotency_key: string
+          provider: string
+          provider_session_id: string | null
+          requested_plan_id: string
+          status: string
+        }[]
+      }
       claim_billing_checkout_recovery_v1: {
         Args: {
           p_checkout_session_id: string

@@ -852,6 +852,39 @@ test("unexpected acquire outcome/status fails closed before provider create", as
   assert.equal(provider.calls.length, 0);
 });
 
+test("subscription-aware acquire conflicts stop every provider and recovery side effect", async () => {
+  for (const code of [
+    "BILLING_SUBSCRIPTION_ALREADY_ACTIVE",
+    "BILLING_SUBSCRIPTION_PAYMENT_REQUIRED",
+    "BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED",
+    "BILLING_RECONCILIATION_REQUIRED",
+  ] as const) {
+    const expectedStatus = code === "BILLING_RECONCILIATION_REQUIRED" ? 503 : 409;
+    const repo = new MemoryRepository();
+    repo.acquireCheckoutIntent = async () => { throw new BillingCheckoutError(code, expectedStatus); };
+    repo.markOpen = async () => { assert.fail("markOpen must not run"); };
+    repo.markFailed = async () => { assert.fail("markFailed must not run"); };
+    const provider = new MockBillingProvider();
+    const retrieval = new MockRetrievalProvider();
+    let directRecoveryCalls = 0;
+    let boundedRecoveryCalls = 0;
+    await assert.rejects(
+      () => createBillingCheckout(
+        request, repo, provider, runtime, retrieval,
+        async () => { directRecoveryCalls += 1; throw new Error("must not run"); },
+        async () => { boundedRecoveryCalls += 1; throw new Error("must not run"); },
+      ),
+      (error: unknown) => error instanceof BillingCheckoutError
+        && error.code === code && error.status === expectedStatus,
+    );
+    assert.equal(provider.calls.length, 0);
+    assert.equal(retrieval.calls.length, 0);
+    assert.equal(directRecoveryCalls, 0);
+    assert.equal(boundedRecoveryCalls, 0);
+    assert.equal(repo.ledgers.size, 0);
+  }
+});
+
 test("checkout route maps pending to a sanitized HTTP 202 response", () => {
   const route = readFileSync("src/app/api/billing/checkout/route.ts", "utf8");
   assert.match(route, /error\.code === "BILLING_CHECKOUT_PENDING"/);
@@ -859,6 +892,8 @@ test("checkout route maps pending to a sanitized HTTP 202 response", () => {
   assert.match(route, /const \{ responseStatus, \.\.\.checkout \} = result/);
   assert.match(route, /\{ success: true, checkout \}/);
   assert.match(route, /status: responseStatus/);
+  assert.match(route, /status: error\.status/);
+  assert.doesNotMatch(route, /BILLING_RECONCILIATION_REQUIRED[\s\S]*409/);
   assert.match(route, /runBillingCheckoutBoundedRecovery/);
   assert.match(route, /pageSize: 25/);
   assert.match(route, /maxPages: 2/);

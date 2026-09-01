@@ -47,6 +47,7 @@
     "test:billing-sandbox": "node --experimental-strip-types --test src/features/billing/config/lemonSqueezyProviderConfigCore.test.ts src/features/billing/providers/lemonSqueezyCheckoutCore.test.ts src/features/billing/providers/lemonSqueezyCheckoutRetrievalCore.test.ts src/features/billing/services/billingCheckoutConfig.test.ts src/features/billing/services/billingCheckoutCore.test.ts src/features/billing/services/supabaseBillingCheckoutRepository.test.ts",
     "test:billing-sandbox-concurrency": "node scripts/test-billing-checkout-concurrency.mjs",
     "test:billing-checkout-active-intent-db": "node scripts/test-billing-checkout-active-intent-contract.mjs",
+    "test:billing-checkout-subscription-guard-db": "node scripts/test-billing-checkout-subscription-guard-contract.mjs",
     "test:billing-checkout-active-intent-concurrency": "node scripts/test-billing-checkout-active-intent-concurrency.mjs",
     "test:billing-checkout-recovery-db": "node scripts/test-billing-checkout-recovery-contract.mjs",
     "test:billing-checkout-recovery-concurrency": "node scripts/test-billing-checkout-recovery-concurrency.mjs",

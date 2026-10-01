@@ -143,7 +143,7 @@ select pg_temp.assert_true(not exists(
 ),'DUPLICATE_ACTIVE_LEASE_CLAIMED');
 
 -- Send-time quota counts only processing reservations in the canonical usage
--- period. One accepted reminder plus the delivery being validated exactly fills
+-- claim month. One accepted reminder plus the delivery being validated exactly fills
 -- the limit; previous/future-period leases must not consume it.
 insert into public.appointments(id,salon_id,client_id,start_time,end_time,duration_minutes,price,status,idempotency_key)
 values
@@ -154,11 +154,11 @@ values
 insert into public.appointment_reminder_deliveries(
  id,salon_id,appointment_id,client_id,channel,scheduled_for,appointment_start_snapshot,
  recipient_snapshot,salon_timezone_snapshot,status,attempt_count,claimed_at,lease_expires_at,claim_token,
- provider,provider_message_id,sent_at
+ provider,provider_message_id,sent_at,quota_period_start
 ) values
- ('96100000-0000-4000-8000-000000000031','92000000-0000-4000-8000-000000000003','94100000-0000-4000-8000-000000000031','93000000-0000-4000-8000-000000000003','sms','2026-06-14T12:00:00Z','2026-06-15T12:00:00Z','+38164123003','Europe/Belgrade','processing',1,'2026-08-01T12:00:00Z','2026-08-01T12:10:00Z','97100000-0000-4000-8000-000000000031',null,null,null),
- ('96100000-0000-4000-8000-000000000032','92000000-0000-4000-8000-000000000003','94100000-0000-4000-8000-000000000032','93000000-0000-4000-8000-000000000003','sms','2026-09-14T12:00:00Z','2026-09-15T12:00:00Z','+38164123003','Europe/Belgrade','processing',1,'2026-08-01T12:00:00Z','2026-08-01T12:10:00Z','97100000-0000-4000-8000-000000000032',null,null,null),
- ('96100000-0000-4000-8000-000000000033','92000000-0000-4000-8000-000000000003','94100000-0000-4000-8000-000000000033','93000000-0000-4000-8000-000000000003','sms','2026-08-09T12:00:00Z','2026-08-10T12:00:00Z','+38164123003','Europe/Belgrade','sent',1,null,null,null,'fixture','fixture-current-used','2026-08-01T11:00:00Z');
+ ('96100000-0000-4000-8000-000000000031','92000000-0000-4000-8000-000000000003','94100000-0000-4000-8000-000000000031','93000000-0000-4000-8000-000000000003','sms','2026-06-14T12:00:00Z','2026-06-15T12:00:00Z','+38164123003','Europe/Belgrade','processing',1,'2026-08-01T12:00:00Z','2026-08-01T12:10:00Z','97100000-0000-4000-8000-000000000031',null,null,null,'2026-05-31T22:00:00Z'),
+ ('96100000-0000-4000-8000-000000000032','92000000-0000-4000-8000-000000000003','94100000-0000-4000-8000-000000000032','93000000-0000-4000-8000-000000000003','sms','2026-09-14T12:00:00Z','2026-09-15T12:00:00Z','+38164123003','Europe/Belgrade','processing',1,'2026-08-01T12:00:00Z','2026-08-01T12:10:00Z','97100000-0000-4000-8000-000000000032',null,null,null,'2026-08-31T22:00:00Z'),
+ ('96100000-0000-4000-8000-000000000033','92000000-0000-4000-8000-000000000003','94100000-0000-4000-8000-000000000033','93000000-0000-4000-8000-000000000003','sms','2026-08-09T12:00:00Z','2026-08-10T12:00:00Z','+38164123003','Europe/Belgrade','sent',1,'2026-08-01T10:59:00Z',null,null,'fixture','fixture-current-used','2026-08-01T11:00:00Z','2026-07-31T22:00:00Z');
 
 select pg_temp.assert_true((select is_valid and reason='ELIGIBLE' from public.validate_claimed_reminder_for_send(
   (select delivery_id from claimed where salon_id='92000000-0000-4000-8000-000000000003'),
@@ -167,9 +167,9 @@ select pg_temp.assert_true((select is_valid and reason='ELIGIBLE' from public.va
 
 insert into public.appointment_reminder_deliveries(
  id,salon_id,appointment_id,client_id,channel,scheduled_for,appointment_start_snapshot,
- recipient_snapshot,salon_timezone_snapshot,status,attempt_count,claimed_at,lease_expires_at,claim_token
+ recipient_snapshot,salon_timezone_snapshot,status,attempt_count,claimed_at,lease_expires_at,claim_token,quota_period_start
 ) values (
- '96100000-0000-4000-8000-000000000034','92000000-0000-4000-8000-000000000003','94100000-0000-4000-8000-000000000034','93000000-0000-4000-8000-000000000003','sms','2026-08-10T12:00:00Z','2026-08-11T12:00:00Z','+38164123003','Europe/Belgrade','processing',1,'2026-08-01T12:00:00Z','2026-08-01T12:10:00Z','97100000-0000-4000-8000-000000000034'
+ '96100000-0000-4000-8000-000000000034','92000000-0000-4000-8000-000000000003','94100000-0000-4000-8000-000000000034','93000000-0000-4000-8000-000000000003','sms','2026-08-10T12:00:00Z','2026-08-11T12:00:00Z','+38164123003','Europe/Belgrade','processing',1,'2026-08-01T12:00:00Z','2026-08-01T12:10:00Z','97100000-0000-4000-8000-000000000034','2026-07-31T22:00:00Z'
 );
 create temporary table quota_denied as
 select * from public.validate_claimed_reminder_for_send(

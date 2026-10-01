@@ -150,6 +150,7 @@ export type Database = {
           provider_status_group: string | null
           provider_status_id: number | null
           provider_status_name: string | null
+          quota_period_start: string | null
           recipient_snapshot: string | null
           reminder_type: string
           salon_id: string
@@ -189,6 +190,7 @@ export type Database = {
           provider_status_group?: string | null
           provider_status_id?: number | null
           provider_status_name?: string | null
+          quota_period_start?: string | null
           recipient_snapshot?: string | null
           reminder_type?: string
           salon_id: string
@@ -228,6 +230,7 @@ export type Database = {
           provider_status_group?: string | null
           provider_status_id?: number | null
           provider_status_name?: string | null
+          quota_period_start?: string | null
           recipient_snapshot?: string | null
           reminder_type?: string
           salon_id?: string

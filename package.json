@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:reminder-claim-quota-db": "node scripts/test-reminder-calendar-claim-quota.mjs",
     "test:reminders": "node --experimental-strip-types --test src/features/reminders/services/reminderEligibilityService.test.ts",
     "test:calendar": "node --experimental-strip-types --test src/features/calendar/calendarTimeRange.test.ts",
     "test:app-routing": "node --experimental-strip-types --test src/features/authorization/authorizationResolution.test.ts src/features/onboarding/services/onboardingCompletionCore.test.ts src/features/dashboard/services/ownerDashboardLoader.test.ts",

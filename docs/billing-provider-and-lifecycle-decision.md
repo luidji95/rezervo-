@@ -235,6 +235,8 @@ Recommended because it supplies duplicate-click control, pending Billing UI, act
 
 It is not a second subscription source of truth and may be retention-pruned.
 
+Phase 7B.3A correlation contract: create the checkout ledger before calling the provider and send its database-generated `id` as `meta.custom_data.checkout_session_id`. Keep `salon_id`, `plan_code` and `idempotency_key` only as corroborating validation/diagnostic values. The ledger reserves `provider_order_id` and nullable `resulting_subscription_id`; the provider subscription ID remains on the referenced `subscriptions` row. Existing pre-correlation checkouts have no trusted ledger ID in provider metadata and must not be inferred from weak heuristics. Lifecycle linking and all state mutation remain a separate phase.
+
 ### Existing subscription additions
 
 Existing columns are otherwise sufficient. Add only provider/environment-aware uniqueness and ordering fields such as `billing_environment`, `provider_state_updated_at`, and `provider_last_event_created_at`. Consider `provider_cancel_scheduled_at` only if `cancel_at_period_end` plus period end is insufficient for UI. Do not add copied product price or entitlement booleans.

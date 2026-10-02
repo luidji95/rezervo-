@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";import test from "node:test";
+import {normalizeLemonSqueezySubscriptionObject} from "./lemonSqueezySubscriptionObjectCore.ts";
+const payload=(overrides:Record<string,unknown>={})=>({data:{type:"subscriptions",id:123,attributes:{store_id:10,customer_id:20,order_id:30,product_id:40,variant_id:50,status:"active",cancelled:false,pause:null,trial_ends_at:null,renews_at:"2026-08-29T10:00:00Z",ends_at:null,created_at:"2026-07-29T10:00:00Z",updated_at:"2026-07-29T10:01:00Z",test_mode:true,user_email:"private@example.test",user_name:"Private",card_brand:"visa",card_last_four:"4242",urls:{customer_portal:"https://private.invalid"},...overrides}}});
+test("normalizes valid numeric identities and nullable lifecycle fields",()=>{const result=normalizeLemonSqueezySubscriptionObject(payload());assert.equal(result.providerSubscriptionId,"123");assert.equal(result.providerCustomerId,"20");assert.equal(result.providerPauseMode,null);});
+test("normalizes a valid pause without leaking its source object",()=>{const result=normalizeLemonSqueezySubscriptionObject(payload({pause:{mode:"free",resumes_at:null}}));assert.equal(result.providerPauseMode,"free");});
+test("rejects invalid timestamps",()=>assert.throws(()=>normalizeLemonSqueezySubscriptionObject(payload({renews_at:"bad"}))));
+test("rejects updated_at before created_at",()=>assert.throws(()=>normalizeLemonSqueezySubscriptionObject(payload({updated_at:"2026-07-28T10:00:00Z"}))));
+test("rejects missing required identity",()=>assert.throws(()=>normalizeLemonSqueezySubscriptionObject(payload({customer_id:null}))));
+test("rejects invalid pause mode",()=>assert.throws(()=>normalizeLemonSqueezySubscriptionObject(payload({pause:{mode:"other",resumes_at:null}}))));
+test("normalized result contains no PII, URLs or raw attributes",()=>{const result=normalizeLemonSqueezySubscriptionObject(payload());const text=JSON.stringify(result);for(const value of ["private@example.test","Private","4242","private.invalid","attributes"])assert.equal(text.includes(value),false);});

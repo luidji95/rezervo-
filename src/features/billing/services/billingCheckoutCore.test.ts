@@ -1,27 +1,71 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { MockBillingProvider } from "../providers/mockBillingProvider.ts";
 import { BillingCheckoutError } from "../providers/billingCheckoutErrors.ts";
 import {
+  LemonSqueezyCheckoutRetrievalError,
+  type LemonSqueezyRetrievedCheckout,
+} from "../providers/lemonSqueezyCheckoutRetrievalCore.ts";
+import {
+  AUTHENTICATED_CREATING_RECOVERY_STALE_AFTER_MS,
+  classifyAuthenticatedCreatingRecoveryStaleness,
   createBillingCheckout,
   type BillingCheckoutLedger,
   type BillingCheckoutRepository,
   type BillingPriceMapping,
 } from "./billingCheckoutCore.ts";
 import { parseBillingCheckoutRequest } from "./billingCheckoutRequest.ts";
+import { buildBillingCheckoutClientRequest } from "./billingCheckoutClientRequest.ts";
+import { parseBillingCheckoutTimestampInstant } from "./billingCheckoutTimestamp.ts";
 
 const actor = "20000000-0000-4000-8000-000000000001";
 const salon = "20000000-0000-4000-8000-000000000002";
 const key = "20000000-0000-4000-8000-000000000003";
+const starterPlan = "20000000-0000-4000-8000-000000000010";
+const proPlan = "20000000-0000-4000-8000-000000000011";
 const now = new Date("2026-07-27T13:00:00.000Z");
+const providerCheckoutId = "50000000-0000-4000-8000-000000000001";
+
+function retrievedCheckout(overrides: Partial<LemonSqueezyRetrievedCheckout> = {}) {
+  const expiresAt = "2026-07-27T13:30:00.000Z";
+  const expires = Math.floor(Date.parse(expiresAt) / 1000);
+  return {
+    providerCheckoutId,
+    storeId: "123",
+    variantId: "456",
+    customCheckoutSessionId: "20000000-0000-4000-8000-000000000001",
+    customSalonId: salon,
+    customPlanCode: "starter" as const,
+    customIdempotencyKey: "30000000-0000-4000-8000-000000000001",
+    testMode: true,
+    checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=${expires}&signature=opaque`,
+    expiresAt,
+    providerCreatedAt: "2026-07-27T13:00:00.000Z",
+    providerUpdatedAt: "2026-07-27T13:00:01.000Z",
+    ...overrides,
+  };
+}
+
+class MockRetrievalProvider {
+  calls: string[] = [];
+  checkout = retrievedCheckout();
+  error: unknown = null;
+  async retrieveById(id: string) {
+    this.calls.push(id);
+    if (this.error) throw this.error;
+    return this.checkout;
+  }
+}
 
 class MemoryRepository implements BillingCheckoutRepository {
   owner = true;
   override = false;
   mapping: BillingPriceMapping | null = {
     id: "mapping",
-    planId: "starter-plan",
+    planId: starterPlan,
     planCode: "starter",
     planActive: true,
     planMonthlyPrice: 2990,
@@ -30,14 +74,63 @@ class MemoryRepository implements BillingCheckoutRepository {
     mappingAmount: 2990,
     mappingCurrency: "RSD",
     providerVariantId: "456",
+    providerStoreId: "123",
+    environment: "test",
   };
   ledgers = new Map<string, BillingCheckoutLedger>();
   subscriptions = new Map([[salon, { status: "trialing", planId: "pro-plan", provider: null }]]);
   sequence = 0;
+  markFailedCalls = 0;
+  acquisitionOutcome: "created" | "existing" = "created";
+  acquiredStatus: BillingCheckoutLedger["status"] = "creating";
+  environment: "test" | "live" = "test";
+  acquireInputs: Array<{ salonId: string; actorProfileId: string; planId: string }> = [];
+  providerSessionId: string | null = null;
+  checkoutUrlHash: string | null = null;
+  createdAt = "2026-07-27T12:59:30.001Z";
+  recheckCalls = 0;
+  recheckOverride: BillingCheckoutLedger["status"] | null = null;
 
   async isSalonOwner() { return this.owner; }
   async hasActiveOverride() { return this.override; }
   async getPriceMapping() { return this.mapping; }
+  async acquireCheckoutIntent(input: { salonId: string; actorProfileId: string; planId: string }) {
+    this.acquireInputs.push(input);
+    const active = [...this.ledgers.values()].find(
+      (row) => row.salonId === input.salonId && (row.status === "creating" || row.status === "open"),
+    );
+    const row = active ?? {
+      id: `20000000-0000-4000-8000-${String(++this.sequence).padStart(12, "0")}`,
+      salonId: input.salonId,
+      actorProfileId: input.actorProfileId,
+      requestedPlanId: input.planId,
+      idempotencyKey: `30000000-0000-4000-8000-${String(this.sequence).padStart(12, "0")}`,
+      status: this.acquiredStatus,
+      expiresAt: null,
+    };
+    if (!active) this.ledgers.set(row.idempotencyKey, row);
+    return {
+      outcome: active ? "existing" as const : this.acquisitionOutcome,
+      checkoutSession: row,
+      provider: "lemonsqueezy" as const,
+      environment: this.environment,
+      providerSessionId: this.providerSessionId,
+    };
+  }
+  async getCheckoutSessionById(id: string) {
+    this.recheckCalls += 1;
+    const row = [...this.ledgers.values()].find((ledger) => ledger.id === id);
+    if (!row) return null;
+    return {
+      ...row,
+      createdAt: this.createdAt,
+      status: this.recheckOverride ?? row.status,
+      provider: "lemonsqueezy" as const,
+      environment: this.environment,
+      providerSessionId: this.providerSessionId,
+      checkoutUrlHash: this.checkoutUrlHash,
+    };
+  }
   async findByIdempotencyKey(value: string) { return this.ledgers.get(value) ?? null; }
   async findReusableOpenSession(input: { salonId: string; planId: string }) {
     return [...this.ledgers.values()].find(
@@ -48,7 +141,8 @@ class MemoryRepository implements BillingCheckoutRepository {
     for (const row of this.ledgers.values()) if (row.id === id) row.status = "expired";
   }
   async insertCreating(input: { salonId: string; actorProfileId: string; planId: string; idempotencyKey: string }) {
-    if (this.ledgers.has(input.idempotencyKey)) throw new Error("unique");
+    const existing = this.ledgers.get(input.idempotencyKey);
+    if (existing) return { outcome: "existing" as const, checkoutSession: existing };
     const row: BillingCheckoutLedger = {
       id: `ledger-${++this.sequence}`,
       salonId: input.salonId,
@@ -59,7 +153,10 @@ class MemoryRepository implements BillingCheckoutRepository {
       expiresAt: null,
     };
     this.ledgers.set(input.idempotencyKey, row);
-    return row;
+    return {
+      outcome: "created" as const,
+      checkoutSession: { ...row, status: "creating" as const },
+    };
   }
   async markOpen(input: { id: string; expiresAt: string }) {
     for (const row of this.ledgers.values()) if (row.id === input.id) {
@@ -68,12 +165,13 @@ class MemoryRepository implements BillingCheckoutRepository {
     }
   }
   async markFailed(id: string) {
+    this.markFailedCalls += 1;
     for (const row of this.ledgers.values()) if (row.id === id) row.status = "failed";
   }
 }
 
-const runtime = { appUrl: "https://rezervo.example", storeId: "123", now: () => now };
-const request = { salonId: salon, actorProfileId: actor, planCode: "starter" as const, idempotencyKey: key };
+const runtime = { appUrl: "https://rezervo.example", storeId: "123", environment: "test" as const, liveAllowedSalonIds: null, now: () => now };
+const request = { salonId: salon, actorProfileId: actor, planCode: "starter" as const };
 
 async function expectCode(action: () => Promise<unknown>, code: string) {
   await assert.rejects(
@@ -85,12 +183,81 @@ async function expectCode(action: () => Promise<unknown>, code: string) {
 test("owner creates Starter and Pro sessions without changing subscription state", async () => {
   for (const planCode of ["starter", "pro"] as const) {
     const repo = new MemoryRepository();
-    if (planCode === "pro") repo.mapping = { ...repo.mapping!, planId: "pro-plan", planCode: "pro", planMonthlyPrice: 5990, mappingAmount: 5990 };
+    if (planCode === "pro") repo.mapping = { ...repo.mapping!, planId: proPlan, planCode: "pro", planMonthlyPrice: 5990, mappingAmount: 5990 };
     const before = structuredClone(repo.subscriptions.get(salon));
-    const result = await createBillingCheckout({ ...request, planCode }, repo, new MockBillingProvider(), runtime);
+    const provider = new MockBillingProvider();
+    const result = await createBillingCheckout({ ...request, planCode }, repo, provider, runtime);
     assert.equal(result.environment, "test");
     assert.deepEqual(repo.subscriptions.get(salon), before);
-    assert.equal(repo.ledgers.get(key)?.status, "open");
+    assert.equal([...repo.ledgers.values()][0]?.status, "open");
+    assert.equal(provider.calls[0]?.checkoutSessionId, [...repo.ledgers.values()][0]?.id);
+    assert.equal(provider.calls[0]?.idempotencyKey, [...repo.ledgers.values()][0]?.idempotencyKey);
+    assert.equal("checkoutSessionId" in result, false);
+  }
+});
+
+test("checkout rejects a mapping from another billing environment", async () => {
+  const repo = new MemoryRepository();
+  repo.mapping = { ...repo.mapping!, environment: "live" };
+  const provider = new MockBillingProvider();
+  await expectCode(
+    () => createBillingCheckout(request, repo, provider, runtime),
+    "BILLING_PRICE_MISMATCH",
+  );
+  assert.equal(provider.calls.length, 0);
+  assert.equal(repo.ledgers.size, 0);
+});
+
+test("live pilot allowlist rejects before every repository and provider side effect", async () => {
+  const repo = new MemoryRepository();
+  repo.mapping = { ...repo.mapping!, environment: "live" };
+  let repositoryCalls = 0;
+  repo.isSalonOwner = async () => { repositoryCalls += 1; return true; };
+  repo.getPriceMapping = async () => { repositoryCalls += 1; return repo.mapping; };
+  repo.acquireCheckoutIntent = async (input) => {
+    repositoryCalls += 1;
+    return MemoryRepository.prototype.acquireCheckoutIntent.call(repo, input);
+  };
+  const provider = new MockBillingProvider();
+  const liveRuntime = {
+    ...runtime,
+    environment: "live" as const,
+    liveAllowedSalonIds: new Set(["20000000-0000-4000-8000-000000000099"]),
+  };
+  await expectCode(
+    () => createBillingCheckout(request, repo, provider, liveRuntime),
+    "BILLING_CHECKOUT_DISABLED",
+  );
+  assert.equal(repositoryCalls, 0);
+  assert.equal(repo.ledgers.size, 0);
+  assert.equal(provider.calls.length, 0);
+});
+
+test("allowlisted live salon reaches environment-scoped mapping and provider", async () => {
+  const repo = new MemoryRepository();
+  repo.mapping = { ...repo.mapping!, environment: "live" };
+  repo.environment = "live";
+  const provider = new MockBillingProvider();
+  const result = await createBillingCheckout(request, repo, provider, {
+    ...runtime,
+    environment: "live",
+    liveAllowedSalonIds: new Set([salon]),
+  });
+  assert.equal(result.environment, "live");
+  assert.equal(provider.calls[0]?.environment, "live");
+});
+
+test("checkout requires mapping Store ID to match canonical provider config", async () => {
+  for (const providerStoreId of ["456", "", "   "]) {
+    const repo = new MemoryRepository();
+    repo.mapping = { ...repo.mapping!, providerStoreId };
+    const provider = new MockBillingProvider();
+    await expectCode(
+      () => createBillingCheckout(request, repo, provider, runtime),
+      "BILLING_PRICE_MISMATCH",
+    );
+    assert.equal(provider.calls.length, 0);
+    assert.equal(repo.ledgers.size, 0);
   }
 });
 
@@ -106,27 +273,54 @@ test("owner-only authorization, overrides, mappings and Premium fail closed", as
   await expectCode(() => createBillingCheckout(request, repo, new MockBillingProvider(), runtime), "BILLING_PRICE_MAPPING_MISSING");
   repo.mapping = { ...new MemoryRepository().mapping!, mappingActive: false };
   await expectCode(() => createBillingCheckout(request, repo, new MockBillingProvider(), runtime), "BILLING_PLAN_NOT_AVAILABLE");
+  repo.mapping = { ...new MemoryRepository().mapping!, planActive: false };
+  await expectCode(() => createBillingCheckout(request, repo, new MockBillingProvider(), runtime), "BILLING_PLAN_NOT_AVAILABLE");
   assert.throws(
     () => parseBillingCheckoutRequest({ salonId: salon, planCode: "premium" }),
     (error: unknown) => error instanceof BillingCheckoutError && error.code === "INVALID_INPUT",
   );
+  assert.equal(repo.acquireInputs.length, 0);
+});
+
+test("acquire receives only server-resolved identity after authorization and mapping validation", async () => {
+  const repo = new MemoryRepository();
+  const provider = new MockBillingProvider();
+  await createBillingCheckout(request, repo, provider, runtime);
+  assert.deepEqual(repo.acquireInputs, [{
+    salonId: salon,
+    actorProfileId: actor,
+    planId: starterPlan,
+  }]);
+  assert.equal(provider.calls[0]?.idempotencyKey, [...repo.ledgers.values()][0]?.idempotencyKey);
 });
 
 test("request contract rejects browser-owned billing fields", () => {
+  assert.deepEqual(parseBillingCheckoutRequest({ salonId: salon, planCode: "starter" }), {
+    salonId: salon,
+    planCode: "starter",
+  });
   for (const extra of [
+    { idempotencyKey: key },
+    { idempotency_key: key },
+    { checkout_session_id: key },
     { amount: 1 },
     { currency: "USD" },
     { providerVariantId: "1" },
     { successUrl: "https://evil.example" },
+    { environment: "live" },
   ]) {
     assert.throws(
       () => parseBillingCheckoutRequest({ salonId: salon, planCode: "starter", ...extra }),
       (error: unknown) => error instanceof BillingCheckoutError && error.code === "INVALID_INPUT",
     );
   }
+  assert.throws(
+    () => parseBillingCheckoutRequest({ idempotencyKey: key }),
+    (error: unknown) => error instanceof BillingCheckoutError && error.code === "INVALID_INPUT",
+  );
 });
 
-test("same key, double click and two concurrent requests create one provider session", async () => {
+test("parallel browser requests have no identity field and only created calls provider", async () => {
   const repo = new MemoryRepository();
   const provider = new MockBillingProvider();
   const results = await Promise.allSettled([
@@ -136,7 +330,451 @@ test("same key, double click and two concurrent requests create one provider ses
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
   assert.equal(provider.calls.length, 1);
   assert.equal(repo.ledgers.size, 1);
+  const ledger = [...repo.ledgers.values()][0]!;
+  assert.equal(provider.calls[0]?.checkoutSessionId, ledger.id);
+  assert.equal(provider.calls[0]?.idempotencyKey, ledger.idempotencyKey);
+  await expectCode(() => createBillingCheckout(request, repo, provider, runtime), "BILLING_PROVIDER_UNAVAILABLE");
+});
+
+test("billing checkout client request contains only public salon and plan fields", () => {
+  assert.deepEqual(buildBillingCheckoutClientRequest(salon, "starter"), {
+    salonId: salon,
+    planCode: "starter",
+  });
+  const hook = readFileSync("src/features/billing/hooks/useBillingCheckout.ts", "utf8");
+  assert.match(hook, /buildBillingCheckoutClientRequest\(currentSalon\.id, planCode\)/);
+  assert.doesNotMatch(hook, /randomUUID|idempotencyKey/);
+  assert.match(hook, /window\.location\.assign\(body\.checkout\.checkoutUrl\)/);
+});
+
+test("existing creating remains pending without provider retrieval or create", async () => {
+  const repo = new MemoryRepository();
+  repo.acquiredStatus = "creating";
+  await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+  const provider = new MockBillingProvider();
+  const retrieval = new MockRetrievalProvider();
+  await assert.rejects(
+    () => createBillingCheckout(request, repo, provider, runtime, retrieval),
+    (error: unknown) => error instanceof BillingCheckoutError &&
+      error.code === "BILLING_CHECKOUT_PENDING" && error.status === 202,
+  );
+  assert.equal(provider.calls.length, 0);
+  assert.equal(retrieval.calls.length, 0);
+});
+
+test("authenticated creating recovery staleness is pure and exact at 30 seconds", () => {
+  assert.equal(AUTHENTICATED_CREATING_RECOVERY_STALE_AFTER_MS, 30_000);
+  assert.equal(classifyAuthenticatedCreatingRecoveryStaleness("2026-07-27T12:59:30.001Z", now), "fresh");
+  assert.equal(classifyAuthenticatedCreatingRecoveryStaleness("2026-07-27T12:59:30.000Z", now), "eligible");
+  assert.equal(classifyAuthenticatedCreatingRecoveryStaleness("2026-07-27T12:59:29.999Z", now), "eligible");
+  assert.equal(classifyAuthenticatedCreatingRecoveryStaleness("2026-07-27T13:00:00.001Z", now), "invalid");
+  assert.equal(classifyAuthenticatedCreatingRecoveryStaleness("not-a-timestamp", now), "invalid");
+});
+
+test("stale creating without provider UUID uses bounded recovery and never create", async () => {
+  for (const createdAt of ["2026-07-27T12:59:30.000Z", "2026-07-27T12:59:29.999Z"]) {
+    const repo = new MemoryRepository();
+    repo.acquiredStatus = "creating";
+    repo.createdAt = createdAt;
+    const acquisition = await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+    const checkout = retrievedCheckout({
+      customCheckoutSessionId: acquisition.checkoutSession.id,
+      customIdempotencyKey: acquisition.checkoutSession.idempotencyKey,
+    });
+    let boundedCalls = 0;
+    const provider = new MockBillingProvider();
+    const result = await createBillingCheckout(
+      request, repo, provider, runtime, new MockRetrievalProvider(), undefined,
+      async (checkoutSessionId) => {
+        boundedCalls += 1;
+        assert.equal(checkoutSessionId, acquisition.checkoutSession.id);
+        acquisition.checkoutSession.status = "open";
+        acquisition.checkoutSession.expiresAt = checkout.expiresAt;
+        repo.providerSessionId = checkout.providerCheckoutId;
+        repo.checkoutUrlHash = createHash("sha256").update(checkout.checkoutUrl).digest("hex");
+        return {
+          outcome: "recovered_open",
+          checkout,
+          checkoutUrlHash: repo.checkoutUrlHash,
+          providerExpiresAt: checkout.expiresAt!,
+        };
+      },
+    );
+    assert.equal(result.responseStatus, 200);
+    assert.equal(boundedCalls, 1);
+    assert.equal(provider.calls.length, 0);
+  }
+});
+
+test("fresh, future, malformed and terminal current state never starts bounded recovery or create", async () => {
+  for (const scenario of [
+    { createdAt: "2026-07-27T12:59:30.001Z", status: "creating" as const, code: "BILLING_CHECKOUT_PENDING" },
+    { createdAt: "2026-07-27T13:00:00.001Z", status: "creating" as const, code: "BILLING_RECONCILIATION_REQUIRED" },
+    { createdAt: "private malformed", status: "creating" as const, code: "BILLING_RECONCILIATION_REQUIRED" },
+    { createdAt: "2026-07-27T12:59:00.000Z", status: "completed" as const, code: "BILLING_RECONCILIATION_REQUIRED" },
+  ]) {
+    const repo = new MemoryRepository();
+    repo.acquiredStatus = "creating";
+    repo.createdAt = scenario.createdAt;
+    await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+    repo.recheckOverride = scenario.status;
+    let boundedCalls = 0;
+    const provider = new MockBillingProvider();
+    await expectCode(
+      () => createBillingCheckout(
+        request, repo, provider, runtime, new MockRetrievalProvider(), undefined,
+        async () => { boundedCalls += 1; return { outcome: "provider_not_found" }; },
+      ),
+      scenario.code,
+    );
+    assert.equal(boundedCalls, 0);
+    assert.equal(provider.calls.length, 0);
+  }
+});
+
+test("provider UUID appearing during pre-claim recheck switches to direct recovery without list", async () => {
+  const repo = new MemoryRepository();
+  repo.acquiredStatus = "creating";
+  repo.createdAt = "2026-07-27T12:59:00.000Z";
+  const acquisition = await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+  const originalAcquire = repo.acquireCheckoutIntent.bind(repo);
+  repo.acquireCheckoutIntent = async (input) => {
+    const result = await originalAcquire(input);
+    repo.providerSessionId = providerCheckoutId;
+    return { ...result, providerSessionId: null };
+  };
+  const checkout = retrievedCheckout({ customCheckoutSessionId: acquisition.checkoutSession.id, customIdempotencyKey: acquisition.checkoutSession.idempotencyKey });
+  let directCalls = 0;
+  let boundedCalls = 0;
+  const resultPromise = createBillingCheckout(
+    request, repo, new MockBillingProvider(), runtime, new MockRetrievalProvider(),
+    async () => {
+      directCalls += 1;
+      acquisition.checkoutSession.status = "open";
+      acquisition.checkoutSession.expiresAt = checkout.expiresAt;
+      repo.checkoutUrlHash = createHash("sha256").update(checkout.checkoutUrl).digest("hex");
+      return { outcome: "recovered_open", checkout, checkoutUrlHash: repo.checkoutUrlHash, providerExpiresAt: checkout.expiresAt! };
+    },
+    async () => { boundedCalls += 1; return { outcome: "provider_not_found" }; },
+  );
+  assert.equal((await resultPromise).responseStatus, 200);
+  assert.equal(directCalls, 1);
+  assert.equal(boundedCalls, 0);
+});
+
+test("existing creating with a provider UUID uses direct recovery and rechecks before returning URL", async () => {
+  for (const outcome of ["recovered_open", "already_recovered_open"] as const) {
+    const repo = new MemoryRepository();
+    repo.acquiredStatus = "creating";
+    repo.providerSessionId = providerCheckoutId;
+    const acquisition = await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+    const checkout = retrievedCheckout({
+      customCheckoutSessionId: acquisition.checkoutSession.id,
+      customIdempotencyKey: acquisition.checkoutSession.idempotencyKey,
+    });
+    const provider = new MockBillingProvider();
+    const retrieval = new MockRetrievalProvider();
+    let recoveryCalls = 0;
+    const result = await createBillingCheckout(
+      request,
+      repo,
+      provider,
+      runtime,
+      retrieval,
+      async (checkoutSessionId) => {
+        recoveryCalls += 1;
+        assert.equal(checkoutSessionId, acquisition.checkoutSession.id);
+        acquisition.checkoutSession.status = "open";
+        acquisition.checkoutSession.expiresAt = checkout.expiresAt;
+        repo.checkoutUrlHash = createHash("sha256").update(checkout.checkoutUrl).digest("hex");
+        return {
+          outcome,
+          checkout,
+          checkoutUrlHash: repo.checkoutUrlHash,
+          providerExpiresAt: checkout.expiresAt!,
+        };
+      },
+    );
+    assert.equal(result.responseStatus, 200);
+    assert.equal(result.checkoutUrl, checkout.checkoutUrl);
+    assert.equal(recoveryCalls, 1);
+    assert.equal(repo.recheckCalls, 1);
+    assert.equal(retrieval.calls.length, 0);
+    assert.equal(provider.calls.length, 0);
+  }
+});
+
+test("existing creating recovery outcomes are terminal and never reach provider create", async () => {
+  const outcomes = [
+    ["already_claimed", "BILLING_CHECKOUT_PENDING"],
+    ["provider_unavailable", "BILLING_PROVIDER_UNAVAILABLE"],
+    ["provider_not_found", "BILLING_RECONCILIATION_REQUIRED"],
+    ["invalid_candidate", "BILLING_RECONCILIATION_REQUIRED"],
+    ["finalization_conflict", "BILLING_RECONCILIATION_REQUIRED"],
+    ["claim_lost", "BILLING_RECONCILIATION_REQUIRED"],
+  ] as const;
+  for (const [outcome, expectedCode] of outcomes) {
+    const repo = new MemoryRepository();
+    repo.acquiredStatus = "creating";
+    repo.providerSessionId = providerCheckoutId;
+    await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+    const provider = new MockBillingProvider();
+    const retrieval = new MockRetrievalProvider();
+    let recoveryCalls = 0;
+    await expectCode(
+      () => createBillingCheckout(request, repo, provider, runtime, retrieval, async () => {
+        recoveryCalls += 1;
+        return { outcome };
+      }),
+      expectedCode,
+    );
+    assert.equal(recoveryCalls, 1);
+    assert.equal(provider.calls.length, 0);
+    assert.equal(retrieval.calls.length, 0);
+  }
+});
+
+test("existing creating finalizer ambiguity is reconciliation-required without fallback", async () => {
+  const repo = new MemoryRepository();
+  repo.acquiredStatus = "creating";
+  repo.providerSessionId = providerCheckoutId;
+  await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+  const provider = new MockBillingProvider();
+  let recoveryCalls = 0;
+  await expectCode(
+    () => createBillingCheckout(request, repo, provider, runtime, new MockRetrievalProvider(), async () => {
+      recoveryCalls += 1;
+      throw new Error("private RPC ambiguity");
+    }),
+    "BILLING_RECONCILIATION_REQUIRED",
+  );
+  assert.equal(recoveryCalls, 1);
+  assert.equal(provider.calls.length, 0);
+});
+
+test("terminal lifecycle state wins after direct recovery finalization", async () => {
+  for (const terminalStatus of ["completed", "failed", "expired", "cancelled"] as const) {
+    const repo = new MemoryRepository();
+    repo.acquiredStatus = "creating";
+    repo.providerSessionId = providerCheckoutId;
+    const acquisition = await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+    const checkout = retrievedCheckout({
+      customCheckoutSessionId: acquisition.checkoutSession.id,
+      customIdempotencyKey: acquisition.checkoutSession.idempotencyKey,
+    });
+    repo.recheckOverride = terminalStatus;
+    const provider = new MockBillingProvider();
+    await expectCode(
+      () => createBillingCheckout(
+        request,
+        repo,
+        provider,
+        runtime,
+        new MockRetrievalProvider(),
+        async () => {
+          acquisition.checkoutSession.status = "open";
+          acquisition.checkoutSession.expiresAt = checkout.expiresAt;
+          repo.checkoutUrlHash = createHash("sha256").update(checkout.checkoutUrl).digest("hex");
+          return {
+            outcome: "recovered_open",
+            checkout,
+            checkoutUrlHash: repo.checkoutUrlHash,
+            providerExpiresAt: checkout.expiresAt!,
+          };
+        },
+      ),
+      "BILLING_RECONCILIATION_REQUIRED",
+    );
+    assert.equal(repo.recheckCalls, 1);
+    assert.equal(provider.calls.length, 0);
+  }
+});
+
+function openResumeHarness() {
+  const repo = new MemoryRepository();
+  repo.acquiredStatus = "open";
+  repo.providerSessionId = providerCheckoutId;
+  const retrieval = new MockRetrievalProvider();
+  const provider = new MockBillingProvider();
+  return { repo, retrieval, provider };
+}
+
+async function seedOpenResume(h: ReturnType<typeof openResumeHarness>) {
+  const acquisition = await h.repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: starterPlan });
+  const row = acquisition.checkoutSession;
+  h.retrieval.checkout = retrievedCheckout({
+    customCheckoutSessionId: row.id,
+    customIdempotencyKey: row.idempotencyKey,
+  });
+  row.expiresAt = h.retrieval.checkout.expiresAt;
+  h.repo.checkoutUrlHash = createHash("sha256").update(h.retrieval.checkout.checkoutUrl).digest("hex");
+  return row;
+}
+
+test("existing open retrieves once, rechecks DB, and returns the original URL", async () => {
+  const h = openResumeHarness();
+  await seedOpenResume(h);
+  const events: string[] = [];
+  const retrieve = h.retrieval.retrieveById.bind(h.retrieval);
+  h.retrieval.retrieveById = async (id) => { events.push("retrieve"); return retrieve(id); };
+  const recheck = h.repo.getCheckoutSessionById.bind(h.repo);
+  h.repo.getCheckoutSessionById = async (id) => { events.push("recheck"); return recheck(id); };
+  const result = await createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval);
+  assert.equal(result.responseStatus, 200);
+  assert.equal(result.checkoutUrl, h.retrieval.checkout.checkoutUrl);
+  assert.deepEqual(h.retrieval.calls, [providerCheckoutId]);
+  assert.equal(h.repo.recheckCalls, 1);
+  assert.equal(h.provider.calls.length, 0);
+  assert.deepEqual(events, ["retrieve", "recheck"]);
+});
+
+test("checkout expiry parser accepts equivalent RFC3339 instants and rejects invalid representations", () => {
+  const instant = Date.parse("2026-07-27T13:30:00.000Z");
+  for (const value of [
+    "2026-07-27T13:30:00.000Z",
+    "2026-07-27T13:30:00.000+00:00",
+    "2026-07-27T15:30:00.000+02:00",
+  ]) assert.equal(parseBillingCheckoutTimestampInstant(value), instant);
+  for (const value of [
+    "2026-07-27 13:30:00+00",
+    "2026-02-30T13:30:00Z",
+    "2026-07-27T24:00:00Z",
+    "2026-07-27T13:60:00Z",
+    "2026-07-27T13:30:60Z",
+    "2026-07-27T13:30:00+24:00",
+    "Infinity",
+    "",
+    null,
+    undefined,
+  ]) assert.equal(parseBillingCheckoutTimestampInstant(value), null);
+});
+
+test("existing-open expiry recheck compares exact instants instead of timestamp text", async () => {
+  for (const equivalentDbExpiry of [
+    "2026-07-27T13:30:00.000+00:00",
+    "2026-07-27T15:30:00.000+02:00",
+  ]) {
+    const h = openResumeHarness();
+    await seedOpenResume(h);
+    const recheck = h.repo.getCheckoutSessionById.bind(h.repo);
+    h.repo.getCheckoutSessionById = async (id) => ({ ...(await recheck(id))!, expiresAt: equivalentDbExpiry });
+    const result = await createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval);
+    assert.equal(result.responseStatus, 200);
+    assert.equal(h.provider.calls.length, 0);
+  }
+
+  for (const mismatchedDbExpiry of [
+    "2026-07-27T13:30:01.000Z",
+    "2026-07-27T13:30:00.001Z",
+    "2026-07-27 13:30:00+00",
+    "not-a-timestamp",
+    null,
+  ]) {
+    const h = openResumeHarness();
+    await seedOpenResume(h);
+    const recheck = h.repo.getCheckoutSessionById.bind(h.repo);
+    h.repo.getCheckoutSessionById = async (id) => ({ ...(await recheck(id))!, expiresAt: mismatchedDbExpiry });
+    await expectCode(
+      () => createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval),
+      "BILLING_RECONCILIATION_REQUIRED",
+    );
+    assert.equal(h.provider.calls.length, 0);
+  }
+});
+
+test("existing open fails closed for provider identity and URL mismatches", async () => {
+  const cases: Array<Partial<LemonSqueezyRetrievedCheckout>> = [
+    { providerCheckoutId: "50000000-0000-4000-8000-000000000002" },
+    { storeId: "999" },
+    { variantId: "999" },
+    { testMode: false },
+    { customCheckoutSessionId: "50000000-0000-4000-8000-000000000002" },
+    { customIdempotencyKey: "50000000-0000-4000-8000-000000000002" },
+    { customSalonId: "50000000-0000-4000-8000-000000000002" },
+    { customPlanCode: "pro" },
+    { expiresAt: "2026-07-27T12:59:00.000Z" },
+    { expiresAt: "not-a-timestamp" },
+    { expiresAt: null },
+    { checkoutUrl: "https://evil.example/checkout" },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/50000000-0000-4000-8000-000000000002?expires=1785159000&signature=opaque` },
+    { checkoutUrl: `https://rezervoo.lemonsqueezy.com/checkout/custom/${providerCheckoutId}?expires=1785159000` },
+  ];
+  for (const override of cases) {
+    const h = openResumeHarness();
+    await seedOpenResume(h);
+    h.retrieval.checkout = { ...h.retrieval.checkout, ...override };
+    await expectCode(
+      () => createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval),
+      "BILLING_RECONCILIATION_REQUIRED",
+    );
+    assert.equal(h.provider.calls.length, 0);
+  }
+});
+
+test("existing open never returns URL after terminal webhook race or DB identity change", async () => {
+  for (const change of ["completed", "failed", "expired", "cancelled"] as const) {
+    const h = openResumeHarness();
+    await seedOpenResume(h);
+    h.repo.recheckOverride = change;
+    await expectCode(() => createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval), "BILLING_RECONCILIATION_REQUIRED");
+    assert.equal(h.provider.calls.length, 0);
+  }
+  const changedId = openResumeHarness();
+  await seedOpenResume(changedId);
+  changedId.repo.providerSessionId = "50000000-0000-4000-8000-000000000002";
+  await expectCode(() => createBillingCheckout(request, changedId.repo, changedId.provider, runtime, changedId.retrieval), "BILLING_RECONCILIATION_REQUIRED");
+
+  for (const change of [
+    { salonId: "50000000-0000-4000-8000-000000000002" },
+    { requestedPlanId: proPlan },
+    { idempotencyKey: "50000000-0000-4000-8000-000000000002" },
+    { environment: "live" as const },
+    { provider: "other" as "lemonsqueezy" },
+    { checkoutUrlHash: "b".repeat(64) },
+    { expiresAt: "2026-07-27T13:29:00.000Z" },
+  ]) {
+    const h = openResumeHarness();
+    await seedOpenResume(h);
+    const recheck = h.repo.getCheckoutSessionById.bind(h.repo);
+    h.repo.getCheckoutSessionById = async (id) => ({ ...(await recheck(id))!, ...change });
+    await expectCode(() => createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval), "BILLING_RECONCILIATION_REQUIRED");
+  }
+});
+
+test("existing open without a provider checkout UUID fails before retrieval", async () => {
+  const h = openResumeHarness();
+  h.repo.providerSessionId = null;
+  await seedOpenResume(h);
+  await expectCode(() => createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval), "BILLING_RECONCILIATION_REQUIRED");
+  assert.equal(h.retrieval.calls.length, 0);
+  assert.equal(h.provider.calls.length, 0);
+});
+
+test("existing open provider and DB failures are sanitized without create fallback", async () => {
+  for (const kind of ["provider_not_found", "provider_unavailable", "invalid_provider_response"] as const) {
+    const h = openResumeHarness();
+    await seedOpenResume(h);
+    h.retrieval.error = new LemonSqueezyCheckoutRetrievalError(kind);
+    await expectCode(
+      () => createBillingCheckout(request, h.repo, h.provider, runtime, h.retrieval),
+      kind === "provider_unavailable" ? "BILLING_PROVIDER_UNAVAILABLE" : "BILLING_RECONCILIATION_REQUIRED",
+    );
+    assert.equal(h.provider.calls.length, 0);
+  }
+  const db = openResumeHarness();
+  await seedOpenResume(db);
+  db.repo.getCheckoutSessionById = async () => { throw new Error("private SQL detail"); };
+  await expectCode(() => createBillingCheckout(request, db.repo, db.provider, runtime, db.retrieval), "BILLING_PROVIDER_UNAVAILABLE");
+  assert.equal(db.provider.calls.length, 0);
+});
+
+test("existing intent for another plan is an in-progress conflict without mutation", async () => {
+  const repo = new MemoryRepository();
+  const first = await repo.acquireCheckoutIntent({ salonId: salon, actorProfileId: actor, planId: proPlan });
+  const provider = new MockBillingProvider();
   await expectCode(() => createBillingCheckout(request, repo, provider, runtime), "BILLING_CHECKOUT_IN_PROGRESS");
+  assert.equal(provider.calls.length, 0);
+  assert.equal(first.checkoutSession.requestedPlanId, proPlan);
 });
 
 test("provider rejection fails the ledger while timeout remains creating for reconciliation", async () => {
@@ -145,32 +783,120 @@ test("provider rejection fails the ledger while timeout remains creating for rec
     () => createBillingCheckout(request, rejectedRepo, new MockBillingProvider("rejected"), runtime),
     "BILLING_PROVIDER_REJECTED",
   );
-  assert.equal(rejectedRepo.ledgers.get(key)?.status, "failed");
+  assert.equal([...rejectedRepo.ledgers.values()][0]?.status, "failed");
+  assert.equal(rejectedRepo.markFailedCalls, 1);
 
   const timeoutRepo = new MemoryRepository();
   await expectCode(
     () => createBillingCheckout(request, timeoutRepo, new MockBillingProvider("timeout"), runtime),
     "BILLING_RECONCILIATION_REQUIRED",
   );
-  assert.equal(timeoutRepo.ledgers.get(key)?.status, "creating");
+  assert.equal([...timeoutRepo.ledgers.values()][0]?.status, "creating");
+  assert.equal(timeoutRepo.ledgers.size, 1);
+  assert.equal(timeoutRepo.markFailedCalls, 0);
+  const timeoutProvider = new MockBillingProvider();
+  await expectCode(
+    () => createBillingCheckout(request, timeoutRepo, timeoutProvider, runtime),
+    "BILLING_CHECKOUT_PENDING",
+  );
+  assert.equal([...timeoutRepo.ledgers.values()][0]?.status, "creating");
+  assert.equal(timeoutRepo.ledgers.size, 1);
+  assert.equal(timeoutRepo.markFailedCalls, 0);
+  assert.equal(timeoutProvider.calls.length, 0);
+
+  const unavailableRepo = new MemoryRepository();
+  await expectCode(
+    () => createBillingCheckout(request, unavailableRepo, new MockBillingProvider("unavailable"), runtime),
+    "BILLING_PROVIDER_UNAVAILABLE",
+  );
+  assert.equal([...unavailableRepo.ledgers.values()][0]?.status, "creating");
+  assert.equal(unavailableRepo.markFailedCalls, 0);
 });
 
-test("expired open session permits a new attempt, valid open session is reused as in-progress", async () => {
+test("markOpen failure after provider success remains reconciliation-required and idempotent", async () => {
   const repo = new MemoryRepository();
-  repo.ledgers.set("old", {
-    id: "old-ledger", salonId: salon, actorProfileId: actor, requestedPlanId: "starter-plan",
-    idempotencyKey: "old", status: "open", expiresAt: "2026-07-27T12:59:00.000Z",
-  });
-  await createBillingCheckout({ ...request, idempotencyKey: key }, repo, new MockBillingProvider(), runtime);
-  assert.equal(repo.ledgers.get("old")?.status, "expired");
+  let markOpenCalls = 0;
+  repo.markOpen = async () => {
+    markOpenCalls += 1;
+    throw new Error("database details must stay private");
+  };
+  const provider = new MockBillingProvider();
 
-  const activeRepo = new MemoryRepository();
-  activeRepo.ledgers.set("active", {
-    id: "active-ledger", salonId: salon, actorProfileId: actor, requestedPlanId: "starter-plan",
-    idempotencyKey: "active", status: "open", expiresAt: "2026-07-27T13:20:00.000Z",
-  });
   await expectCode(
-    () => createBillingCheckout({ ...request, idempotencyKey: key }, activeRepo, new MockBillingProvider(), runtime),
-    "BILLING_CHECKOUT_IN_PROGRESS",
+    () => createBillingCheckout(request, repo, provider, runtime),
+    "BILLING_RECONCILIATION_REQUIRED",
   );
+  assert.equal(provider.calls.length, 1);
+  assert.equal(markOpenCalls, 1);
+  assert.equal(repo.markFailedCalls, 0);
+  assert.equal(repo.ledgers.size, 1);
+  assert.equal([...repo.ledgers.values()][0]?.status, "creating");
+
+  const secondProvider = new MockBillingProvider();
+  await expectCode(
+    () => createBillingCheckout(request, repo, secondProvider, runtime),
+    "BILLING_CHECKOUT_PENDING",
+  );
+  assert.equal(secondProvider.calls.length, 0);
+  assert.equal(repo.markFailedCalls, 0);
+  assert.equal(repo.ledgers.size, 1);
+  assert.equal([...repo.ledgers.values()][0]?.status, "creating");
+});
+
+test("unexpected acquire outcome/status fails closed before provider create", async () => {
+  const repo = new MemoryRepository();
+  repo.acquisitionOutcome = "created";
+  repo.acquiredStatus = "open";
+  const provider = new MockBillingProvider();
+  await expectCode(() => createBillingCheckout(request, repo, provider, runtime), "BILLING_PROVIDER_UNAVAILABLE");
+  assert.equal(provider.calls.length, 0);
+});
+
+test("subscription-aware acquire conflicts stop every provider and recovery side effect", async () => {
+  for (const code of [
+    "BILLING_SUBSCRIPTION_ALREADY_ACTIVE",
+    "BILLING_SUBSCRIPTION_PAYMENT_REQUIRED",
+    "BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED",
+    "BILLING_RECONCILIATION_REQUIRED",
+  ] as const) {
+    const expectedStatus = code === "BILLING_RECONCILIATION_REQUIRED" ? 503 : 409;
+    const repo = new MemoryRepository();
+    repo.acquireCheckoutIntent = async () => { throw new BillingCheckoutError(code, expectedStatus); };
+    repo.markOpen = async () => { assert.fail("markOpen must not run"); };
+    repo.markFailed = async () => { assert.fail("markFailed must not run"); };
+    const provider = new MockBillingProvider();
+    const retrieval = new MockRetrievalProvider();
+    let directRecoveryCalls = 0;
+    let boundedRecoveryCalls = 0;
+    await assert.rejects(
+      () => createBillingCheckout(
+        request, repo, provider, runtime, retrieval,
+        async () => { directRecoveryCalls += 1; throw new Error("must not run"); },
+        async () => { boundedRecoveryCalls += 1; throw new Error("must not run"); },
+      ),
+      (error: unknown) => error instanceof BillingCheckoutError
+        && error.code === code && error.status === expectedStatus,
+    );
+    assert.equal(provider.calls.length, 0);
+    assert.equal(retrieval.calls.length, 0);
+    assert.equal(directRecoveryCalls, 0);
+    assert.equal(boundedRecoveryCalls, 0);
+    assert.equal(repo.ledgers.size, 0);
+  }
+});
+
+test("checkout route maps pending to a sanitized HTTP 202 response", () => {
+  const route = readFileSync("src/app/api/billing/checkout/route.ts", "utf8");
+  assert.match(route, /error\.code === "BILLING_CHECKOUT_PENDING"/);
+  assert.match(route, /Checkout preparation is already in progress\. Please try again shortly\./);
+  assert.match(route, /const \{ responseStatus, \.\.\.checkout \} = result/);
+  assert.match(route, /\{ success: true, checkout \}/);
+  assert.match(route, /status: responseStatus/);
+  assert.match(route, /status: error\.status/);
+  assert.doesNotMatch(route, /BILLING_RECONCILIATION_REQUIRED[\s\S]*409/);
+  assert.match(route, /runBillingCheckoutBoundedRecovery/);
+  assert.match(route, /pageSize: 25/);
+  assert.match(route, /maxPages: 2/);
+  assert.doesNotMatch(route, /BILLING_CHECKOUT_RECOVERY_PAGE_SIZE/);
+  assert.doesNotMatch(route, /BILLING_CHECKOUT_RECOVERY_MAX_PAGES/);
 });

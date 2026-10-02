@@ -40,7 +40,7 @@ export class MockBillingProvider implements BillingProvider {
       providerSessionId: `mock-${input.idempotencyKey}`,
       checkoutUrl: `https://sandbox.example.invalid/checkout/${input.idempotencyKey}`,
       expiresAt: input.expiresAt,
-      environment: "test",
+      environment: input.environment,
     };
   }
 }

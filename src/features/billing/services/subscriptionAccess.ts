@@ -18,11 +18,16 @@ export type SubscriptionAccessRecord = {
   status: string;
   trialEndsAt: string | null;
   currentPeriodEndsAt: string | null;
+  billingProvider: string | null;
+  billingEnvironment: string | null;
+  providerCustomerId: string | null;
+  providerSubscriptionId: string | null;
 };
 
 export type ResolveSubscriptionAccessInput = {
   subscription: SubscriptionAccessRecord | null;
   plan: SubscriptionAccessPlan | null;
+  trustedEnvironment: "test" | "live";
   now: Date;
 };
 
@@ -65,6 +70,24 @@ function normalizeRawStatus(status: string): SubscriptionStatus {
 
 function isValidDate(value: string): boolean {
   return Number.isFinite(Date.parse(value));
+}
+
+function hasTrustedSubscriptionAuthority(
+  subscription: SubscriptionAccessRecord,
+  trustedEnvironment: "test" | "live",
+) {
+  const providerFreeTrial =
+    subscription.status === "trialing" &&
+    subscription.billingProvider === null &&
+    subscription.billingEnvironment === null &&
+    subscription.providerCustomerId === null &&
+    subscription.providerSubscriptionId === null;
+  if (providerFreeTrial) return true;
+
+  return subscription.billingProvider === "lemonsqueezy" &&
+    subscription.billingEnvironment === trustedEnvironment &&
+    Boolean(subscription.providerCustomerId?.trim()) &&
+    Boolean(subscription.providerSubscriptionId?.trim());
 }
 
 function resolveLifecycle(
@@ -144,11 +167,23 @@ function effectiveCapabilities(
 export function resolveSubscriptionAccess({
   subscription,
   plan,
+  trustedEnvironment,
   now,
 }: ResolveSubscriptionAccessInput): SalonEntitlements {
-  const lifecycle = resolveLifecycle(subscription, now.getTime());
-  const accessReason = subscription && !plan ? "plan_missing" : lifecycle.accessReason;
-  const accessMode: SubscriptionAccessMode = subscription && plan ? lifecycle.accessMode : "read_only";
+  const trustedSubscription = subscription &&
+    hasTrustedSubscriptionAuthority(subscription, trustedEnvironment)
+    ? subscription
+    : null;
+  const lifecycle = resolveLifecycle(trustedSubscription, now.getTime());
+  const authorityMismatch = Boolean(subscription && !trustedSubscription);
+  const accessReason = subscription && !plan
+    ? "plan_missing"
+    : authorityMismatch
+      ? "billing_environment_mismatch"
+      : lifecycle.accessReason;
+  const accessMode: SubscriptionAccessMode = subscription && plan && !authorityMismatch
+    ? lifecycle.accessMode
+    : "read_only";
   const planCapabilities: PlanCapabilities = plan
     ? {
         canUseStatistics: plan.canUseStatistics,
@@ -166,6 +201,7 @@ export function resolveSubscriptionAccess({
   const effective = effectiveCapabilities(accessMode, planCapabilities);
   const displayStatus: SubscriptionStatus =
     accessReason === "trial_expired" || accessReason === "invalid_trial_period" || accessReason === "period_expired" || accessReason === "invalid_period" || accessReason === "subscription_missing" || accessReason === "plan_missing"
+      || accessReason === "billing_environment_mismatch"
       ? "expired"
       : lifecycle.rawSubscriptionStatus ?? "expired";
 

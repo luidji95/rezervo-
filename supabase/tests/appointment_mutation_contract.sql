@@ -4,7 +4,7 @@ create or replace function pg_temp.expect_error(q text,c text) returns void lang
 
 insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values('e1000000-0000-4000-8000-000000000001','appointment-owner@example.invalid','{}','{}');
 insert into public.salons(id,owner_id,name,slug) values('e2000000-0000-4000-8000-000000000001','e1000000-0000-4000-8000-000000000001','Appointment Contract','appointment-contract');
-update public.subscriptions set status='active',trial_ends_at=null,current_period_ends_at=now()+interval '30 days' where salon_id='e2000000-0000-4000-8000-000000000001';
+update public.subscriptions set status='active',trial_ends_at=null,billing_provider='lemonsqueezy',billing_environment='test',provider_customer_id='b9-appointment-customer',provider_subscription_id='b9-appointment-subscription',current_period_starts_at=now(),current_period_ends_at=now()+interval '30 days',provider_state_updated_at=now() where salon_id='e2000000-0000-4000-8000-000000000001';
 insert into public.services(id,salon_id,name,duration_minutes,buffer_minutes,price) values('e3000000-0000-4000-8000-000000000001','e2000000-0000-4000-8000-000000000001','Contract Service',30,5,1500);
 insert into public.employees(id,salon_id,full_name) values('e4000000-0000-4000-8000-000000000001','e2000000-0000-4000-8000-000000000001','Contract Employee');
 insert into public.employee_services(salon_id,employee_id,service_id) values('e2000000-0000-4000-8000-000000000001','e4000000-0000-4000-8000-000000000001','e3000000-0000-4000-8000-000000000001');

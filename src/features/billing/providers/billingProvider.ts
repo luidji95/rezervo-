@@ -1,9 +1,12 @@
+import type { BillingEnvironment } from "../config/billingEnvironment.ts";
+
+export type { BillingEnvironment } from "../config/billingEnvironment.ts";
 export type BillingProviderName = "lemonsqueezy";
-export type BillingEnvironment = "test";
 export type BillingInterval = "monthly";
 export type CheckoutPlanCode = "starter" | "pro";
 
 export type CreateCheckoutSessionInput = {
+  checkoutSessionId: string;
   salonId: string;
   actorProfileId: string;
   planCode: CheckoutPlanCode;

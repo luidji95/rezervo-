@@ -7,6 +7,12 @@ import type {
   BillingPriceMapping,
 } from "./billingCheckoutCore";
 import type { CheckoutPlanCode } from "../providers/billingProvider";
+import type { BillingEnvironment } from "../config/billingEnvironment";
+import {
+  parseBillingCheckoutCurrentState,
+  parseBillingCheckoutIntentAcquisition,
+} from "./billingCheckoutIntent";
+import { BillingCheckoutError } from "../providers/billingCheckoutErrors";
 
 type MappingResult = {
   id: string;
@@ -15,6 +21,8 @@ type MappingResult = {
   currency: string;
   is_active: boolean;
   provider_variant_id: string;
+  provider_store_id: string;
+  environment: string;
   plans: {
     slug: string;
     is_active: boolean;
@@ -49,6 +57,8 @@ const LEDGER_COLUMNS =
 export class SupabaseBillingCheckoutRepository
   implements BillingCheckoutRepository
 {
+  constructor(private readonly environment: BillingEnvironment) {}
+
   async isSalonOwner(salonId: string, actorProfileId: string) {
     const { data, error } = await supabaseServer
       .from("salons")
@@ -80,16 +90,19 @@ export class SupabaseBillingCheckoutRepository
     const { data, error } = await supabaseServer
       .from("billing_provider_prices")
       .select(
-        "id,plan_id,amount,currency,is_active,provider_variant_id,plans!inner(slug,is_active,monthly_price,currency)",
+        "id,plan_id,amount,currency,is_active,provider_store_id,provider_variant_id,environment,plans!inner(slug,is_active,monthly_price,currency)",
       )
       .eq("provider", "lemonsqueezy")
-      .eq("environment", "test")
+      .eq("environment", this.environment)
       .eq("billing_interval", "monthly")
       .eq("plans.slug", planCode)
       .maybeSingle();
     if (error) throw new Error("BILLING_MAPPING_LOOKUP_FAILED");
     if (!data) return null;
     const row = data as unknown as MappingResult;
+    if (row.plans.slug !== "starter" && row.plans.slug !== "pro") {
+      throw new Error("BILLING_MAPPING_LOOKUP_FAILED");
+    }
     return {
       id: row.id,
       planId: row.plan_id,
@@ -101,7 +114,64 @@ export class SupabaseBillingCheckoutRepository
       mappingAmount: Number(row.amount),
       mappingCurrency: row.currency,
       providerVariantId: row.provider_variant_id,
+      providerStoreId: row.provider_store_id,
+      environment: row.environment as BillingEnvironment,
     };
+  }
+
+  async acquireCheckoutIntent(input: {
+    salonId: string;
+    actorProfileId: string;
+    planId: string;
+  }) {
+    const { data, error } = await supabaseServer.rpc(
+      "acquire_billing_checkout_intent_v2",
+      {
+        p_salon_id: input.salonId,
+        p_actor_profile_id: input.actorProfileId,
+        p_requested_plan_id: input.planId,
+        p_provider: "lemonsqueezy",
+      },
+    );
+    if (error) {
+      const code = [
+        "BILLING_SUBSCRIPTION_ALREADY_ACTIVE",
+        "BILLING_SUBSCRIPTION_PAYMENT_REQUIRED",
+        "BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED",
+      ].find((candidate) => error.message === candidate);
+      if (code) throw new BillingCheckoutError(code as
+        | "BILLING_SUBSCRIPTION_ALREADY_ACTIVE"
+        | "BILLING_SUBSCRIPTION_PAYMENT_REQUIRED"
+        | "BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED", 409);
+      if (error.message.startsWith("BILLING_RECONCILIATION_REQUIRED_")) {
+        throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+      }
+      throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+    }
+    if (!Array.isArray(data) || data.length !== 1) {
+      throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+    }
+    try {
+      return parseBillingCheckoutIntentAcquisition(
+        data[0],
+        this.environment,
+        input.salonId,
+      );
+    } catch {
+      throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+    }
+  }
+
+  async getCheckoutSessionById(id: string) {
+    const { data, error } = await supabaseServer
+      .from("billing_checkout_sessions")
+      .select(`${LEDGER_COLUMNS},created_at,provider,environment,provider_session_id,checkout_url_hash`)
+      .eq("id", id)
+      .eq("provider", "lemonsqueezy")
+      .eq("environment", this.environment)
+      .maybeSingle();
+    if (error) throw new Error("BILLING_SESSION_LOOKUP_FAILED");
+    return data ? parseBillingCheckoutCurrentState(data, this.environment) : null;
   }
 
   async findByIdempotencyKey(key: string) {
@@ -109,7 +179,7 @@ export class SupabaseBillingCheckoutRepository
       .from("billing_checkout_sessions")
       .select(LEDGER_COLUMNS)
       .eq("provider", "lemonsqueezy")
-      .eq("environment", "test")
+      .eq("environment", this.environment)
       .eq("idempotency_key", key)
       .maybeSingle();
     if (error) throw new Error("BILLING_SESSION_LOOKUP_FAILED");
@@ -126,7 +196,7 @@ export class SupabaseBillingCheckoutRepository
       .from("billing_checkout_sessions")
       .select(LEDGER_COLUMNS)
       .eq("provider", "lemonsqueezy")
-      .eq("environment", "test")
+      .eq("environment", this.environment)
       .eq("salon_id", input.salonId)
       .eq("requested_plan_id", input.planId)
       .eq("status", "open")
@@ -143,6 +213,8 @@ export class SupabaseBillingCheckoutRepository
       .from("billing_checkout_sessions")
       .update({ status: "expired" })
       .eq("id", id)
+      .eq("provider", "lemonsqueezy")
+      .eq("environment", this.environment)
       .eq("status", "open");
     if (error) throw new Error("BILLING_SESSION_UPDATE_FAILED");
   }
@@ -160,14 +232,28 @@ export class SupabaseBillingCheckoutRepository
         actor_profile_id: input.actorProfileId,
         requested_plan_id: input.planId,
         provider: "lemonsqueezy",
-        environment: "test",
+        environment: this.environment,
         idempotency_key: input.idempotencyKey,
         status: "creating",
       })
       .select(LEDGER_COLUMNS)
       .single();
-    if (error || !data) throw new Error("BILLING_SESSION_INSERT_FAILED");
-    return toLedger(data);
+    if (!error && data) {
+      return {
+        outcome: "created" as const,
+        checkoutSession: {
+          ...toLedger(data),
+          status: "creating" as const,
+        },
+      };
+    }
+    if (error?.code === "23505") {
+      const existing = await this.findByIdempotencyKey(input.idempotencyKey);
+      if (existing) {
+        return { outcome: "existing" as const, checkoutSession: existing };
+      }
+    }
+    throw new Error("BILLING_SESSION_INSERT_FAILED");
   }
 
   async markOpen(input: {
@@ -186,6 +272,8 @@ export class SupabaseBillingCheckoutRepository
         error_code: null,
       })
       .eq("id", input.id)
+      .eq("provider", "lemonsqueezy")
+      .eq("environment", this.environment)
       .eq("status", "creating")
       .select("id")
       .maybeSingle();
@@ -201,6 +289,8 @@ export class SupabaseBillingCheckoutRepository
         error_code: errorCode,
       })
       .eq("id", id)
+      .eq("provider", "lemonsqueezy")
+      .eq("environment", this.environment)
       .eq("status", "creating");
     if (error) throw new Error("BILLING_SESSION_UPDATE_FAILED");
   }

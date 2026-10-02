@@ -4,53 +4,54 @@ import type {
   CreateCheckoutSessionResult,
 } from "./billingProvider.ts";
 import { BillingCheckoutError } from "./billingCheckoutErrors.ts";
+import { expectedLemonSqueezyTestMode } from "../config/billingEnvironment.ts";
+import {
+  parseLemonSqueezyNumericObjectId,
+} from "./lemonSqueezyResourceIds.ts";
+import {
+  LemonSqueezyCheckoutRetrievalError,
+  parseLemonSqueezyCheckoutResponse,
+} from "./lemonSqueezyCheckoutRetrievalCore.ts";
+import {
+  isLemonSqueezyJsonApiContentType,
+  validateLemonSqueezyCheckoutAccess,
+} from "./lemonSqueezyCheckoutValidation.ts";
 
 const API_URL = "https://api.lemonsqueezy.com/v1/checkouts";
 const JSON_API = "application/vnd.api+json";
 
-type LemonSqueezyCheckoutResponse = {
-  data?: {
-    type?: unknown;
-    id?: unknown;
-    attributes?: {
-      url?: unknown;
-      expires_at?: unknown;
-      test_mode?: unknown;
-    };
-  };
-};
-
-function positiveIntegerId(value: string) {
-  if (!/^\d+$/.test(value)) {
-    throw new BillingCheckoutError("BILLING_PRICE_MAPPING_MISSING", 503);
-  }
-  return value;
-}
+const DEFINITIVE_REJECTION_STATUSES = new Set([400, 401, 403, 404, 422]);
 
 export class LemonSqueezyCheckoutCore implements BillingProvider {
   private readonly apiKey: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly now: () => Date;
 
   constructor(
     apiKey: string,
     fetchImpl: typeof fetch = fetch,
     timeoutMs = 10_000,
+    now: () => Date = () => new Date(),
   ) {
     this.apiKey = apiKey;
     this.fetchImpl = fetchImpl;
     this.timeoutMs = timeoutMs;
+    this.now = now;
   }
 
   async createCheckoutSession(
     input: CreateCheckoutSessionInput,
   ): Promise<CreateCheckoutSessionResult> {
-    if (input.environment !== "test") {
-      throw new BillingCheckoutError("BILLING_NOT_CONFIGURED", 503);
+    const expectedTestMode = expectedLemonSqueezyTestMode(input.environment);
+    let storeId: string;
+    let variantId: string;
+    try {
+      storeId = parseLemonSqueezyNumericObjectId(input.providerStoreId);
+      variantId = parseLemonSqueezyNumericObjectId(input.providerVariantId);
+    } catch {
+      throw new BillingCheckoutError("BILLING_PRICE_MAPPING_MISSING", 503);
     }
-
-    const storeId = positiveIntegerId(input.providerStoreId);
-    const variantId = positiveIntegerId(input.providerVariantId);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
@@ -77,13 +78,14 @@ export class LemonSqueezyCheckoutCore implements BillingProvider {
               checkout_data: {
                 ...(input.customerEmail ? { email: input.customerEmail } : {}),
                 custom: {
+                  checkout_session_id: input.checkoutSessionId,
                   salon_id: input.salonId,
                   plan_code: input.planCode,
                   idempotency_key: input.idempotencyKey,
                 },
               },
               expires_at: input.expiresAt,
-              test_mode: true,
+              test_mode: expectedTestMode,
             },
             relationships: {
               store: { data: { type: "stores", id: storeId } },
@@ -92,11 +94,12 @@ export class LemonSqueezyCheckoutCore implements BillingProvider {
           },
         }),
         cache: "no-store",
+        redirect: "error",
         signal: controller.signal,
       });
 
-      if (!response.ok) {
-        if (response.status >= 400 && response.status < 500) {
+      if (response.status !== 201) {
+        if (DEFINITIVE_REJECTION_STATUSES.has(response.status)) {
           throw new BillingCheckoutError("BILLING_PROVIDER_REJECTED", 502);
         }
         throw new BillingCheckoutError(
@@ -104,43 +107,61 @@ export class LemonSqueezyCheckoutCore implements BillingProvider {
           503,
         );
       }
-
-      const payload = (await response.json()) as LemonSqueezyCheckoutResponse;
-      const id = payload.data?.id;
-      const checkoutUrl = payload.data?.attributes?.url;
-      const providerExpiresAt = payload.data?.attributes?.expires_at;
-      if (
-        payload.data?.type !== "checkouts" ||
-        typeof id !== "string" ||
-        typeof checkoutUrl !== "string" ||
-        payload.data.attributes?.test_mode !== true
-      ) {
-        throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
-      }
-      const parsedUrl = new URL(checkoutUrl);
-      if (parsedUrl.protocol !== "https:") {
-        throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
-      }
-
-      return {
-        provider: "lemonsqueezy",
-        providerSessionId: id,
-        checkoutUrl,
-        expiresAt:
-          typeof providerExpiresAt === "string"
-            ? providerExpiresAt
-            : input.expiresAt,
-        environment: "test",
-      };
-    } catch (error) {
-      if (error instanceof BillingCheckoutError) throw error;
-      if (error instanceof Error && error.name === "AbortError") {
+      if (!isLemonSqueezyJsonApiContentType(response.headers.get("content-type"))) {
         throw new BillingCheckoutError(
           "BILLING_RECONCILIATION_REQUIRED",
           503,
         );
       }
-      throw new BillingCheckoutError("BILLING_PROVIDER_UNAVAILABLE", 503);
+      let payload: unknown;
+      try { payload = await response.json() as unknown; }
+      catch {
+        throw new BillingCheckoutError(
+          "BILLING_RECONCILIATION_REQUIRED",
+          503,
+        );
+      }
+      const checkout = parseLemonSqueezyCheckoutResponse(payload);
+      if (
+        checkout.testMode !== expectedTestMode ||
+        checkout.storeId !== storeId ||
+        checkout.variantId !== variantId ||
+        checkout.customCheckoutSessionId !== input.checkoutSessionId ||
+        checkout.customIdempotencyKey !== input.idempotencyKey ||
+        checkout.customSalonId !== input.salonId ||
+        checkout.customPlanCode !== input.planCode
+      ) {
+        throw new BillingCheckoutError(
+          "BILLING_RECONCILIATION_REQUIRED",
+          503,
+        );
+      }
+      const validated = validateLemonSqueezyCheckoutAccess({
+        providerCheckoutId: checkout.providerCheckoutId,
+        checkoutUrl: checkout.checkoutUrl,
+        providerExpiresAt: checkout.expiresAt,
+        now: this.now(),
+      });
+      if (!validated) {
+        throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+      }
+
+      return {
+        provider: "lemonsqueezy",
+        providerSessionId: checkout.providerCheckoutId,
+        checkoutUrl: checkout.checkoutUrl,
+        expiresAt: validated.providerExpiresAt,
+        environment: input.environment,
+      };
+    } catch (error) {
+      if (error instanceof BillingCheckoutError) throw error;
+      if (error instanceof LemonSqueezyCheckoutRetrievalError) {
+        throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
+      }
+      throw new BillingCheckoutError(
+        "BILLING_RECONCILIATION_REQUIRED",
+        503,
+      );
     } finally {
       clearTimeout(timeout);
     }

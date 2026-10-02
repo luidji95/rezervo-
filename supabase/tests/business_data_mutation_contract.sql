@@ -8,7 +8,9 @@ insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
 insert into public.salons(id,owner_id,name,slug) values
 ('f2000000-0000-4000-8000-000000000001','f1000000-0000-4000-8000-000000000001','Business Contract','business-contract'),
 ('f2000000-0000-4000-8000-000000000002','f1000000-0000-4000-8000-000000000002','Other Contract','other-business-contract');
-update public.subscriptions set status='active',trial_ends_at=null,current_period_ends_at=now()+interval '30 days'
+update public.subscriptions set status='active',trial_ends_at=null,billing_provider='lemonsqueezy',billing_environment='test',
+ provider_customer_id='b9-business-customer-'||salon_id::text,provider_subscription_id='b9-business-subscription-'||salon_id::text,
+ current_period_starts_at=now(),current_period_ends_at=now()+interval '30 days',provider_state_updated_at=now()
 where salon_id in ('f2000000-0000-4000-8000-000000000001','f2000000-0000-4000-8000-000000000002');
 insert into public.employees(id,salon_id,full_name) values
 ('f3000000-0000-4000-8000-000000000001','f2000000-0000-4000-8000-000000000001','Contract Employee');

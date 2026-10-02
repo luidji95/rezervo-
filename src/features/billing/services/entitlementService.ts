@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { canResolveSalonEntitlements, resolveSubscriptionAccess } from "./subscriptionAccess";
 import { resolveEffectiveAccess } from "./billingOverrideAccess";
 import type { BillingOverrideType, PlanCode, SalonEntitlements } from "../types/entitlements";
+import { getTrustedBillingEnvironment } from "../config/billingEnvironment.server";
 
 export type EntitlementErrorCode =
   | "FORBIDDEN"
@@ -38,6 +39,10 @@ type SubscriptionRow = {
   status: string;
   trial_ends_at: string | null;
   current_period_ends_at: string | null;
+  billing_provider: string | null;
+  billing_environment: string | null;
+  provider_customer_id: string | null;
+  provider_subscription_id: string | null;
   plans: PlanRow | PlanRow[] | null;
 };
 
@@ -99,10 +104,18 @@ export async function resolveSalonEntitlements({
     throw new EntitlementError("FORBIDDEN");
   }
 
+  let trustedEnvironment;
+  try {
+    trustedEnvironment = getTrustedBillingEnvironment();
+  } catch {
+    throw new EntitlementError("ENTITLEMENTS_NOT_CONFIGURED");
+  }
+
   const [{ data, error }, { data: overrideData, error: overrideError }] = await Promise.all([
     supabaseServer
       .from("subscriptions")
-      .select(`status, trial_ends_at, current_period_ends_at, plans(
+      .select(`status, trial_ends_at, current_period_ends_at, billing_provider,
+        billing_environment, provider_customer_id, provider_subscription_id, plans(
         name, slug, is_active, analytics_enabled, ai_receptionist_enabled,
         whatsapp_enabled, instagram_enabled, marketing_enabled, max_employees,
         max_monthly_bookings, max_ai_messages, sms_reminders_enabled,
@@ -131,9 +144,18 @@ export async function resolveSalonEntitlements({
 
   const subscriptionAccess = resolveSubscriptionAccess({
     subscription: row
-      ? { status: row.status, trialEndsAt: row.trial_ends_at, currentPeriodEndsAt: row.current_period_ends_at }
+      ? {
+          status: row.status,
+          trialEndsAt: row.trial_ends_at,
+          currentPeriodEndsAt: row.current_period_ends_at,
+          billingProvider: row.billing_provider,
+          billingEnvironment: row.billing_environment,
+          providerCustomerId: row.provider_customer_id,
+          providerSubscriptionId: row.provider_subscription_id,
+        }
       : null,
     plan: mapPlan(plan),
+    trustedEnvironment,
     now,
   });
 
@@ -156,6 +178,7 @@ export async function resolveSalonEntitlements({
         }
       : null,
     overridePlan: mapPlan(overridePlan),
+    trustedEnvironment,
     now,
   });
 }

@@ -45,12 +45,12 @@ insert into public.salon_members(salon_id,profile_id,role,status) values
  ('b1000000-0000-4000-8000-000000000001','a1000000-0000-4000-8000-000000000002','manager','active'),
  ('b1000000-0000-4000-8000-000000000001','a1000000-0000-4000-8000-000000000003','employee','active');
 
-update public.subscriptions set plan_id=(select id from public.plans where slug='starter'),status='active',trial_starts_at=null,trial_ends_at=null,current_period_ends_at=null where salon_id='b1000000-0000-4000-8000-000000000001';
-update public.subscriptions set status='active',trial_starts_at=null,trial_ends_at=null,current_period_ends_at=now()+interval '30 days' where salon_id='b1000000-0000-4000-8000-000000000002';
+update public.subscriptions set plan_id=(select id from public.plans where slug='starter'),status='active',trial_starts_at=null,trial_ends_at=null,billing_provider='lemonsqueezy',billing_environment='test',provider_customer_id='b9-capacity-customer-starter',provider_subscription_id='b9-capacity-subscription-starter',current_period_starts_at=now(),current_period_ends_at=now()+interval '30 days',provider_state_updated_at=now() where salon_id='b1000000-0000-4000-8000-000000000001';
+update public.subscriptions set status='active',trial_starts_at=null,trial_ends_at=null,billing_provider='lemonsqueezy',billing_environment='test',provider_customer_id='b9-capacity-customer-pro',provider_subscription_id='b9-capacity-subscription-pro',current_period_starts_at=now(),current_period_ends_at=now()+interval '30 days',provider_state_updated_at=now() where salon_id='b1000000-0000-4000-8000-000000000002';
 update public.subscriptions set status='trialing',trial_ends_at=now()-interval '1 day' where salon_id='b1000000-0000-4000-8000-000000000003';
 update public.subscriptions set status='expired',trial_ends_at=now()-interval '1 day' where salon_id in ('b1000000-0000-4000-8000-000000000007','b1000000-0000-4000-8000-000000000008','b1000000-0000-4000-8000-000000000012');
-update public.subscriptions set status='cancelled',current_period_ends_at=now()+interval '1 day' where salon_id='b1000000-0000-4000-8000-000000000004';
-update public.subscriptions set status='cancelled',current_period_ends_at=now()-interval '1 day' where salon_id='b1000000-0000-4000-8000-000000000005';
+update public.subscriptions set status='cancelled',billing_provider='lemonsqueezy',billing_environment='test',provider_customer_id='b9-capacity-customer-cancel-future',provider_subscription_id='b9-capacity-subscription-cancel-future',current_period_ends_at=now()+interval '1 day' where salon_id='b1000000-0000-4000-8000-000000000004';
+update public.subscriptions set status='cancelled',billing_provider='lemonsqueezy',billing_environment='test',provider_customer_id='b9-capacity-customer-cancel-past',provider_subscription_id='b9-capacity-subscription-cancel-past',current_period_ends_at=now()-interval '1 day' where salon_id='b1000000-0000-4000-8000-000000000005';
 update public.subscriptions set status='active',current_period_ends_at=null where salon_id='b1000000-0000-4000-8000-000000000006';
 update public.subscriptions set status='past_due' where salon_id='b1000000-0000-4000-8000-000000000011';
 delete from public.subscriptions where salon_id='b1000000-0000-4000-8000-000000000009';
@@ -82,7 +82,7 @@ select pg_temp.expect_error($q$insert into public.employees(salon_id,full_name) 
 select pg_temp.expect_error($q$insert into public.employees(salon_id,full_name) values ('b1000000-0000-4000-8000-000000000012','Disabled Override')$q$,'EMPLOYEE_ACCESS_REQUIRED');
 insert into public.employees(salon_id,full_name) values ('b1000000-0000-4000-8000-000000000004','Cancelled Future');
 select pg_temp.expect_error($q$insert into public.employees(salon_id,full_name) values ('b1000000-0000-4000-8000-000000000005','Cancelled Past')$q$,'EMPLOYEE_ACCESS_REQUIRED');
-insert into public.employees(salon_id,full_name) values ('b1000000-0000-4000-8000-000000000006','Legacy');
+select pg_temp.expect_error($q$insert into public.employees(salon_id,full_name) values ('b1000000-0000-4000-8000-000000000006','Legacy')$q$,'EMPLOYEE_ACCESS_REQUIRED');
 select pg_temp.expect_error($q$insert into public.employees(salon_id,full_name) values ('b1000000-0000-4000-8000-000000000009','Missing')$q$,'EMPLOYEE_ENTITLEMENT_NOT_CONFIGURED');
 insert into public.employees(salon_id,full_name)
 select 'b1000000-0000-4000-8000-000000000007','Override Pro '||g from generate_series(1,10) g;
@@ -97,6 +97,10 @@ where salon_id='b1000000-0000-4000-8000-000000000001' and full_name='Starter One
 insert into public.team_invitations(salon_id,employee_id,invited_by,email)
 select e.salon_id,e.id,'a1000000-0000-4000-8000-000000000001','invitee@example.invalid'
 from public.employees e where e.salon_id='b1000000-0000-4000-8000-000000000001' and e.full_name='Starter Two';
+create temporary table invitation_capacity_before as
+select count(*)::integer as active_count
+from public.employees
+where salon_id='b1000000-0000-4000-8000-000000000001' and is_active=true;
 select * from public.accept_team_invitation(
   (select id from public.team_invitations where email='invitee@example.invalid'),
   'a1000000-0000-4000-8000-000000000005'
@@ -107,6 +111,12 @@ do $$ declare v_already boolean; begin
     'a1000000-0000-4000-8000-000000000005'
   );
   if not v_already then raise exception 'INVITATION_IDEMPOTENCY_FAILED'; end if;
+end $$;
+do $$ begin
+  if (select active_count from invitation_capacity_before) is distinct from (
+    select count(*)::integer from public.employees
+    where salon_id='b1000000-0000-4000-8000-000000000001' and is_active=true
+  ) then raise exception 'INVITATION_CHANGED_ACTIVE_EMPLOYEE_COUNT'; end if;
 end $$;
 
 -- Browser bypasses are denied; authorized RPC remains tenant-scoped.

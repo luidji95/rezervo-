@@ -12,7 +12,16 @@ const plan = {
   canUseInstagram: false, canUseMarketing: false, canUseSmsReminders: true,
   maxEmployees: 10, maxMonthlyBookings: null, maxAiMessages: 0, maxMonthlyReminders: null,
 };
-const base = resolveSubscriptionAccess({ subscription: { status: "expired", trialEndsAt: null, currentPeriodEndsAt: null }, plan, now });
+const base = resolveSubscriptionAccess({
+  subscription: {
+    status: "expired", trialEndsAt: null, currentPeriodEndsAt: null,
+    billingProvider: "lemonsqueezy", billingEnvironment: "test",
+    providerCustomerId: "customer-1", providerSubscriptionId: "subscription-1",
+  },
+  plan,
+  trustedEnvironment: "test",
+  now,
+});
 
 for (const [overrideType, expected] of [["internal", "Interni nalog"], ["pilot", "Pilot pristup"], ["complimentary", "Besplatan pristup"], ["support", "Support pristup"]] as const) {
   test(`${overrideType} override has billing-safe presentation`, () => {
@@ -20,6 +29,7 @@ for (const [overrideType, expected] of [["internal", "Interni nalog"], ["pilot",
       subscriptionAccess: base,
       billingOverride: { enabled: true, overrideType, startsAt: "2026-07-01T00:00:00Z", endsAt: "2026-08-01T00:00:00Z" },
       overridePlan: plan,
+      trustedEnvironment: "test",
       now,
     });
     const presentation = getBillingAccessPresentation(entitlements);

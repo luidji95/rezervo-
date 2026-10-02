@@ -3,17 +3,27 @@ import { NextResponse } from "next/server";
 import { getAuthenticatedRequestUser } from "@/lib/server/requestAuth";
 import { BillingCheckoutError } from "@/features/billing/providers/billingCheckoutErrors";
 import { LemonSqueezyBillingProvider } from "@/features/billing/providers/lemonSqueezyBillingProvider";
+import { LemonSqueezyCheckoutRetrievalClient } from "@/features/billing/providers/lemonSqueezyCheckoutRetrievalCore";
 import { createBillingCheckout } from "@/features/billing/services/billingCheckoutCore";
 import { getBillingCheckoutConfig } from "@/features/billing/services/billingCheckoutConfig";
 import { parseBillingCheckoutRequest } from "@/features/billing/services/billingCheckoutRequest";
 import { SupabaseBillingCheckoutRepository } from "@/features/billing/services/supabaseBillingCheckoutRepository";
+import {
+  createLemonSqueezyRecoveryGateway,
+  runBillingCheckoutBoundedRecovery,
+  runBillingCheckoutDirectRecovery,
+} from "@/features/billing/checkoutRecovery/billingCheckoutRecoveryCore";
+import { createSupabaseBillingCheckoutRecoveryRepository } from "@/features/billing/checkoutRecovery/supabaseBillingCheckoutRecoveryRepository.server";
 
 export const dynamic = "force-dynamic";
 
 function errorResponse(error: unknown) {
   if (error instanceof BillingCheckoutError) {
+    const message = error.code === "BILLING_CHECKOUT_PENDING"
+      ? "Checkout preparation is already in progress. Please try again shortly."
+      : undefined;
     return NextResponse.json(
-      { success: false, code: error.code },
+      { success: false, code: error.code, ...(message ? { message } : {}) },
       { status: error.status },
     );
   }
@@ -43,7 +53,16 @@ export async function POST(request: Request) {
     const parsed = parseBillingCheckoutRequest(body);
 
     const provider = new LemonSqueezyBillingProvider(config.apiKey);
-    const repository = new SupabaseBillingCheckoutRepository();
+    const retrievalProvider = new LemonSqueezyCheckoutRetrievalClient(config, fetch);
+    const repository = new SupabaseBillingCheckoutRepository(
+      config.environment,
+    );
+    const recoveryRepository =
+      createSupabaseBillingCheckoutRecoveryRepository();
+    const recoveryGateway = createLemonSqueezyRecoveryGateway({
+      client: retrievalProvider,
+      providerConfig: config,
+    });
     const result = await createBillingCheckout(
       {
         ...parsed,
@@ -52,12 +71,45 @@ export async function POST(request: Request) {
       },
       repository,
       provider,
-      { appUrl: config.appUrl, storeId: config.storeId, now: () => new Date() },
+      {
+        appUrl: config.appUrl,
+        storeId: config.storeId,
+        environment: config.environment,
+        liveAllowedSalonIds: config.liveAllowedSalonIds,
+        now: () => new Date(),
+      },
+      retrievalProvider,
+      (checkoutSessionId) =>
+        runBillingCheckoutDirectRecovery({
+          checkoutSessionId,
+          environment: config.environment,
+          leaseSeconds: 300,
+          providerStoreId: config.storeId,
+          now: () => new Date(),
+          repository: recoveryRepository,
+          provider: {
+            retrieveById: (providerCheckoutId) =>
+              retrievalProvider.retrieveById(providerCheckoutId),
+          },
+        }),
+      (checkoutSessionId) =>
+        runBillingCheckoutBoundedRecovery({
+          checkoutSessionId,
+          environment: config.environment,
+          leaseSeconds: 300,
+          pageSize: 25,
+          maxPages: 2,
+          providerStoreId: config.storeId,
+          now: () => new Date(),
+          repository: recoveryRepository,
+          provider: recoveryGateway,
+        }),
     );
 
+    const { responseStatus, ...checkout } = result;
     return NextResponse.json(
-      { success: true, checkout: result },
-      { status: 201, headers: { "Cache-Control": "no-store" } },
+      { success: true, checkout },
+      { status: responseStatus, headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
     return errorResponse(error);

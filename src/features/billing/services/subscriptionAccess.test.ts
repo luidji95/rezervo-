@@ -46,11 +46,19 @@ function subscription(
   trialEndsAt: string | null = null,
   currentPeriodEndsAt: string | null = null,
 ): SubscriptionAccessRecord {
-  return { status, trialEndsAt, currentPeriodEndsAt };
+  return {
+    status,
+    trialEndsAt,
+    currentPeriodEndsAt,
+    billingProvider: "lemonsqueezy",
+    billingEnvironment: "test",
+    providerCustomerId: "customer-1",
+    providerSubscriptionId: "subscription-1",
+  };
 }
 
 function resolve(record: SubscriptionAccessRecord | null, plan: SubscriptionAccessPlan | null = pro) {
-  return resolveSubscriptionAccess({ subscription: record, plan, now });
+  return resolveSubscriptionAccess({ subscription: record, plan, trustedEnvironment: "test", now });
 }
 
 test("trialing with a future end has full access", () => {
@@ -128,10 +136,56 @@ test("inactive plan offering does not revoke an existing valid subscription", ()
   const result = resolveSubscriptionAccess({
     subscription: subscription("active", null, future),
     plan: premium,
+    trustedEnvironment: "test",
     now,
   });
   assert.equal(result.accessMode, "full");
   assert.equal(result.effectiveCapabilities.canUseAiReceptionist, true);
+});
+
+test("provider subscriptions are scoped to the trusted billing environment", () => {
+  for (const [trustedEnvironment, billingEnvironment, expected] of [
+    ["test", "test", "full"],
+    ["test", "live", "read_only"],
+    ["live", "live", "full"],
+    ["live", "test", "read_only"],
+  ] as const) {
+    const result = resolveSubscriptionAccess({
+      subscription: { ...subscription("active", null, future), billingEnvironment },
+      plan: pro,
+      trustedEnvironment,
+      now,
+    });
+    assert.equal(result.accessMode, expected);
+  }
+});
+
+test("provider-free local trial remains valid while paid null and unknown environments fail closed", () => {
+  const localTrial = resolveSubscriptionAccess({
+    subscription: {
+      status: "trialing", trialEndsAt: future, currentPeriodEndsAt: null,
+      billingProvider: null, billingEnvironment: null,
+      providerCustomerId: null, providerSubscriptionId: null,
+    },
+    plan: pro,
+    trustedEnvironment: "live",
+    now,
+  });
+  assert.equal(localTrial.accessReason, "active_trial");
+
+  for (const candidate of [
+    { ...subscription("active", null, future), billingEnvironment: null },
+    { ...subscription("active", null, future), billingEnvironment: "unknown" },
+    {
+      ...subscription("trialing", future),
+      billingProvider: "lemonsqueezy",
+      billingEnvironment: null,
+    },
+  ]) {
+    const result = resolveSubscriptionAccess({ subscription: candidate, plan: pro, trustedEnvironment: "test", now });
+    assert.equal(result.accessMode, "read_only");
+    assert.equal(result.accessReason, "billing_environment_mismatch");
+  }
 });
 
 test("read-only Pro retains plan capabilities but disables effective operations", () => {

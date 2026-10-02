@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -150,6 +150,7 @@ export type Database = {
           provider_status_group: string | null
           provider_status_id: number | null
           provider_status_name: string | null
+          quota_period_start: string | null
           recipient_snapshot: string | null
           reminder_type: string
           salon_id: string
@@ -189,6 +190,7 @@ export type Database = {
           provider_status_group?: string | null
           provider_status_id?: number | null
           provider_status_name?: string | null
+          quota_period_start?: string | null
           recipient_snapshot?: string | null
           reminder_type?: string
           salon_id: string
@@ -228,6 +230,7 @@ export type Database = {
           provider_status_group?: string | null
           provider_status_id?: number | null
           provider_status_name?: string | null
+          quota_period_start?: string | null
           recipient_snapshot?: string | null
           reminder_type?: string
           salon_id?: string
@@ -577,8 +580,10 @@ export type Database = {
           id: string
           idempotency_key: string
           provider: string
+          provider_order_id: string | null
           provider_session_id: string | null
           requested_plan_id: string
+          resulting_subscription_id: string | null
           salon_id: string
           status: string
           updated_at: string
@@ -595,8 +600,10 @@ export type Database = {
           id?: string
           idempotency_key: string
           provider: string
+          provider_order_id?: string | null
           provider_session_id?: string | null
           requested_plan_id: string
+          resulting_subscription_id?: string | null
           salon_id: string
           status?: string
           updated_at?: string
@@ -613,8 +620,10 @@ export type Database = {
           id?: string
           idempotency_key?: string
           provider?: string
+          provider_order_id?: string | null
           provider_session_id?: string | null
           requested_plan_id?: string
+          resulting_subscription_id?: string | null
           salon_id?: string
           status?: string
           updated_at?: string
@@ -635,10 +644,73 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "billing_checkout_sessions_resulting_subscription_id_fkey"
+            columns: ["resulting_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "billing_checkout_sessions_salon_id_fkey"
             columns: ["salon_id"]
             isOneToOne: false
             referencedRelation: "salons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_checkout_recovery_attempts: {
+        Row: {
+          attempt_number: number
+          checkout_session_id: string
+          claim_token: string
+          claimed_at: string
+          completed_at: string | null
+          created_at: string
+          environment: string
+          id: string
+          lease_expires_at: string
+          outcome: string | null
+          provider: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_number: number
+          checkout_session_id: string
+          claim_token: string
+          claimed_at: string
+          completed_at?: string | null
+          created_at?: string
+          environment: string
+          id?: string
+          lease_expires_at: string
+          outcome?: string | null
+          provider: string
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_number?: number
+          checkout_session_id?: string
+          claim_token?: string
+          claimed_at?: string
+          completed_at?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          lease_expires_at?: string
+          outcome?: string | null
+          provider?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_checkout_recovery_attempts_checkout_session_id_fkey"
+            columns: ["checkout_session_id"]
+            isOneToOne: false
+            referencedRelation: "billing_checkout_sessions"
             referencedColumns: ["id"]
           },
         ]
@@ -655,6 +727,7 @@ export type Database = {
           plan_id: string
           provider: string
           provider_product_id: string | null
+          provider_store_id: string | null
           provider_variant_id: string
           updated_at: string
         }
@@ -669,6 +742,7 @@ export type Database = {
           plan_id: string
           provider: string
           provider_product_id?: string | null
+          provider_store_id?: string | null
           provider_variant_id: string
           updated_at?: string
         }
@@ -683,6 +757,7 @@ export type Database = {
           plan_id?: string
           provider?: string
           provider_product_id?: string | null
+          provider_store_id?: string | null
           provider_variant_id?: string
           updated_at?: string
         }
@@ -695,6 +770,322 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      billing_subscription_reconciliation_checks: {
+        Row: {
+          attempt_count: number
+          checked_at: string | null
+          claim_token: string | null
+          claimed_local_identity_fingerprint: string
+          claimed_provider_state_updated_at: string | null
+          created_at: string
+          error_code: string | null
+          id: string
+          lease_until: string | null
+          local_provider_state_updated_at: string | null
+          next_attempt_at: string | null
+          outcome: string | null
+          remote_cancelled: boolean | null
+          remote_ends_at: string | null
+          remote_provider_updated_at: string | null
+          remote_renews_at: string | null
+          remote_state_fingerprint: string | null
+          remote_status: string | null
+          run_id: string
+          started_at: string | null
+          status: string
+          subscription_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          checked_at?: string | null
+          claim_token?: string | null
+          claimed_local_identity_fingerprint: string
+          claimed_provider_state_updated_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          lease_until?: string | null
+          local_provider_state_updated_at?: string | null
+          next_attempt_at?: string | null
+          outcome?: string | null
+          remote_cancelled?: boolean | null
+          remote_ends_at?: string | null
+          remote_provider_updated_at?: string | null
+          remote_renews_at?: string | null
+          remote_state_fingerprint?: string | null
+          remote_status?: string | null
+          run_id: string
+          started_at?: string | null
+          status: string
+          subscription_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          checked_at?: string | null
+          claim_token?: string | null
+          claimed_local_identity_fingerprint?: string
+          claimed_provider_state_updated_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          id?: string
+          lease_until?: string | null
+          local_provider_state_updated_at?: string | null
+          next_attempt_at?: string | null
+          outcome?: string | null
+          remote_cancelled?: boolean | null
+          remote_ends_at?: string | null
+          remote_provider_updated_at?: string | null
+          remote_renews_at?: string | null
+          remote_state_fingerprint?: string | null
+          remote_status?: string | null
+          run_id?: string
+          started_at?: string | null
+          status?: string
+          subscription_id?: string
+          updated_at?: string
+        }
+        Relationships: [{
+          foreignKeyName: "billing_subscription_reconciliation_checks_subscription_id_fkey"
+          columns: ["subscription_id"]
+          isOneToOne: false
+          referencedRelation: "subscriptions"
+          referencedColumns: ["id"]
+        }]
+      }
+      billing_webhook_events: {
+        Row: {
+          created_at: string
+          environment: string
+          error_code: string | null
+          event_name: string
+          id: string
+          last_processing_attempt_at: string | null
+          last_processing_outcome: string | null
+          next_processing_attempt_at: string | null
+          payload_hash: string
+          processed_at: string | null
+          processing_status: string
+          processing_attempt_count: number
+          processing_claim_token: string | null
+          processing_lease_until: string | null
+          provider: string
+          provider_object_id: string
+          provider_object_type: string
+          received_at: string
+          salon_id: string | null
+          semantic_fingerprint: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          environment: string
+          error_code?: string | null
+          event_name: string
+          id?: string
+          last_processing_attempt_at?: string | null
+          last_processing_outcome?: string | null
+          next_processing_attempt_at?: string | null
+          payload_hash: string
+          processed_at?: string | null
+          processing_status: string
+          processing_attempt_count?: number
+          processing_claim_token?: string | null
+          processing_lease_until?: string | null
+          provider: string
+          provider_object_id: string
+          provider_object_type: string
+          received_at?: string
+          salon_id?: string | null
+          semantic_fingerprint?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          environment?: string
+          error_code?: string | null
+          event_name?: string
+          id?: string
+          last_processing_attempt_at?: string | null
+          last_processing_outcome?: string | null
+          next_processing_attempt_at?: string | null
+          payload_hash?: string
+          processed_at?: string | null
+          processing_status?: string
+          processing_attempt_count?: number
+          processing_claim_token?: string | null
+          processing_lease_until?: string | null
+          provider?: string
+          provider_object_id?: string
+          provider_object_type?: string
+          received_at?: string
+          salon_id?: string | null
+          semantic_fingerprint?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_webhook_events_salon_id_fkey"
+            columns: ["salon_id"]
+            isOneToOne: false
+            referencedRelation: "salons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_webhook_subscription_facts: {
+        Row: {
+          checkout_session_id: string | null
+          correlation_error_code: string | null
+          correlation_status: string
+          created_at: string
+          custom_idempotency_key: string | null
+          custom_plan_code: string | null
+          custom_salon_id: string | null
+          facts_schema_version: number
+          provider_created_at: string | null
+          provider_cancelled: boolean | null
+          provider_customer_id: string | null
+          provider_ends_at: string | null
+          provider_order_id: string | null
+          provider_pause_mode: string | null
+          provider_pause_resumes_at: string | null
+          provider_product_id: string | null
+          provider_renews_at: string | null
+          provider_status: string | null
+          provider_store_id: string | null
+          provider_subscription_id: string
+          provider_trial_ends_at: string | null
+          provider_updated_at: string | null
+          provider_variant_id: string | null
+          test_mode: boolean
+          webhook_event_id: string
+        }
+        Insert: {
+          checkout_session_id?: string | null
+          correlation_error_code?: string | null
+          correlation_status: string
+          created_at?: string
+          custom_idempotency_key?: string | null
+          custom_plan_code?: string | null
+          custom_salon_id?: string | null
+          facts_schema_version?: number
+          provider_created_at?: string | null
+          provider_cancelled?: boolean | null
+          provider_customer_id?: string | null
+          provider_ends_at?: string | null
+          provider_order_id?: string | null
+          provider_pause_mode?: string | null
+          provider_pause_resumes_at?: string | null
+          provider_product_id?: string | null
+          provider_renews_at?: string | null
+          provider_status?: string | null
+          provider_store_id?: string | null
+          provider_subscription_id: string
+          provider_trial_ends_at?: string | null
+          provider_updated_at?: string | null
+          provider_variant_id?: string | null
+          test_mode: boolean
+          webhook_event_id: string
+        }
+        Update: {
+          checkout_session_id?: string | null
+          correlation_error_code?: string | null
+          correlation_status?: string
+          created_at?: string
+          custom_idempotency_key?: string | null
+          custom_plan_code?: string | null
+          custom_salon_id?: string | null
+          facts_schema_version?: number
+          provider_created_at?: string | null
+          provider_cancelled?: boolean | null
+          provider_customer_id?: string | null
+          provider_ends_at?: string | null
+          provider_order_id?: string | null
+          provider_pause_mode?: string | null
+          provider_pause_resumes_at?: string | null
+          provider_product_id?: string | null
+          provider_renews_at?: string | null
+          provider_status?: string | null
+          provider_store_id?: string | null
+          provider_subscription_id?: string
+          provider_trial_ends_at?: string | null
+          provider_updated_at?: string | null
+          provider_variant_id?: string | null
+          test_mode?: boolean
+          webhook_event_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_webhook_subscription_facts_webhook_event_id_fkey"
+            columns: ["webhook_event_id"]
+            isOneToOne: true
+            referencedRelation: "billing_webhook_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_webhook_subscription_invoice_facts: {
+        Row: {
+          billing_reason: string
+          created_at: string
+          environment: string
+          evidence_status: string
+          id: string
+          invoice_status: string
+          provider: string
+          provider_customer_id: string
+          provider_invoice_created_at: string
+          provider_invoice_id: string
+          provider_invoice_updated_at: string
+          provider_store_id: string
+          provider_subscription_id: string
+          updated_at: string
+          webhook_event_id: string
+        }
+        Insert: {
+          billing_reason: string
+          created_at?: string
+          environment: string
+          evidence_status?: string
+          id?: string
+          invoice_status: string
+          provider: string
+          provider_customer_id: string
+          provider_invoice_created_at: string
+          provider_invoice_id: string
+          provider_invoice_updated_at: string
+          provider_store_id: string
+          provider_subscription_id: string
+          updated_at?: string
+          webhook_event_id: string
+        }
+        Update: {
+          billing_reason?: string
+          created_at?: string
+          environment?: string
+          evidence_status?: string
+          id?: string
+          invoice_status?: string
+          provider?: string
+          provider_customer_id?: string
+          provider_invoice_created_at?: string
+          provider_invoice_id?: string
+          provider_invoice_updated_at?: string
+          provider_store_id?: string
+          provider_subscription_id?: string
+          updated_at?: string
+          webhook_event_id?: string
+        }
+        Relationships: [{
+          foreignKeyName: "billing_webhook_subscription_invoice_facts_webhook_event_id_fkey"
+          columns: ["webhook_event_id"]
+          isOneToOne: true
+          referencedRelation: "billing_webhook_events"
+          referencedColumns: ["id"]
+        }]
       }
       clients: {
         Row: {
@@ -1850,6 +2241,7 @@ export type Database = {
       }
       subscriptions: {
         Row: {
+          billing_environment: string | null
           billing_provider: string | null
           cancel_at_period_end: boolean
           cancelled_at: string | null
@@ -1859,6 +2251,8 @@ export type Database = {
           id: string
           plan_id: string
           provider_customer_id: string | null
+          provider_last_webhook_event_id: string | null
+          provider_state_updated_at: string | null
           provider_subscription_id: string | null
           salon_id: string
           status: Database["public"]["Enums"]["subscription_status"]
@@ -1867,6 +2261,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          billing_environment?: string | null
           billing_provider?: string | null
           cancel_at_period_end?: boolean
           cancelled_at?: string | null
@@ -1876,6 +2271,8 @@ export type Database = {
           id?: string
           plan_id: string
           provider_customer_id?: string | null
+          provider_last_webhook_event_id?: string | null
+          provider_state_updated_at?: string | null
           provider_subscription_id?: string | null
           salon_id: string
           status?: Database["public"]["Enums"]["subscription_status"]
@@ -1884,6 +2281,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          billing_environment?: string | null
           billing_provider?: string | null
           cancel_at_period_end?: boolean
           cancelled_at?: string | null
@@ -1893,6 +2291,8 @@ export type Database = {
           id?: string
           plan_id?: string
           provider_customer_id?: string | null
+          provider_last_webhook_event_id?: string | null
+          provider_state_updated_at?: string | null
           provider_subscription_id?: string | null
           salon_id?: string
           status?: Database["public"]["Enums"]["subscription_status"]
@@ -1906,6 +2306,13 @@ export type Database = {
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_provider_last_webhook_event_id_fkey"
+            columns: ["provider_last_webhook_event_id"]
+            isOneToOne: false
+            referencedRelation: "billing_webhook_events"
             referencedColumns: ["id"]
           },
           {
@@ -2040,6 +2447,272 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      acquire_billing_checkout_intent_v1: {
+        Args: {
+          p_actor_profile_id: string
+          p_environment: string
+          p_provider: string
+          p_requested_plan_id: string
+          p_salon_id: string
+        }
+        Returns: {
+          acquisition_outcome: string
+          actor_profile_id: string
+          checkout_session_id: string
+          environment: string
+          expires_at: string | null
+          idempotency_key: string
+          provider: string
+          provider_session_id: string | null
+          requested_plan_id: string
+          status: string
+        }[]
+      }
+      acquire_billing_checkout_intent_v2: {
+        Args: {
+          p_actor_profile_id: string
+          p_provider: string
+          p_requested_plan_id: string
+          p_salon_id: string
+        }
+        Returns: {
+          acquisition_outcome: string
+          actor_profile_id: string
+          checkout_session_id: string
+          environment: string
+          expires_at: string | null
+          idempotency_key: string
+          provider: string
+          provider_session_id: string | null
+          requested_plan_id: string
+          status: string
+        }[]
+      }
+      claim_billing_checkout_recovery_v1: {
+        Args: {
+          p_checkout_session_id: string
+          p_environment: string
+          p_lease_duration?: string
+          p_now?: string
+        }
+        Returns: {
+          attempt_number: number | null
+          checkout_session_id: string
+          claim_outcome: string
+          claim_token: string | null
+          environment: string
+          idempotency_key: string
+          lease_expires_at: string | null
+          ledger_created_at: string
+          ledger_expires_at: string | null
+          ledger_status: string
+          provider: string
+          provider_session_id: string | null
+          recovery_attempt_id: string | null
+          requested_plan_id: string
+          salon_id: string
+        }[]
+      }
+      complete_billing_checkout_recovery_attempt_v1: {
+        Args: {
+          p_claim_token: string
+          p_environment: string
+          p_now?: string
+          p_outcome: string
+          p_recovery_attempt_id: string
+        }
+        Returns: {
+          completed_at: string | null
+          completion_outcome: string
+          outcome: string | null
+          recovery_attempt_id: string
+          status: string | null
+        }[]
+      }
+      finalize_billing_checkout_recovery_v1: {
+        Args: {
+          p_checkout_url_hash: string
+          p_claim_token: string
+          p_environment: string
+          p_provider_checkout_id: string
+          p_provider_expires_at: string
+          p_recovery_attempt_id: string
+        }
+        Returns: {
+          attempt_completed_at: string | null
+          attempt_status: string | null
+          audit_outcome: string | null
+          finalization_outcome: string
+          ledger_status: string | null
+          recovery_attempt_id: string
+        }[]
+      }
+      claim_next_linked_billing_subscription_for_reconciliation_v1: {
+        Args: { p_lease_duration?: string; p_min_freshness?: string; p_now?: string; p_run_id: string }
+        Returns: { check_id: string; claim_token: string; local_cancel_at_period_end: boolean; local_cancelled_at: string | null; local_current_period_ends_at: string | null; local_plan_id: string; local_provider_state_updated_at: string | null; local_status: string; mapped_product_id: string | null; mapped_store_id: string; mapped_variant_id: string; provider_customer_id: string; provider_subscription_id: string; subscription_id: string }[]
+      }
+      evaluate_billing_subscription_snapshot_v1: {
+        Args: { p_claimed_local_identity_fingerprint: string; p_now?: string; p_provider_cancelled: boolean; p_provider_created_at: string; p_provider_customer_id: string; p_provider_ends_at: string | null; p_provider_pause_mode: string | null; p_provider_pause_resumes_at: string | null; p_provider_product_id: string; p_provider_renews_at: string | null; p_provider_status: string; p_provider_store_id: string; p_provider_subscription_id: string; p_provider_trial_ends_at: string | null; p_provider_updated_at: string; p_provider_variant_id: string; p_subscription_id: string; p_test_mode: boolean }
+        Returns: { error_code: string | null; local_provider_state_updated_at: string | null; outcome: string }[]
+      }
+      finalize_billing_subscription_reconciliation_v1: {
+        Args: { p_check_id: string; p_claim_token: string; p_now?: string; p_provider_cancelled?: boolean | null; p_provider_created_at?: string | null; p_provider_customer_id?: string | null; p_provider_ends_at?: string | null; p_provider_error_code?: string | null; p_provider_pause_mode?: string | null; p_provider_pause_resumes_at?: string | null; p_provider_product_id?: string | null; p_provider_renews_at?: string | null; p_provider_status?: string | null; p_provider_store_id?: string | null; p_provider_subscription_id?: string | null; p_provider_trial_ends_at?: string | null; p_provider_updated_at?: string | null; p_provider_variant_id?: string | null; p_result_kind: string; p_test_mode?: boolean | null }
+        Returns: { outcome: string }[]
+      }
+      claim_pending_billing_webhook_events_v1: {
+        Args: {
+          p_batch_size?: number
+          p_lease_duration?: string
+          p_now?: string
+        }
+        Returns: {
+          claim_token: string
+          event_name: string
+          webhook_event_id: string
+        }[]
+      }
+      finalize_billing_webhook_processing_attempt_v1: {
+        Args: {
+          p_claim_token: string
+          p_now?: string
+          p_webhook_event_id: string
+          p_worker_outcome: string
+        }
+        Returns: {
+          outcome: string
+        }[]
+      }
+      ingest_billing_webhook_event_v1: {
+        Args: {
+          p_checkout_session_id: string | null
+          p_correlation_error_code: string | null
+          p_correlation_status: string | null
+          p_custom_idempotency_key: string | null
+          p_custom_plan_code: string | null
+          p_custom_salon_id: string | null
+          p_environment: string
+          p_event_name: string
+          p_has_subscription_facts: boolean
+          p_payload_hash: string
+          p_processed_at: string | null
+          p_processing_status: string
+          p_provider: string
+          p_provider_created_at: string | null
+          p_provider_customer_id: string | null
+          p_provider_object_id: string
+          p_provider_object_type: string
+          p_provider_order_id: string | null
+          p_provider_product_id: string | null
+          p_provider_status: string | null
+          p_provider_subscription_id: string | null
+          p_provider_updated_at: string | null
+          p_provider_variant_id: string | null
+          p_semantic_fingerprint: string
+          p_test_mode: boolean
+        }
+        Returns: {
+          event_id: string
+          outcome: string
+          stored_status: string
+        }[]
+      }
+      ingest_billing_webhook_event_v2: {
+        Args: {
+          p_checkout_session_id: string | null
+          p_correlation_error_code: string | null
+          p_correlation_status: string | null
+          p_custom_idempotency_key: string | null
+          p_custom_plan_code: string | null
+          p_custom_salon_id: string | null
+          p_environment: string
+          p_event_name: string
+          p_has_subscription_facts: boolean
+          p_payload_hash: string
+          p_processed_at: string | null
+          p_processing_status: string
+          p_provider: string
+          p_provider_cancelled: boolean | null
+          p_provider_created_at: string | null
+          p_provider_customer_id: string | null
+          p_provider_ends_at: string | null
+          p_provider_object_id: string
+          p_provider_object_type: string
+          p_provider_order_id: string | null
+          p_provider_pause_mode: string | null
+          p_provider_pause_resumes_at: string | null
+          p_provider_product_id: string | null
+          p_provider_renews_at: string | null
+          p_provider_status: string | null
+          p_provider_store_id: string | null
+          p_provider_subscription_id: string | null
+          p_provider_trial_ends_at: string | null
+          p_provider_updated_at: string | null
+          p_provider_variant_id: string | null
+          p_semantic_fingerprint: string
+          p_test_mode: boolean
+        }
+        Returns: {
+          event_id: string
+          outcome: string
+          stored_status: string
+        }[]
+      }
+      ingest_billing_subscription_invoice_evidence_v1: {
+        Args: {
+          p_billing_reason: string
+          p_environment: string
+          p_event_name: string
+          p_invoice_status: string
+          p_now?: string
+          p_payload_hash: string
+          p_provider: string
+          p_provider_customer_id: string
+          p_provider_invoice_created_at: string
+          p_provider_invoice_id: string
+          p_provider_invoice_updated_at: string
+          p_provider_object_id: string
+          p_provider_object_type: string
+          p_provider_store_id: string
+          p_provider_subscription_id: string
+          p_semantic_fingerprint: string
+          p_test_mode: boolean
+        }
+        Returns: {
+          event_id: string
+          outcome: string
+          stored_status: string
+        }[]
+      }
+      process_billing_subscription_created_v1: {
+        Args: { p_now?: string; p_webhook_event_id: string }
+        Returns: { error_code: string; outcome: string }[]
+      }
+      claim_pending_billing_webhook_events_v2: {
+        Args: {
+          p_batch_size?: number
+          p_environment: string
+          p_lease_duration?: string
+          p_now?: string
+        }
+        Returns: {
+          claim_token: string
+          environment: string
+          event_name: string
+          webhook_event_id: string
+        }[]
+      }
+      process_billing_subscription_created_v2: {
+        Args: { p_now?: string; p_webhook_event_id: string }
+        Returns: { error_code: string | null; outcome: string }[]
+      }
+      process_billing_subscription_updated_v1: {
+        Args: { p_now?: string; p_webhook_event_id: string }
+        Returns: { error_code: string; outcome: string }[]
+      }
+      process_billing_subscription_updated_v2: {
+        Args: { p_now?: string; p_webhook_event_id: string }
+        Returns: { error_code: string | null; outcome: string }[]
+      }
       accept_team_invitation: {
         Args: { p_invitation_id: string; p_profile_id: string }
         Returns: {

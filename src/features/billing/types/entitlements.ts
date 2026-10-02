@@ -25,7 +25,8 @@ export type SubscriptionAccessReason =
   | "expired"
   | "billing_override"
   | "subscription_missing"
-  | "plan_missing";
+  | "plan_missing"
+  | "billing_environment_mismatch";
 
 export type PlanCapabilities = {
   canUseStatistics: boolean;

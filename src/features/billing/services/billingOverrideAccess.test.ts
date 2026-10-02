@@ -26,8 +26,13 @@ const premium: SubscriptionAccessPlan = {
 
 function subscriptionAccess(status = "expired", plan: SubscriptionAccessPlan | null = starter) {
   return resolveSubscriptionAccess({
-    subscription: { status, trialEndsAt: status === "trialing" ? future : null, currentPeriodEndsAt: null },
+    subscription: {
+      status, trialEndsAt: status === "trialing" ? future : null, currentPeriodEndsAt: null,
+      billingProvider: "lemonsqueezy", billingEnvironment: "test",
+      providerCustomerId: "customer-1", providerSubscriptionId: "subscription-1",
+    },
     plan,
+    trustedEnvironment: "test",
     now,
   });
 }
@@ -43,11 +48,11 @@ function override(overrides: Partial<{ enabled: boolean; startsAt: string; endsA
 
 test("no override preserves active trial subscription access", () => {
   const base = subscriptionAccess("trialing", pro);
-  assert.equal(resolveEffectiveAccess({ subscriptionAccess: base, billingOverride: null, overridePlan: null, now }), base);
+  assert.equal(resolveEffectiveAccess({ subscriptionAccess: base, billingOverride: null, overridePlan: null, trustedEnvironment: "test", now }), base);
 });
 
 test("active internal Pro override supersedes expired Starter subscription", () => {
-  const result = resolveEffectiveAccess({ subscriptionAccess: subscriptionAccess(), billingOverride: override(), overridePlan: pro, now });
+  const result = resolveEffectiveAccess({ subscriptionAccess: subscriptionAccess(), billingOverride: override(), overridePlan: pro, trustedEnvironment: "test", now });
   assert.equal(result.accessSource, "billing_override");
   assert.equal(result.accessReason, "billing_override");
   assert.equal(result.planCode, "pro");
@@ -57,7 +62,7 @@ test("active internal Pro override supersedes expired Starter subscription", () 
 });
 
 test("inactive Premium catalogue plan remains valid for explicit override", () => {
-  const result = resolveEffectiveAccess({ subscriptionAccess: subscriptionAccess(), billingOverride: override(), overridePlan: premium, now });
+  const result = resolveEffectiveAccess({ subscriptionAccess: subscriptionAccess(), billingOverride: override(), overridePlan: premium, trustedEnvironment: "test", now });
   assert.equal(result.effectivePlanCode, "premium");
   assert.equal(result.effectiveCapabilities.canUseAiReceptionist, true);
 });
@@ -71,7 +76,7 @@ test("disabled, scheduled and expired overrides fall back to subscription", () =
     override({ endsAt: past }),
   ];
   for (const candidate of cases) {
-    const result = resolveEffectiveAccess({ subscriptionAccess: base, billingOverride: candidate, overridePlan: pro, now });
+    const result = resolveEffectiveAccess({ subscriptionAccess: base, billingOverride: candidate, overridePlan: pro, trustedEnvironment: "test", now });
     assert.equal(result.accessMode, "read_only");
     assert.equal(result.accessSource, "subscription");
   }
@@ -80,7 +85,7 @@ test("disabled, scheduled and expired overrides fall back to subscription", () =
 });
 
 test("future override end grants full access through but not at the boundary", () => {
-  const active = resolveEffectiveAccess({ subscriptionAccess: subscriptionAccess(), billingOverride: override({ endsAt: future }), overridePlan: pro, now });
+  const active = resolveEffectiveAccess({ subscriptionAccess: subscriptionAccess(), billingOverride: override({ endsAt: future }), overridePlan: pro, trustedEnvironment: "test", now });
   assert.equal(active.accessMode, "full");
   assert.equal(active.overrideEndsAt, future);
   const boundary = resolveBillingOverrideState({ billingOverride: override({ endsAt: now.toISOString() }), overridePlan: pro, now });
@@ -88,20 +93,20 @@ test("future override end grants full access through but not at the boundary", (
 });
 
 test("active override works without an underlying subscription and preserves raw status when present", () => {
-  const missing = resolveSubscriptionAccess({ subscription: null, plan: null, now });
-  const granted = resolveEffectiveAccess({ subscriptionAccess: missing, billingOverride: override(), overridePlan: pro, now });
+  const missing = resolveSubscriptionAccess({ subscription: null, plan: null, trustedEnvironment: "test", now });
+  const granted = resolveEffectiveAccess({ subscriptionAccess: missing, billingOverride: override(), overridePlan: pro, trustedEnvironment: "test", now });
   assert.equal(granted.accessMode, "full");
   assert.equal(granted.rawSubscriptionStatus, null);
   assert.equal(granted.subscriptionPlanCode, null);
 
-  const expired = resolveEffectiveAccess({ subscriptionAccess: subscriptionAccess("expired", starter), billingOverride: override(), overridePlan: pro, now });
+  const expired = resolveEffectiveAccess({ subscriptionAccess: subscriptionAccess("expired", starter), billingOverride: override(), overridePlan: pro, trustedEnvironment: "test", now });
   assert.equal(expired.rawSubscriptionStatus, "expired");
 });
 
 test("override capabilities come from override plan and clear legacy migration marker", () => {
   const legacy = subscriptionAccess("active", starter);
   assert.equal(legacy.requiresBillingMigration, true);
-  const result = resolveEffectiveAccess({ subscriptionAccess: legacy, billingOverride: override(), overridePlan: pro, now });
+  const result = resolveEffectiveAccess({ subscriptionAccess: legacy, billingOverride: override(), overridePlan: pro, trustedEnvironment: "test", now });
   assert.equal(result.planCapabilities.maxEmployees, 10);
   assert.equal(result.canUseStatistics, true);
   assert.equal(result.requiresBillingMigration, false);
@@ -110,20 +115,20 @@ test("override capabilities come from override plan and clear legacy migration m
 
 test("legacy active remains compatible when no override exists", () => {
   const legacy = subscriptionAccess("active", pro);
-  const result = resolveEffectiveAccess({ subscriptionAccess: legacy, billingOverride: null, overridePlan: null, now });
+  const result = resolveEffectiveAccess({ subscriptionAccess: legacy, billingOverride: null, overridePlan: null, trustedEnvironment: "test", now });
   assert.equal(result.accessReason, "legacy_active_no_period");
   assert.equal(result.requiresBillingMigration, true);
 });
 
 test("active override with missing plan fails closed", () => {
-  const result = resolveEffectiveAccess({ subscriptionAccess: subscriptionAccess("trialing", pro), billingOverride: override(), overridePlan: null, now });
+  const result = resolveEffectiveAccess({ subscriptionAccess: subscriptionAccess("trialing", pro), billingOverride: override(), overridePlan: null, trustedEnvironment: "test", now });
   assert.equal(result.accessMode, "read_only");
   assert.equal(result.accessReason, "plan_missing");
   assert.equal(result.effectiveCapabilities.canUseStatistics, false);
 });
 
 test("browser-facing contract cannot contain internal reason or creator attribution", () => {
-  const result = resolveEffectiveAccess({ subscriptionAccess: subscriptionAccess(), billingOverride: override(), overridePlan: pro, now });
+  const result = resolveEffectiveAccess({ subscriptionAccess: subscriptionAccess(), billingOverride: override(), overridePlan: pro, trustedEnvironment: "test", now });
   const json = JSON.parse(JSON.stringify(result));
   assert.equal("reason" in json, false);
   assert.equal("created_by_profile_id" in json, false);

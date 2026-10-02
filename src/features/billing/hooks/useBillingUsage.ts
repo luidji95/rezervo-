@@ -18,9 +18,9 @@ export function useBillingUsage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error("UNAUTHORIZED");
       const response = await fetch(`/api/billing/overview?salonId=${encodeURIComponent(currentSalon.id)}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
-      const body = await response.json() as { success: boolean; usage?: BillingOverview["usage"]; plans?: BillingOverview["plans"] };
-      if (!response.ok || !body.success || !body.usage || !body.plans) throw new Error("BILLING_OVERVIEW_LOAD_FAILED");
-      setOverview({ usage: body.usage, plans: body.plans });
+      const body = await response.json() as { success: boolean; usage?: BillingOverview["usage"]; plans?: BillingOverview["plans"]; canOpenCustomerPortal?: boolean };
+      if (!response.ok || !body.success || !body.usage || !body.plans || typeof body.canOpenCustomerPortal !== "boolean") throw new Error("BILLING_OVERVIEW_LOAD_FAILED");
+      setOverview({ usage: body.usage, plans: body.plans, canOpenCustomerPortal: body.canOpenCustomerPortal });
       setError(false);
     } catch {
       setOverview(null);

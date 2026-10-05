@@ -3,28 +3,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useAuthorization } from "@/context/AuthorizationContext";
-import { supabase } from "@/lib/supabase/client";
 import { EntitlementsContext } from "./hooks/useEntitlements";
 import type { SalonEntitlements } from "./types/entitlements";
 import { loadEntitlements } from "./services/loadEntitlements";
 
 export function EntitlementsProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, accessToken, loading: authLoading } = useAuth();
   const { currentSalon, loading: authorizationLoading } = useAuthorization();
   const [entitlements, setEntitlements] = useState<SalonEntitlements | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadedScope, setLoadedScope] = useState<string | null>(null);
   const requestId = useRef(0);
-  const scope = user && currentSalon ? `${user.id}:${currentSalon.id}` : null;
+  const userId = user?.id;
+  const salonId = currentSalon?.id;
+  const scope = userId && salonId ? `${userId}:${salonId}` : null;
   const invalidateRequest = useCallback(() => { requestId.current++; }, []);
 
   const refetchEntitlements = useCallback(async () => {
+    console.info("ENTITLEMENTS_LOAD", { stage: "reload", authLoading, authorizationLoading, hasUser: Boolean(userId), hasSalon: Boolean(salonId), hasToken: Boolean(accessToken) });
+    if (authLoading || authorizationLoading) return;
     const id = ++requestId.current;
-    if (!user || !currentSalon) {
+    if (!userId || !salonId) {
       setEntitlements(null);
       setLoadedScope(null);
-      setError(null);
+      setError("ENTITLEMENTS_CONTEXT_UNAVAILABLE");
       setLoading(false);
       return;
     }
@@ -32,28 +35,31 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
     setEntitlements(null);
     setError(null);
     const result = await loadEntitlements({
-      salonId: currentSalon.id,
-      getAccessToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null,
+      salonId,
+      getAccessToken: async () => accessToken,
       request: fetch,
     });
-    if (id !== requestId.current) return;
+    if (id !== requestId.current) {
+      console.info("ENTITLEMENTS_LOAD", { stage: "result_discarded", stale: true });
+      return;
+    }
     setEntitlements(result.entitlements);
     setError(result.error);
     setLoadedScope(scope);
     setLoading(false);
-  }, [currentSalon, user, scope]);
+  }, [salonId, userId, scope, accessToken, authLoading, authorizationLoading]);
 
   useEffect(() => {
-    if (authorizationLoading) return;
+    if (authLoading || authorizationLoading) return;
     const timeout = window.setTimeout(() => void refetchEntitlements(), 0);
     return () => { window.clearTimeout(timeout); invalidateRequest(); };
-  }, [authorizationLoading, refetchEntitlements, invalidateRequest]);
+  }, [authLoading, authorizationLoading, refetchEntitlements, invalidateRequest]);
 
   const value = useMemo(() => ({
-    entitlements: loadedScope === scope && !loading && !authorizationLoading ? entitlements : null,
-    loading: authorizationLoading || loading || loadedScope !== scope,
+    entitlements: loadedScope === scope && !loading && !authLoading && !authorizationLoading ? entitlements : null,
+    loading: authLoading || authorizationLoading || loading || loadedScope !== scope,
     error: loadedScope === scope ? error : null,
     refetchEntitlements,
-  }), [authorizationLoading, entitlements, error, loading, refetchEntitlements, loadedScope, scope]);
+  }), [authLoading, authorizationLoading, entitlements, error, loading, refetchEntitlements, loadedScope, scope]);
   return <EntitlementsContext.Provider value={value}>{children}</EntitlementsContext.Provider>;
 }

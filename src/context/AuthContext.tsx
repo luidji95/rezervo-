@@ -13,6 +13,7 @@ import { supabase } from "@/lib/supabase/client";
 
 type AuthContextValue = {
   user: User | null;
+  accessToken: string | null;
   loading: boolean;
 };
 
@@ -24,58 +25,60 @@ type AuthProviderProps = {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let ignore = false;
+    let authRevision = 0;
 
     async function loadUser() {
-      const sessionStartedAt = performance.now();
+      const revision = authRevision;
+      console.info("AUTH_STATE", { stage: "session_read" });
       const {
         data: { session },
         error: sessionError,
       } = await supabase.auth.getSession();
-      if (ignore) return;
+      if (ignore || revision !== authRevision) return;
 
-      if (process.env.NODE_ENV === "development") {
-        console.info("AUTH_BOOTSTRAP_SESSION", {
-          durationMs: Math.round(performance.now() - sessionStartedAt),
-          hasSession: Boolean(session),
-          hasError: Boolean(sessionError),
-        });
-      }
+      console.info("AUTH_STATE", { stage: "session_ready", hasSession: Boolean(session), hasError: Boolean(sessionError) });
 
       setUser(session?.user ?? null);
+      setAccessToken(session?.access_token ?? null);
       setLoading(false);
 
       // Network validation is only needed when local storage contains a session.
       // RLS and server endpoints remain the authorization boundary.
       if (!session) return;
 
-      const userStartedAt = performance.now();
+      console.info("AUTH_STATE", { stage: "user_validation" });
       const {
         data: { user: verifiedUser },
         error: userError,
-      } = await supabase.auth.getUser();
-      if (ignore) return;
+      } = await supabase.auth.getUser(session.access_token);
+      if (ignore || revision !== authRevision) return;
 
-      if (process.env.NODE_ENV === "development") {
-        console.info("AUTH_BOOTSTRAP_USER", {
-          durationMs: Math.round(performance.now() - userStartedAt),
-          hasUser: Boolean(verifiedUser),
-          hasError: Boolean(userError),
-        });
-      }
+      console.info("AUTH_STATE", { stage: "user_validated", hasUser: Boolean(verifiedUser), hasError: Boolean(userError) });
 
-      setUser(verifiedUser);
+      if (!userError) setUser(verifiedUser);
     }
 
-    void loadUser();
+    void loadUser().catch(() => {
+      if (ignore || authRevision !== 0) return;
+      console.info("AUTH_STATE", { stage: "bootstrap_failed", hasUser: false, hasToken: false });
+      setUser(null);
+      setAccessToken(null);
+      setLoading(false);
+    });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (ignore) return;
+      authRevision++;
+      console.info("AUTH_STATE", { stage: "auth_change", hasUser: Boolean(session?.user), hasToken: Boolean(session?.access_token) });
       setUser(session?.user ?? null);
+      setAccessToken(session?.access_token ?? null);
       setLoading(false);
     });
 
@@ -86,7 +89,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading }}>
+    <AuthContext.Provider value={{ user, accessToken, loading }}>
       {children}
     </AuthContext.Provider>
   );

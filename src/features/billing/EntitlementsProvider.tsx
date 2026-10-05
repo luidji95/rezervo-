@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useAuthorization } from "@/context/AuthorizationContext";
 import { supabase } from "@/lib/supabase/client";
 import { EntitlementsContext } from "./hooks/useEntitlements";
 import type { SalonEntitlements } from "./types/entitlements";
+import { loadEntitlements } from "./services/loadEntitlements";
 
 export function EntitlementsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -13,44 +14,46 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
   const [entitlements, setEntitlements] = useState<SalonEntitlements | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const requestId = useRef(0);
+  const scope = user && currentSalon ? `${user.id}:${currentSalon.id}` : null;
+  const invalidateRequest = useCallback(() => { requestId.current++; }, []);
 
   const refetchEntitlements = useCallback(async () => {
+    const id = ++requestId.current;
     if (!user || !currentSalon) {
       setEntitlements(null);
+      setLoadedScope(null);
       setError(null);
       setLoading(false);
       return;
     }
     setLoading(true);
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) {
-      setError("UNAUTHORIZED");
-      setLoading(false);
-      return;
-    }
-    try {
-      const response = await fetch(`/api/entitlements?salonId=${encodeURIComponent(currentSalon.id)}`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-        cache: "no-store",
-      });
-      const body = await response.json() as { success: boolean; entitlements?: SalonEntitlements; code?: string };
-      if (!response.ok || !body.success || !body.entitlements) throw new Error(body.code ?? "ENTITLEMENTS_LOAD_FAILED");
-      setEntitlements(body.entitlements);
-      setError(null);
-    } catch (requestError) {
-      setEntitlements(null);
-      setError(requestError instanceof Error ? requestError.message : "ENTITLEMENTS_LOAD_FAILED");
-    } finally {
-      setLoading(false);
-    }
-  }, [currentSalon, user]);
+    setEntitlements(null);
+    setError(null);
+    const result = await loadEntitlements({
+      salonId: currentSalon.id,
+      getAccessToken: async () => (await supabase.auth.getSession()).data.session?.access_token ?? null,
+      request: fetch,
+    });
+    if (id !== requestId.current) return;
+    setEntitlements(result.entitlements);
+    setError(result.error);
+    setLoadedScope(scope);
+    setLoading(false);
+  }, [currentSalon, user, scope]);
 
   useEffect(() => {
     if (authorizationLoading) return;
     const timeout = window.setTimeout(() => void refetchEntitlements(), 0);
-    return () => window.clearTimeout(timeout);
-  }, [authorizationLoading, refetchEntitlements]);
+    return () => { window.clearTimeout(timeout); invalidateRequest(); };
+  }, [authorizationLoading, refetchEntitlements, invalidateRequest]);
 
-  const value = useMemo(() => ({ entitlements, loading: authorizationLoading || loading, error, refetchEntitlements }), [authorizationLoading, entitlements, error, loading, refetchEntitlements]);
+  const value = useMemo(() => ({
+    entitlements: loadedScope === scope && !loading && !authorizationLoading ? entitlements : null,
+    loading: authorizationLoading || loading || loadedScope !== scope,
+    error: loadedScope === scope ? error : null,
+    refetchEntitlements,
+  }), [authorizationLoading, entitlements, error, loading, refetchEntitlements, loadedScope, scope]);
   return <EntitlementsContext.Provider value={value}>{children}</EntitlementsContext.Provider>;
 }

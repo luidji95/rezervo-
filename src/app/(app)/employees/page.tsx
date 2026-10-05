@@ -22,12 +22,15 @@ import {
 import type { Employee } from "@/types/employee";
 import { getEmployeeMutationMessage } from "@/features/employees/services/employeeMutationPresentation";
 
+import { EntitlementStatus } from "@/features/billing/components/EntitlementStatus";
+import { getEntitlementActionState } from "@/features/billing/services/entitlementLoadState";
 import "./employees.css";
 
 export default function EmployeesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLimitDialogOpen, setIsLimitDialogOpen] = useState(false);
-  const { entitlements } = useEntitlements();
+  const entitlementState = useEntitlements();
+  const { entitlements } = entitlementState;
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null);
@@ -63,6 +66,7 @@ export default function EmployeesPage() {
     setStatusFilter,
     statusFilter,
   } = useEmployeesPageData();
+  const { canManage, canCreateEmployee } = getEntitlementActionState(entitlementState, activeEmployeeCount);
   const employeeLimit = entitlements?.planCapabilities.maxEmployees ?? null;
   const isEmployeeLimitReached = employeeLimit !== null && activeEmployeeCount >= employeeLimit;
 
@@ -74,7 +78,7 @@ export default function EmployeesPage() {
   const closeMobileDetails = useCallback(() => setMobileDetailsOpen(false), []);
 
   async function handleDeleteEmployee() {
-    if (!deletingEmployee || !salonId || isDeleting) return;
+    if (!canManage || !deletingEmployee || !salonId || isDeleting) return;
 
     try {
       setIsDeleting(true);
@@ -102,7 +106,7 @@ export default function EmployeesPage() {
   }
 
   async function handleRestoreEmployee(employee: Employee) {
-    if (!salonId || restoringEmployeeId) return;
+    if (!canCreateEmployee || !salonId || restoringEmployeeId) return;
 
     try {
       setRestoringEmployeeId(employee.id);
@@ -167,13 +171,15 @@ export default function EmployeesPage() {
         <button
           type="button"
           className="employees-primary-btn"
-          onClick={() => isEmployeeLimitReached ? setIsLimitDialogOpen(true) : setIsModalOpen(true)}
+          disabled={!canManage}
+          onClick={() => isEmployeeLimitReached ? setIsLimitDialogOpen(true) : canCreateEmployee && setIsModalOpen(true)}
         >
           {isEmployeeLimitReached ? <LockKeyhole size={17} /> : <Plus size={17} />}
           Novi zaposleni
         </button>
       </header>
 
+      <EntitlementStatus />
       {restoreError && <p className="employees-error" role="alert">{restoreError}</p>}
 
       <section className="employee-kpi-grid">
@@ -218,6 +224,8 @@ export default function EmployeesPage() {
 
         <aside className="employees-side">
           <EmployeeDetailsPanel
+            canMutate={canManage}
+            canRestore={canCreateEmployee}
             employee={selectedEmployee}
             services={
               selectedEmployee ? getServicesForEmployee(selectedEmployee.id) : []
@@ -238,8 +246,9 @@ export default function EmployeesPage() {
         </aside>
       </div>
 
-      {isModalOpen && (
+      {isModalOpen && canCreateEmployee && (
         <AddEmployeeModal
+          canCreate={canCreateEmployee}
           salonId={salonId}
           services={services.filter((service) => service.is_active)}
           selectedServiceIds={selectedServiceIds}
@@ -258,7 +267,7 @@ export default function EmployeesPage() {
 
       {isLimitDialogOpen && employeeLimit !== null && entitlements && <LimitReachedDialog planName={entitlements.planName} limit={employeeLimit} onClose={() => setIsLimitDialogOpen(false)} />}
 
-      {editingEmployee && (
+      {editingEmployee && canManage && (
         <EmployeeEditModal
           employee={editingEmployee}
           salonId={salonId}
@@ -274,7 +283,7 @@ export default function EmployeesPage() {
         />
       )}
 
-      {deletingEmployee && (
+      {deletingEmployee && canManage && (
         <EmployeeDeleteModal
           employee={deletingEmployee}
           error={deleteError}

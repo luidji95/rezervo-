@@ -20,6 +20,7 @@ import { useEmployeeDialog } from "./useEmployeeDialog";
 import { getEmployeeMutationMessage } from "@/features/employees/services/employeeMutationPresentation";
 
 type AddEmployeeModalProps = {
+  canCreate: boolean;
   salonId: string;
   services: Service[];
   selectedServiceIds: string[];
@@ -29,6 +30,7 @@ type AddEmployeeModalProps = {
 };
 
 export function AddEmployeeModal({
+  canCreate,
   salonId,
   services,
   selectedServiceIds,
@@ -70,6 +72,7 @@ export function AddEmployeeModal({
   }
 
   async function onSubmit(data: EmployeeFormData) {
+    if (!canCreate) return;
     try {
       setFormError("");
       setLimitError(false);
@@ -176,7 +179,7 @@ export function AddEmployeeModal({
             <button
               type="submit"
               className="employees-primary-btn"
-              disabled={isSubmitting}
+              disabled={!canCreate || isSubmitting}
             >
               {isSubmitting ? "Čuvanje..." : "Sačuvaj zaposlenog"}
             </button>

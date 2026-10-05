@@ -34,6 +34,8 @@ type EmployeeDetailsPanelProps = {
   isRestoring: boolean;
   mobileOpen: boolean;
   onClose: () => void;
+  canMutate: boolean;
+  canRestore: boolean;
   onDelete: (employee: Employee) => void;
   onEdit: (employee: Employee) => void;
   onRestore: (employee: Employee) => Promise<void>;
@@ -48,6 +50,8 @@ export function EmployeeDetailsPanel({
   isRestoring,
   mobileOpen,
   onClose,
+  canMutate,
+  canRestore,
   onDelete,
   onEdit,
   onRestore,
@@ -122,6 +126,7 @@ export function EmployeeDetailsPanel({
         <button
           type="button"
           className="employees-secondary-btn"
+          disabled={!canMutate}
           onClick={() => onEdit(employee)}
         >
           <Pencil size={15} /> Izmeni
@@ -131,6 +136,7 @@ export function EmployeeDetailsPanel({
           <button
             type="button"
             className="employees-danger-btn"
+            disabled={!canMutate}
             onClick={() => onDelete(employee)}
           >
             <Trash2 size={15} /> Obriši zaposlenog
@@ -140,7 +146,7 @@ export function EmployeeDetailsPanel({
             type="button"
             className="employees-primary-btn"
             onClick={() => void onRestore(employee)}
-            disabled={isRestoring}
+            disabled={isRestoring || !canRestore}
           >
             <RotateCcw size={15} />
             {isRestoring ? "Aktiviram..." : "Aktiviraj"}

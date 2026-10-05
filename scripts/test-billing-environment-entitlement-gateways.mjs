@@ -2,6 +2,7 @@ import { createDisposableSupabasePostgres } from "./lib/disposable-supabase-post
 
 const postgres = createDisposableSupabasePostgres("rezervo-b9a-entitlement-gateways");
 const contracts = [
+  "supabase/tests/billing_environment_match_contract.sql",
   "supabase/tests/public_booking_subscription_access.sql",
   "supabase/tests/employee_capacity_contract.sql",
   "supabase/tests/appointment_mutation_contract.sql",

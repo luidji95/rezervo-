@@ -16,4 +16,5 @@ export type BillingOverview = {
   usage: BillingUsage;
   plans: BillingPlanCatalogItem[];
   canOpenCustomerPortal: boolean;
+  canStartCheckout: boolean;
 };

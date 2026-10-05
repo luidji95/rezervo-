@@ -8,6 +8,7 @@ const base = {
   accessReason: "active_trial" as const,
   isBillingExempt: false,
   checkoutEnabled: true,
+  checkoutEligible: true,
   loadingPlan: null,
 };
 

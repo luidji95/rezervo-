@@ -5,6 +5,7 @@ import { canResolveSalonEntitlements, resolveSubscriptionAccess } from "./subscr
 import { resolveEffectiveAccess } from "./billingOverrideAccess";
 import type { BillingOverrideType, PlanCode, SalonEntitlements } from "../types/entitlements";
 import { getTrustedBillingEnvironment } from "../config/billingEnvironment.server";
+import { logEntitlementReadFailures, billingEnvironmentFailure } from "./entitlementDiagnostics";
 
 export type EntitlementErrorCode =
   | "FORBIDDEN"
@@ -95,7 +96,13 @@ export async function resolveSalonEntitlements({
         .maybeSingle(),
     ]);
 
-  if (salonError || membershipError) throw new EntitlementError("ENTITLEMENTS_NOT_CONFIGURED");
+  if (salonError || membershipError) {
+    logEntitlementReadFailures([
+      { stage: "salon_read", error: salonError },
+      { stage: "membership_read", error: membershipError },
+    ]);
+    throw new EntitlementError("ENTITLEMENTS_NOT_CONFIGURED");
+  }
   if (!salon || !canResolveSalonEntitlements({
     authenticatedUserId,
     ownerId: salon.owner_id,
@@ -108,6 +115,7 @@ export async function resolveSalonEntitlements({
   try {
     trustedEnvironment = getTrustedBillingEnvironment();
   } catch {
+    console.error("ENTITLEMENTS_NOT_CONFIGURED", billingEnvironmentFailure(process.env.BILLING_ENVIRONMENT));
     throw new EntitlementError("ENTITLEMENTS_NOT_CONFIGURED");
   }
 
@@ -135,7 +143,13 @@ export async function resolveSalonEntitlements({
       .maybeSingle(),
   ]);
 
-  if (error || overrideError) throw new EntitlementError("ENTITLEMENTS_NOT_CONFIGURED");
+  if (error || overrideError) {
+    logEntitlementReadFailures([
+      { stage: "subscription_read", error },
+      { stage: "override_read", error: overrideError },
+    ]);
+    throw new EntitlementError("ENTITLEMENTS_NOT_CONFIGURED");
+  }
   const row = data as unknown as SubscriptionRow | null;
   const candidatePlan = row ? (Array.isArray(row.plans) ? row.plans[0] : row.plans) : null;
   const plan = candidatePlan && ["starter", "pro", "premium"].includes(candidatePlan.slug)

@@ -2447,6 +2447,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      billing_environment_matches_v1: {
+        Args: { p_environment: string }
+        Returns: boolean
+      }
       acquire_billing_checkout_intent_v1: {
         Args: {
           p_actor_profile_id: string

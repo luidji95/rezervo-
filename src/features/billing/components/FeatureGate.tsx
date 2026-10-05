@@ -3,11 +3,12 @@
 import type { ReactNode } from "react";
 import { useEntitlements } from "../hooks/useEntitlements";
 import type { BooleanSalonEntitlement } from "../types/entitlements";
+import { EntitlementStatus } from "./EntitlementStatus";
 import { UpgradeRequired } from "./UpgradeRequired";
 
 export function FeatureGate({ entitlement, children, fallback }: { entitlement: BooleanSalonEntitlement; children: ReactNode; fallback?: ReactNode }) {
   const state = useEntitlements();
-  if (state.loading) return null;
+  if (state.loading || state.error || !state.entitlements) return <EntitlementStatus />;
   if (!state.entitlements?.effectiveCapabilities[entitlement]) return fallback ?? <UpgradeRequired />;
   return children;
 }

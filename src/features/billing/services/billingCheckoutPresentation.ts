@@ -15,6 +15,7 @@ type CheckoutPresentationInput = {
   accessReason: SubscriptionAccessReason;
   isBillingExempt: boolean;
   checkoutEnabled: boolean;
+  checkoutEligible?: boolean;
   loadingPlan: "starter" | "pro" | null;
 };
 
@@ -34,6 +35,7 @@ export function getCheckoutButtonPresentation({
   accessReason,
   isBillingExempt,
   checkoutEnabled,
+  checkoutEligible = false,
   loadingPlan,
 }: CheckoutPresentationInput): CheckoutButtonPresentation {
   if (planCode === "premium") {
@@ -84,6 +86,12 @@ export function getCheckoutButtonPresentation({
       checkoutPlan: null,
     };
   }
+
+  if (!checkoutEligible) return {
+    disabled: true,
+    label: "Checkout nije dostupan",
+    checkoutPlan: null,
+  };
 
   return {
     disabled: false,

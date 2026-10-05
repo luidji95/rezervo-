@@ -19,11 +19,13 @@ import { formatMoney } from "./serviceUtils";
 import { useServicesPageData } from "./useServicesPageData";
 import { useEntitlements } from "@/features/billing/hooks/useEntitlements";
 
+import { EntitlementStatus } from "@/features/billing/components/EntitlementStatus";
+import { getEntitlementActionState } from "@/features/billing/services/entitlementLoadState";
 import "./services.css";
 
 export default function ServicesPage() {
-  const { entitlements } = useEntitlements();
-  const canManage = entitlements?.effectiveCapabilities.canManageBusinessData === true;
+  const entitlementState = useEntitlements();
+  const { canManage } = getEntitlementActionState(entitlementState);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [deletingService, setDeletingService] = useState<Service | null>(null);
@@ -80,7 +82,7 @@ export default function ServicesPage() {
   }
 
   async function confirmDeleteService() {
-    if (!deletingService) return;
+    if (!deletingService || !canManage) return;
 
     setIsDeletingService(true);
 
@@ -150,7 +152,7 @@ export default function ServicesPage() {
           Nova usluga
         </button>
       </header>
-      {!canManage && <p className="services-error" role="status">Vaš nalog trenutno ima pristup samo za pregled. Aktivirajte paket da biste menjali poslovne podatke.</p>}
+      <EntitlementStatus />
 
       <section className="service-kpi-grid">
         <KpiCard
@@ -218,7 +220,7 @@ export default function ServicesPage() {
         </aside>
       </div>
 
-      {isModalOpen && (
+      {isModalOpen && canManage && (
         <AddServiceModal
           salonId={salonId}
           categories={categories.map((category) => category.name)}
@@ -235,7 +237,7 @@ export default function ServicesPage() {
         />
       )}
 
-      {deletingService && (
+      {deletingService && canManage && (
         <DeleteServiceModal
           service={deletingService}
           isDeleting={isDeletingService}

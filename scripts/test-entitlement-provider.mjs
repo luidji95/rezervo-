@@ -77,6 +77,32 @@ function harness(path, name, dependencies = {}) {
 const { loadEntitlements } = require("../src/features/billing/services/loadEntitlements.ts");
 const entitlement = { isReadOnly: false };
 
+test("browser-style fetch receiver contract survives provider dependency injection", async () => {
+  let receivedValidContext = false;
+  let requests = 0;
+  // Unlike an arrow mock, enforce the receiver restriction of a browser global.
+  function browserFetch() {
+    receivedValidContext = this === undefined || this === globalThis;
+    if (!receivedValidContext) throw new TypeError("Illegal invocation");
+    requests++;
+    return Promise.resolve(Response.json({ success: true, entitlements: entitlement }));
+  }
+  const provider = harness("src/features/billing/EntitlementsProvider.tsx", "EntitlementsProvider", {
+    "@/context/AuthContext": { useAuth: () => ({ user: { id: "user" }, loading: false, accessToken: "synthetic-token" }) },
+    "@/context/AuthorizationContext": { useAuthorization: () => ({ currentSalon: { id: "salon" }, loading: false }) },
+    "./hooks/useEntitlements": { EntitlementsContext: { Provider: "provider" } },
+    "./services/loadEntitlements": { loadEntitlements },
+    fetch: browserFetch,
+  });
+  try {
+    await provider.flush();
+    assert.equal(provider.value.error, null);
+    assert.equal(requests, 1);
+    assert.equal(receivedValidContext, true);
+    assert.deepEqual(provider.value.entitlements, entitlement);
+  } finally { provider.dispose(); }
+});
+
 test("visible retry button invokes the provider reload", async () => {
   let reloads = 0;
   const state = { loading: false, error: "UNAUTHORIZED", entitlements: null, refetchEntitlements: async () => { reloads++; } };

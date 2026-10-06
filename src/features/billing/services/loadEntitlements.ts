@@ -1,5 +1,14 @@
 import type { SalonEntitlements } from "../types/entitlements.ts";
 
+export function classifyEntitlementLoadFailure(error: unknown): "illegal_invocation" | "invalid_headers" | "network_failure" | "unknown" {
+  if (!(error instanceof TypeError)) return "unknown";
+  if (/illegal invocation/i.test(error.message)) return "illegal_invocation";
+  if (/bytestring|iso-8859-1/i.test(error.message) ||
+      (/\bheaders?\b/i.test(error.message) && /invalid|character|not valid/i.test(error.message))) return "invalid_headers";
+  if (/failed to fetch|fetch failed|networkerror|network request failed|load failed/i.test(error.message)) return "network_failure";
+  return "unknown";
+}
+
 export async function loadEntitlements(input: {
   salonId: string;
   getAccessToken: () => Promise<string | null>;
@@ -19,7 +28,7 @@ export async function loadEntitlements(input: {
     if (!response.ok || !body.success || !body.entitlements) throw new Error(body.code ?? "ENTITLEMENTS_LOAD_FAILED");
     return { entitlements: body.entitlements, error: null };
   } catch (error) {
-    console.info("ENTITLEMENTS_LOAD", { stage: "failed" });
+    console.info("ENTITLEMENTS_LOAD", { stage: "failed", category: classifyEntitlementLoadFailure(error) });
     return { entitlements: null, error: error instanceof Error ? error.message : "ENTITLEMENTS_LOAD_FAILED" };
   }
 }

@@ -3,7 +3,7 @@ import test from "node:test";
 import { parseBillingEnvironment } from "../config/billingEnvironment.ts";
 import { resolveSubscriptionAccess } from "./subscriptionAccess.ts";
 import { getEntitlementActionState } from "./entitlementLoadState.ts";
-import { loadEntitlements } from "./loadEntitlements.ts";
+import { loadEntitlements, classifyEntitlementLoadFailure } from "./loadEntitlements.ts";
 import { getEntitlementApiErrorStatus } from "./entitlementApiContract.ts";
 import { resolveEffectiveAccess } from "./billingOverrideAccess.ts";
 import { logEntitlementReadFailures, billingEnvironmentFailure } from "./entitlementDiagnostics.ts";
@@ -12,6 +12,26 @@ const active = resolveSubscriptionAccess({
   subscription: { status: "active", trialEndsAt: null, currentPeriodEndsAt: "2027-01-01T00:00:00Z", billingProvider: "lemonsqueezy", billingEnvironment: "test", providerCustomerId: "1", providerSubscriptionId: "2" },
   plan: { code: "starter", name: "Starter", isActive: true, canUseStatistics: false, canUseAiReceptionist: false, canUseWhatsApp: false, canUseInstagram: false, canUseMarketing: false, canUseSmsReminders: false, maxEmployees: 3, maxMonthlyBookings: null, maxAiMessages: 0, maxMonthlyReminders: 0 },
   trustedEnvironment: "test", now: new Date("2026-10-05T00:00:00Z"),
+});
+
+test("fetch failure diagnostics emit only a safe category, never raw error or request data", async () => {
+  const cases = [
+    [new TypeError("Illegal invocation"), "illegal_invocation"],
+    [new TypeError("Invalid character in header content Authorization secret-token"), "invalid_headers"],
+    [new TypeError("Cannot convert argument to a ByteString"), "invalid_headers"],
+    [new TypeError("Failed to fetch https://example.invalid/?private=value"), "network_failure"],
+    [new Error("secret-token"), "unknown"],
+    [null, "unknown"],
+  ] as const;
+  for (const [error, expected] of cases) assert.equal(classifyEntitlementLoadFailure(error), expected);
+  const logs: unknown[][] = [];
+  const original = console.info;
+  console.info = (...args) => { logs.push(args); };
+  try {
+    await loadEntitlements({ salonId: "private-salon", getAccessToken: async () => "private-token", request: async () => { throw new TypeError("Failed to fetch https://example.invalid/?private=value"); } });
+  } finally { console.info = original; }
+  assert.deepEqual(logs.at(-1), ["ENTITLEMENTS_LOAD", { stage: "failed", category: "network_failure" }]);
+  assert.doesNotMatch(JSON.stringify(logs), /private|Authorization|headers|https:/);
 });
 
 test("Starter subscription with Pro override uses the effective Pro capacity in both fields", () => {

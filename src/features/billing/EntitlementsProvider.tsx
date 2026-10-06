@@ -37,7 +37,7 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
     const result = await loadEntitlements({
       salonId,
       getAccessToken: async () => accessToken,
-      request: fetch,
+      request: (url, options) => fetch(url, options),
     });
     if (id !== requestId.current) {
       console.info("ENTITLEMENTS_LOAD", { stage: "result_discarded", stale: true });

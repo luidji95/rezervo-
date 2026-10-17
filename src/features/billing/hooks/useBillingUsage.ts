@@ -5,6 +5,17 @@ import { useAuth } from "@/context/AuthContext";
 import { useAuthorization } from "@/context/AuthorizationContext";
 import { supabase } from "@/lib/supabase/client";
 import type { BillingOverview } from "../types/billingOverview";
+import { parseBillingOverviewBody } from "../services/billingOverviewResponse";
+
+async function fetchOverview(salonId: string) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("UNAUTHORIZED");
+  const response = await fetch(`/api/billing/overview?salonId=${encodeURIComponent(salonId)}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
+  const body = await response.json() as { code?: string };
+  const overview = response.ok ? parseBillingOverviewBody(body) : null;
+  if (!overview) throw new Error(body.code ?? "BILLING_OVERVIEW_LOAD_FAILED");
+  return overview;
+}
 
 export function useBillingUsage() {
   const { currentSalon, loading: authorizationLoading } = useAuthorization();
@@ -15,6 +26,7 @@ export function useBillingUsage() {
   const [loadedScope, setLoadedScope] = useState<string | null>(null);
   const scope = user && currentSalon ? `${user.id}:${currentSalon.id}` : null;
   const requestId = useRef(0);
+  const refreshInFlight = useRef<Promise<BillingOverview | null> | null>(null);
   const invalidateRequest = useCallback(() => { requestId.current++; }, []);
 
   const refetch = useCallback(async () => {
@@ -23,13 +35,9 @@ export function useBillingUsage() {
     setLoading(true);
     setOverview(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error("UNAUTHORIZED");
-      const response = await fetch(`/api/billing/overview?salonId=${encodeURIComponent(currentSalon.id)}`, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
-      const body = await response.json() as { success: boolean; code?: string; usage?: BillingOverview["usage"]; plans?: BillingOverview["plans"]; canOpenCustomerPortal?: boolean; canStartCheckout?: boolean };
-      if (!response.ok || !body.success || !body.usage || !body.plans || typeof body.canOpenCustomerPortal !== "boolean" || typeof body.canStartCheckout !== "boolean") throw new Error(body.code ?? "BILLING_OVERVIEW_LOAD_FAILED");
+      const next = await fetchOverview(currentSalon.id);
       if (id !== requestId.current) return;
-      setOverview({ usage: body.usage, plans: body.plans, canOpenCustomerPortal: body.canOpenCustomerPortal, canStartCheckout: body.canStartCheckout });
+      setOverview(next);
       setError(null);
     } catch (requestError) {
       if (id !== requestId.current) return;
@@ -40,6 +48,32 @@ export function useBillingUsage() {
     }
   }, [currentSalon, user, scope]);
 
+  /**
+   * Soft re-read of the server overview. Keeps the last valid overview on failure and drops results
+   * that were superseded by a scope change, a full reload or unmount. Resolves the fresh overview, or null when nothing fresh was read.
+   */
+  const refresh = useCallback((): Promise<BillingOverview | null> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    if (!currentSalon || !user || loading || loadedScope !== scope) return Promise.resolve(null);
+    const id = requestId.current;
+    const salonId = currentSalon.id;
+    const run = (async () => {
+      try {
+        const next = await fetchOverview(salonId);
+        if (id !== requestId.current) return null;
+        setOverview(next);
+        setError(null);
+        return next;
+      } catch {
+        return null;
+      } finally {
+        refreshInFlight.current = null;
+      }
+    })();
+    refreshInFlight.current = run;
+    return run;
+  }, [currentSalon, user, loading, loadedScope, scope]);
+
   useEffect(() => {
     if (authorizationLoading) return;
     const timeout = window.setTimeout(() => void refetch(), 0);
@@ -48,5 +82,5 @@ export function useBillingUsage() {
 
   const pending = loading || authorizationLoading || loadedScope !== scope;
   const currentOverview = pending ? null : overview;
-  return { overview: currentOverview, usage: currentOverview?.usage ?? null, plans: currentOverview?.plans ?? null, loading: pending, error: pending ? null : error, refetch };
+  return { overview: currentOverview, usage: currentOverview?.usage ?? null, plans: currentOverview?.plans ?? null, loading: pending, error: pending ? null : error, refetch, refresh };
 }

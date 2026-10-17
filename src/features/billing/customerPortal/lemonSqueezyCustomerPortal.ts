@@ -1,5 +1,6 @@
 import type { BillingCustomerPortalProvider, BillingCustomerPortalInput } from "./billingCustomerPortalCore.ts";
 import { BillingCustomerPortalError } from "./billingCustomerPortalErrors.ts";
+import { expectedLemonSqueezyTestMode, type BillingEnvironment } from "../config/billingEnvironment.ts";
 
 const API_BASE = "https://api.lemonsqueezy.com/v1/subscriptions/";
 const JSON_API = "application/vnd.api+json";
@@ -32,17 +33,20 @@ export function getRedactedPortalUrlShape(value: string) {
 }
 
 export class LemonSqueezyCustomerPortalProvider implements BillingCustomerPortalProvider {
-  private readonly config: { apiKey: string; storeId: string; allowedHosts: ReadonlySet<string> };
+  private readonly config: { environment: BillingEnvironment; apiKey: string; storeId: string; allowedHosts: ReadonlySet<string> };
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
 
   constructor(
-    config: { apiKey: string; storeId: string; allowedHosts: ReadonlySet<string> },
+    config: { environment: BillingEnvironment; apiKey: string; storeId: string; allowedHosts: ReadonlySet<string> },
     fetchImpl: typeof fetch = fetch,
     timeoutMs = 10_000,
   ) { this.config = config; this.fetchImpl = fetchImpl; this.timeoutMs = timeoutMs; }
 
   async createCustomerPortal(input: BillingCustomerPortalInput) {
+    if (input.provider !== "lemonsqueezy" || input.environment !== this.config.environment || !input.providerSubscriptionId.trim() || !input.providerCustomerId.trim()) {
+      throw new BillingCustomerPortalError("BILLING_PORTAL_SUBSCRIPTION_UNAVAILABLE", 409);
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -63,7 +67,7 @@ export class LemonSqueezyCustomerPortalProvider implements BillingCustomerPortal
         || normalizedId(payload.data.id) !== input.providerSubscriptionId
         || normalizedId(attributes?.customer_id) !== input.providerCustomerId
         || normalizedId(attributes?.store_id) !== this.config.storeId
-        || attributes?.test_mode !== true
+        || attributes?.test_mode !== expectedLemonSqueezyTestMode(this.config.environment)
         || !url) {
         throw new BillingCustomerPortalError("BILLING_PORTAL_PROVIDER_UNAVAILABLE", 502);
       }

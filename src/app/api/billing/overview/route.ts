@@ -4,13 +4,18 @@ import { EntitlementError, resolveSalonEntitlements } from "@/features/billing/s
 import { getAuthenticatedRequestUser } from "@/lib/server/requestAuth";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { normalizePlanCatalog, type PlanCatalogRow } from "@/features/billing/services/planCatalog";
-import { isBillingCustomerPortalConfigured } from "@/features/billing/customerPortal/billingCustomerPortalConfig";
-import { canOpenCustomerPortal } from "@/features/billing/customerPortal/billingCustomerPortalCore";
+import { getBillingCustomerPortalConfig } from "@/features/billing/customerPortal/billingCustomerPortalConfig";
+import { billingPortalEnvironmentMatches, resolveBillingPortalAvailabilityDetail } from "@/features/billing/customerPortal/billingCustomerPortalAvailability";
+import { getTrustedBillingEnvironment } from "@/features/billing/config/billingEnvironment.server";
 import type { BillingEnvironment } from "@/features/billing/config/billingEnvironment";
 import { getBillingCheckoutConfig } from "@/features/billing/services/billingCheckoutConfig";
 import { canOfferNewCheckout } from "@/features/billing/services/billingCheckoutEligibility";
 
 export const dynamic = "force-dynamic";
+
+function resolveTrustedBillingEnvironment(): BillingEnvironment | null {
+  try { return getTrustedBillingEnvironment(); } catch { return null; }
+}
 
 export async function GET(request: Request) {
   const auth = await getAuthenticatedRequestUser(request);
@@ -60,9 +65,8 @@ export async function GET(request: Request) {
       hasCompletedCheckout,
       subscription: subscription ? { ...subscription, planCode: entitlements.subscriptionPlanCode } : null,
     });
-    const canOpen = canOpenCustomerPortal({
+    const portal = await resolveBillingPortalAvailabilityDetail({
       isOwner: salon.owner_id === auth.user.id,
-      configured: isBillingCustomerPortalConfigured(process.env),
       subscription: subscription ? {
         provider: subscription.billing_provider as "lemonsqueezy",
         environment: subscription.billing_environment as BillingEnvironment,
@@ -70,8 +74,11 @@ export async function GET(request: Request) {
         providerCustomerId: subscription.provider_customer_id ?? "",
         status: subscription.status,
       } : null,
+    }, {
+      getConfig: getBillingCustomerPortalConfig,
+      environmentMatches: (environment) => billingPortalEnvironmentMatches(supabaseServer, environment),
     });
-    return NextResponse.json({ success: true, usage: { activeEmployees: count ?? 0 }, plans: catalog, canOpenCustomerPortal: canOpen, canStartCheckout }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ success: true, usage: { activeEmployees: count ?? 0 }, plans: catalog, canOpenCustomerPortal: portal.available, portalUnavailableReason: portal.reason, canStartCheckout, billingEnvironment: resolveTrustedBillingEnvironment() }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const code = error instanceof EntitlementError ? error.code : "BILLING_OVERVIEW_LOAD_FAILED";
     return NextResponse.json({ success: false, code }, { status: code === "FORBIDDEN" ? 403 : 500 });

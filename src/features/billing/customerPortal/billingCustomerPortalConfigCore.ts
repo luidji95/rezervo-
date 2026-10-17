@@ -1,4 +1,5 @@
 import { resolveLemonSqueezyProviderConfig } from "../config/lemonSqueezyProviderConfigCore.ts";
+import { parseBillingEnvironment } from "../config/billingEnvironment.ts";
 
 export type PortalEnvironment = Record<string, string | undefined>;
 const HOST_PATTERN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -16,7 +17,7 @@ export function isBillingCustomerPortalConfigured(env: PortalEnvironment) {
 export function resolveBillingCustomerPortalConfig(env: PortalEnvironment) {
   let providerConfig;
   try {
-    providerConfig = resolveLemonSqueezyProviderConfig(env, "test");
+    providerConfig = resolveLemonSqueezyProviderConfig(env, parseBillingEnvironment(env.BILLING_ENVIRONMENT));
   } catch {
     return null;
   }

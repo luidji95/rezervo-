@@ -1,4 +1,5 @@
 import "server-only";
+import type { BillingEnvironment } from "../config/billingEnvironment";
 
 import { BillingCustomerPortalError } from "./billingCustomerPortalErrors";
 import { resolveBillingCustomerPortalConfig } from "./billingCustomerPortalConfigCore";
@@ -6,7 +7,7 @@ export { isBillingCustomerPortalConfigured } from "./billingCustomerPortalConfig
 
 export type BillingCustomerPortalConfig = {
   provider: "lemonsqueezy";
-  environment: "test";
+  environment: BillingEnvironment;
   apiKey: string;
   storeId: string;
   allowedHosts: ReadonlySet<string>;

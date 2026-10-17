@@ -8,6 +8,8 @@ export type EntitlementsContextValue = {
   loading: boolean;
   error: string | null;
   refetchEntitlements: () => Promise<void>;
+  /** Soft re-read that keeps the last valid entitlements on failure. Resolves the fresh entitlements, or null when nothing fresh was read. */
+  refreshEntitlements: () => Promise<SalonEntitlements | null>;
 };
 
 export const EntitlementsContext = createContext<EntitlementsContextValue | null>(null);

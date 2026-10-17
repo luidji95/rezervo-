@@ -15,6 +15,7 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [loadedScope, setLoadedScope] = useState<string | null>(null);
   const requestId = useRef(0);
+  const refreshInFlight = useRef<Promise<SalonEntitlements | null> | null>(null);
   const userId = user?.id;
   const salonId = currentSalon?.id;
   const scope = userId && salonId ? `${userId}:${salonId}` : null;
@@ -49,6 +50,29 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, [salonId, userId, scope, accessToken, authLoading, authorizationLoading]);
 
+  /**
+   * Soft re-read after returning from the payment provider. Keeps the last valid entitlements on
+   * failure and drops results superseded by a scope change, a full reload or unmount.
+   */
+  const refreshEntitlements = useCallback((): Promise<SalonEntitlements | null> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    if (authLoading || authorizationLoading || !userId || !salonId || loadedScope !== scope) return Promise.resolve(null);
+    const id = requestId.current;
+    const run = (async () => {
+      try {
+        const result = await loadEntitlements({ salonId, getAccessToken: async () => accessToken, request: (url, options) => fetch(url, options) });
+        if (id !== requestId.current || !result.entitlements) return null;
+        setEntitlements(result.entitlements);
+        setError(null);
+        return result.entitlements;
+      } finally {
+        refreshInFlight.current = null;
+      }
+    })();
+    refreshInFlight.current = run;
+    return run;
+  }, [salonId, userId, scope, loadedScope, accessToken, authLoading, authorizationLoading]);
+
   useEffect(() => {
     if (authLoading || authorizationLoading) return;
     const timeout = window.setTimeout(() => void refetchEntitlements(), 0);
@@ -60,6 +84,7 @@ export function EntitlementsProvider({ children }: { children: ReactNode }) {
     loading: authLoading || authorizationLoading || loading || loadedScope !== scope,
     error: loadedScope === scope ? error : null,
     refetchEntitlements,
-  }), [authLoading, authorizationLoading, entitlements, error, loading, refetchEntitlements, loadedScope, scope]);
+    refreshEntitlements,
+  }), [authLoading, authorizationLoading, entitlements, error, loading, refetchEntitlements, refreshEntitlements, loadedScope, scope]);
   return <EntitlementsContext.Provider value={value}>{children}</EntitlementsContext.Provider>;
 }

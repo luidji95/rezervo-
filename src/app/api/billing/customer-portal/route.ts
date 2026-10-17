@@ -5,6 +5,8 @@ import { handleBillingCustomerPortalPost } from "@/features/billing/customerPort
 import { LemonSqueezyCustomerPortalProvider } from "@/features/billing/customerPortal/lemonSqueezyCustomerPortal";
 import { SupabaseBillingCustomerPortalRepository } from "@/features/billing/customerPortal/supabaseBillingCustomerPortalRepository";
 import { createAuthenticatedRequestClient, getAuthenticatedRequestUser } from "@/lib/server/requestAuth";
+import { supabaseServer } from "@/lib/supabaseServer";
+import { billingPortalEnvironmentMatches } from "@/features/billing/customerPortal/billingCustomerPortalAvailability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +19,9 @@ export async function POST(request: Request) {
       const client = createAuthenticatedRequestClient(authenticatedRequest);
       return client ? { userId: auth.user.id, repository: new SupabaseBillingCustomerPortalRepository(client) } : null;
     },
-    getProvider: () => new LemonSqueezyCustomerPortalProvider(getBillingCustomerPortalConfig()),
+    getConfig: getBillingCustomerPortalConfig,
+    environmentMatches: (environment) => billingPortalEnvironmentMatches(supabaseServer, environment),
+    getProvider: (config) => new LemonSqueezyCustomerPortalProvider(config),
   });
   return NextResponse.json(result.body, { status: result.status, headers: result.headers });
 }

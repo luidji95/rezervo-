@@ -13,8 +13,11 @@ export type BillingPlanCatalogItem = {
 };
 
 export type BillingOverview = {
+  billingEnvironment: "test" | "live" | null;
   usage: BillingUsage;
   plans: BillingPlanCatalogItem[];
   canOpenCustomerPortal: boolean;
+  /** Coarse reason when the portal is unavailable; null when it is available. */
+  portalUnavailableReason: "not_owner" | "not_applicable" | "unavailable" | null;
   canStartCheckout: boolean;
 };

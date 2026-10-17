@@ -6,7 +6,7 @@ import { getRedactedPortalUrlShape, LemonSqueezyCustomerPortalProvider, validate
 const hosts = new Set(["allowed.example.com"]);
 const portalUrl = "https://allowed.example.com/provider/portal/session?opaque=a%2Fb&token=secret-token";
 const input = { provider: "lemonsqueezy" as const, environment: "test" as const, providerSubscriptionId: "10", providerCustomerId: "20" };
-const config = { apiKey: "test-secret", storeId: "30", allowedHosts: hosts };
+const config = { environment: "test" as const, apiKey: "test-secret", storeId: "30", allowedHosts: hosts };
 
 function jsonResponse(overrides: { type?: unknown; id?: unknown; attributes?: Record<string, unknown> } = {}) {
   return new Response(JSON.stringify({ data: { type: overrides.type ?? "subscriptions", id: overrides.id ?? "10", attributes: { customer_id: 20, store_id: 30, test_mode: true, urls: { customer_portal: portalUrl }, ...overrides.attributes } } }), { status: 200 });
@@ -45,6 +45,13 @@ for (const [name, url] of [
 test("successful Subscription API response returns only the portal URL", async () => {
   const provider = new LemonSqueezyCustomerPortalProvider(config, async () => jsonResponse());
   assert.deepEqual(await provider.createCustomerPortal(input), { url: portalUrl });
+});
+
+test("adapter rejects cross-environment input before any network request", async () => {
+  let calls = 0;
+  const provider = new LemonSqueezyCustomerPortalProvider(config, async () => { calls++; return jsonResponse(); });
+  await assert.rejects(provider.createCustomerPortal({ ...input, environment: "live" }), /BILLING_PORTAL_SUBSCRIPTION_UNAVAILABLE/);
+  assert.equal(calls, 0);
 });
 
 for (const [name, overrides] of [

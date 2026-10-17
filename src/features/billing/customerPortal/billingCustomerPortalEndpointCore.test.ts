@@ -8,6 +8,8 @@ const successUrl = "https://allowed.example.com/arbitrary?opaque=token";
 
 function dependencies(subscription: typeof linked | "forbidden" | null = linked, providerError?: BillingCustomerPortalError): PortalEndpointDependencies {
   return {
+    getConfig: () => ({ provider: "lemonsqueezy", environment: "test", apiKey: "test", storeId: "30", allowedHosts: new Set(["allowed.example.com"]) }),
+    environmentMatches: async () => true,
     authenticate: async () => ({ userId: "owner", repository: { findOwnerSubscription: async () => subscription } }),
     getProvider: () => ({ createCustomerPortal: async () => { if (providerError) throw providerError; return { url: successUrl }; } }),
   };

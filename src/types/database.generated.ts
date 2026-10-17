@@ -771,6 +771,72 @@ export type Database = {
           },
         ]
       }
+      billing_recovery_attempts: {
+        Row: {
+          applied_state: Json | null
+          created_at: string
+          database_role: string
+          environment: string
+          error_code: string | null
+          evidence_fingerprint: string | null
+          evidence_provider_updated_at: string | null
+          evidence_source: string
+          id: string
+          operator_label: string
+          outcome: string
+          prior_state: Json
+          provider_subscription_id: string | null
+          reason: string
+          recovery_kind: string
+          review_token: string
+          subscription_id: string | null
+          ticket_ref: string
+          webhook_event_id: string | null
+        }
+        Insert: {
+          applied_state?: Json | null
+          created_at?: string
+          database_role?: string
+          environment: string
+          error_code?: string | null
+          evidence_fingerprint?: string | null
+          evidence_provider_updated_at?: string | null
+          evidence_source: string
+          id?: string
+          operator_label: string
+          outcome: string
+          prior_state: Json
+          provider_subscription_id?: string | null
+          reason: string
+          recovery_kind: string
+          review_token: string
+          subscription_id?: string | null
+          ticket_ref: string
+          webhook_event_id?: string | null
+        }
+        Update: {
+          applied_state?: Json | null
+          created_at?: string
+          database_role?: string
+          environment?: string
+          error_code?: string | null
+          evidence_fingerprint?: string | null
+          evidence_provider_updated_at?: string | null
+          evidence_source?: string
+          id?: string
+          operator_label?: string
+          outcome?: string
+          prior_state?: Json
+          provider_subscription_id?: string | null
+          reason?: string
+          recovery_kind?: string
+          review_token?: string
+          subscription_id?: string | null
+          ticket_ref?: string
+          webhook_event_id?: string | null
+        }
+        Relationships: []
+      }
       billing_subscription_reconciliation_checks: {
         Row: {
           attempt_count: number
@@ -2447,6 +2513,53 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_billing_event_reprocess_v1: {
+        Args: {
+          p_environment: string
+          p_now?: string
+          p_operator_label: string
+          p_reason: string
+          p_review_token: string
+          p_ticket_ref: string
+          p_webhook_event_id: string
+        }
+        Returns: {
+          audit_id: string
+          error_code: string
+          outcome: string
+        }[]
+      }
+      apply_billing_subscription_recovery_v1: {
+        Args: {
+          p_environment: string
+          p_now?: string
+          p_operator_label: string
+          p_provider_cancelled: boolean
+          p_provider_created_at: string
+          p_provider_customer_id: string
+          p_provider_ends_at: string
+          p_provider_pause_mode: string
+          p_provider_pause_resumes_at: string
+          p_provider_product_id: string
+          p_provider_renews_at: string
+          p_provider_status: string
+          p_provider_store_id: string
+          p_provider_subscription_id: string
+          p_provider_trial_ends_at: string
+          p_provider_updated_at: string
+          p_provider_variant_id: string
+          p_reason: string
+          p_review_token: string
+          p_subscription_id: string
+          p_test_mode: boolean
+          p_ticket_ref: string
+        }
+        Returns: {
+          audit_id: string
+          error_code: string
+          outcome: string
+        }[]
+      }
       billing_environment_matches_v1: {
         Args: { p_environment: string }
         Returns: boolean
@@ -2685,6 +2798,58 @@ export type Database = {
           event_id: string
           outcome: string
           stored_status: string
+        }[]
+      }
+      plan_billing_event_reprocess_v1: {
+        Args: {
+          p_environment: string
+          p_now?: string
+          p_webhook_event_id: string
+        }
+        Returns: {
+          attempt_count: number
+          error_code: string
+          event_name: string
+          prior_error_code: string
+          review_token: string
+          subscription_id: string
+          verdict: string
+        }[]
+      }
+      plan_billing_subscription_recovery_v1: {
+        Args: {
+          p_environment: string
+          p_now?: string
+          p_provider_cancelled: boolean
+          p_provider_created_at: string
+          p_provider_customer_id: string
+          p_provider_ends_at: string
+          p_provider_pause_mode: string
+          p_provider_pause_resumes_at: string
+          p_provider_product_id: string
+          p_provider_renews_at: string
+          p_provider_status: string
+          p_provider_store_id: string
+          p_provider_subscription_id: string
+          p_provider_trial_ends_at: string
+          p_provider_updated_at: string
+          p_provider_variant_id: string
+          p_subscription_id: string
+          p_test_mode: boolean
+        }
+        Returns: {
+          error_code: string
+          evidence_fingerprint: string
+          local_cancel_at_period_end: boolean
+          local_period_ends_at: string
+          local_provider_state_updated_at: string
+          local_status: string
+          proposed_cancel_at_period_end: boolean
+          proposed_cancelled_at: string
+          proposed_period_ends_at: string
+          proposed_status: string
+          review_token: string
+          verdict: string
         }[]
       }
       process_billing_subscription_created_v1: {

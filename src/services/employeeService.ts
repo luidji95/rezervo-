@@ -137,6 +137,10 @@ export async function deleteEmployeeSafely({
   }
 }
 
+export async function deactivateEmployee(employeeId: string): Promise<void> {
+  await employeeMutation("PATCH", { action: "set_active", employeeId, isActive: false });
+}
+
 export async function restoreEmployee({
   employeeId,
   salonId,

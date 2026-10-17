@@ -27,6 +27,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   BILLING_PROVIDER_REJECTED: "Checkout zahtev je odbijen. Proverite paket i pokušajte ponovo.",
   BILLING_RECONCILIATION_REQUIRED: "Checkout se još proverava. Nemojte ponavljati zahtev odmah.",
   BILLING_OVERRIDE_ACTIVE: "Checkout nije dostupan za salon sa posebnim billing pristupom.",
+  BILLING_PURCHASE_ACTIVATION_PENDING: "Kupovina čeka aktivaciju. Nemojte pokretati novu kupovinu.",
+  EMPLOYEE_OVER_TARGET_LIMIT: "Izabrani paket dozvoljava manje aktivnih zaposlenih nego što salon trenutno ima. Prvo deaktivirajte višak zaposlenih.",
   INVALID_INPUT: FALLBACK_ERROR,
 };
 

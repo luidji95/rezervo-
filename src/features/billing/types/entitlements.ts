@@ -54,6 +54,25 @@ export type EffectiveCapabilities = {
   canManageBusinessData: boolean;
 };
 
+/** Effective employee limit from the database authority (resolve_employee_capacity_v2). */
+export type EmployeeCapacity = {
+  /** Limit for new activations: plan/override limit, narrowed by a pending checkout. Null = unlimited. */
+  maxEmployees: number | null;
+  /** Limit of the plan or override that currently grants access. */
+  planMaxEmployees: number | null;
+  reason: "plan" | "override" | "pending_checkout";
+  pendingPlanCode: PlanCode | null;
+};
+
+/** A recognised, not yet activated purchase (signed subscription_created event), from the database. */
+export type PurchaseActivation = {
+  reason: "processing" | "capacity" | "review";
+  targetPlanCode: PlanCode | null;
+  targetMaxEmployees: number | null;
+  /** True only when a paid initial invoice for the same provider subscription is recorded. */
+  paymentConfirmed: boolean;
+};
+
 export type SalonEntitlements = {
   planCode: PlanCode | null;
   planName: string;
@@ -98,6 +117,9 @@ export type SalonEntitlements = {
   maxMonthlyReminders: number | null;
   trialEndsAt: string | null;
   currentPeriodEndsAt: string | null;
+  /** Attached by the /api/entitlements route from the database; absent in pure resolver output. */
+  employeeCapacity?: EmployeeCapacity | null;
+  purchaseActivation?: PurchaseActivation | null;
 };
 
 export type BooleanSalonEntitlement = keyof EffectiveCapabilities;

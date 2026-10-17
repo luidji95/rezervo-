@@ -66,7 +66,8 @@ npm run billing:recovery -- subscription --subscription <subscription-uuid> --ap
 | --- | --- | --- |
 | Reprocess `subscription_updated` u `manual_review` sa `processor_updated_subscription_unknown` | ✅ kada lokalna pretplata sada postoji | koristi postojeći `process_billing_subscription_updated_v2` |
 | Reprocess `subscription_updated` ili `subscription_created` sa `processor_retry_exhausted` | ✅ (updated: lokalna pretplata mora postojati) | procesor ponovo sve proverava |
-| Bilo koji drugi `manual_review` razlog (identity/ownership, mapping, plan change, same-timestamp conflict, pause, provider trial, expired reactivation, correlation/checkout) | ❌ `reason_not_allowed` | bezbednosni konflikti ostaju odbijeni |
+| Reprocess `subscription_created` sa `processor_checkout_capacity_exceeded` / `processor_checkout_state_invalid` | ✅ samo uz preduslove iz odeljka 12 | zamena (replacement) uvek ostaje ručna istraga |
+| Bilo koji drugi `manual_review` razlog (identity/ownership, mapping, plan change, same-timestamp conflict, pause, provider trial, expired reactivation, checkout correlation) | ❌ `reason_not_allowed` | bezbednosni konflikti ostaju odbijeni |
 | Događaj koji je `received`/lease-ovan | ❌ `not_manual_review` / `event_busy` | pripada retry worker-u |
 | Propušten update: `past_due → active`, `active → cancelled`, `cancelled → active`, `active/cancelled → past_due`, `→ expired` | ✅ za već povezanu pretplatu | ista pravila kao `process_billing_subscription_updated_v2` (parity test) |
 | Stariji snapshot od lokalnog stanja | ❌ `stale_snapshot` | |
@@ -192,3 +193,47 @@ Bez toga recovery put ne sme da ostane omogućen.
 - Live: tek posle odvojene provere (kredencijali, store, jedan pregledan test-slučaj sa stvarnim
   tiketom). Kompletan lifecycle contract nije usvojen; live billing nije označen spremnim.
 - Upgrade/downgrade, resubscribe posle isteka, pilot handover i bulk/automatski recovery nisu deo ove faze.
+
+## 12. C1: kupovina koja čeka aktivaciju (`subscription_created`)
+
+Migracija `202610180046` proširuje `event` reprocess za tačno dva razloga created događaja.
+Alat i tok su isti (dry-run → review token → apply → audit); procesor ostaje jedini koji aktivira.
+
+| Razlog | Preduslov checkout-a | Kada je `eligible` |
+| --- | --- | --- |
+| `processor_checkout_capacity_exceeded` | isti checkout je i dalje `open` | owner je smanjio broj aktivnih zaposlenih na ciljni limit |
+| `processor_checkout_state_invalid` | isti checkout je `expired` | nema nikakve kasnije zamene (vidi dole) |
+
+Zajednički obavezni preduslovi: originalni potpisani created događaj sa facts v2 i
+`correlation_status='ready'`; checkout korelacija (salon, idempotency key, okruženje); pretplata
+salona je **provider-free** (nijedna druga provider pretplata se ne prepisuje); nema drugog
+`completed` checkout-a; nema drugog neobrađenog created događaja za salon; ciljni plan Starter/Pro;
+aktivni zaposleni ≤ ciljni limit; `renews_at` iz događaja je u budućnosti. Apply uzima lockove
+procesora unapred (event → facts → checkout-i salona → plan → pretplata → capacity) i ponovo
+proverava review token pod njima.
+
+**Rollback.** Za `expired` checkout apply ga privremeno vraća u `open` **samo unutar
+podtransakcije** i poziva postojeći created procesor. Svaki ishod osim `processed` vraća
+podtransakciju: checkout ostaje `expired`, događaj ostaje u `manual_review` sa izvornim razlogom,
+pretplata se ne menja; audit beleži `activation_rejected`, procesorski kod i `rolled_back: true`.
+Izuzetak (npr. greška baze) vraća celu transakciju bez audit reda.
+
+**Zamena (replacement) — uvek ručna istraga.** Ako za isti salon postoji checkout kreiran posle
+ciljnog u statusu `creating`, `open` ili `expired`, ishod je `precondition_unmet` /
+`recovery_replacement_checkout_unresolved`. Istek URL-a zamene i to što njen created događaj nije
+stigao **nisu dokaz** da zamena nije plaćena; čekanje ne razrešava konflikt i alat ga ne oslobađa.
+Operator mora van sistema proveriti kod providera (dashboard, bez write operacija iz Rezervo-a):
+da li postoji porudžbina/pretplata za checkout zamene, da li postoje dve naplate istom kupcu i
+kojoj pretplati kupac treba da pripada. Razrešenje (npr. refundacija ili otkazivanje kod providera)
+je izvan ovog alata; posle toga, ako stigne created događaj zamene, on se obrađuje normalno, a stari
+ostaje u `manual_review`. Za takve salone nova kupovina ostaje blokirana dok aktivacija čeka.
+
+**Nepodržano (operatorska istraga):** created događaj za `failed`/`creating`/`cancelled` checkout
+(`recovery_checkout_state_unsupported`); prošao `renews_at` (`recovery_provider_period_elapsed`);
+povezana pretplata (`recovery_subscription_already_linked`); događaj koji nikada nije stigao;
+korelacioni, mapping i ownership konflikti (`reason_not_allowed`). Za ove slučajeve ne postoji
+automatski ni operatorski apply; salon ostaje blokiran za novu kupovinu dok je događaj neobrađen.
+
+**Tok za „plaćeno, ali previše zaposlenih“:** owner vidi poruku i deaktivira višak (deaktivacija
+radi i kad je pristup read-only) → `billing-recovery event --event <id>` dry-run → `eligible` →
+apply sa tiketom → proveri `/api/entitlements` (`purchaseActivation` nestaje, plan je Starter).

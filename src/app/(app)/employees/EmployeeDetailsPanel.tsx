@@ -8,6 +8,7 @@ import {
   Phone,
   RotateCcw,
   Trash2,
+  UserMinus,
   X,
 } from "lucide-react";
 
@@ -39,6 +40,10 @@ type EmployeeDetailsPanelProps = {
   onDelete: (employee: Employee) => void;
   onEdit: (employee: Employee) => void;
   onRestore: (employee: Employee) => Promise<void>;
+  /** Deactivation stays available in read-only billing access; activation does not. */
+  canDeactivate: boolean;
+  isDeactivating: boolean;
+  onDeactivate: (employee: Employee) => Promise<void>;
 };
 
 export function EmployeeDetailsPanel({
@@ -55,6 +60,9 @@ export function EmployeeDetailsPanel({
   onDelete,
   onEdit,
   onRestore,
+  canDeactivate,
+  isDeactivating,
+  onDeactivate,
 }: EmployeeDetailsPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
 
@@ -133,14 +141,25 @@ export function EmployeeDetailsPanel({
         </button>
 
         {employee.is_active ? (
-          <button
-            type="button"
-            className="employees-danger-btn"
-            disabled={!canMutate}
-            onClick={() => onDelete(employee)}
-          >
-            <Trash2 size={15} /> Obriši zaposlenog
-          </button>
+          <>
+            <button
+              type="button"
+              className="employees-secondary-btn"
+              disabled={!canDeactivate || isDeactivating}
+              aria-busy={isDeactivating}
+              onClick={() => void onDeactivate(employee)}
+            >
+              <UserMinus size={15} /> {isDeactivating ? "Deaktiviram..." : "Deaktiviraj"}
+            </button>
+            <button
+              type="button"
+              className="employees-danger-btn"
+              disabled={!canMutate}
+              onClick={() => onDelete(employee)}
+            >
+              <Trash2 size={15} /> Obriši zaposlenog
+            </button>
+          </>
         ) : (
           <button
             type="button"

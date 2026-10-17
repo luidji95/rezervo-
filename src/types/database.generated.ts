@@ -3416,6 +3416,17 @@ export type Database = {
           salon_id: string
         }[]
       }
+      resolve_billing_purchase_activation_v1: {
+        Args: { p_salon_id: string }
+        Returns: {
+          checkout_session_id: string
+          payment_confirmed: boolean
+          pending_reason: string
+          target_max_employees: number
+          target_plan_slug: string
+          webhook_event_id: string
+        }[]
+      }
       resolve_employee_capacity_v1: {
         Args: { p_now?: string; p_salon_id: string }
         Returns: {
@@ -3426,6 +3437,23 @@ export type Database = {
           has_full_access: boolean
           is_legacy_active: boolean
           max_employees: number
+        }[]
+      }
+      resolve_employee_capacity_v2: {
+        Args: { p_now?: string; p_salon_id: string }
+        Returns: {
+          access_reason: string
+          access_source: string
+          capacity_reason: string
+          effective_plan_id: string
+          effective_plan_slug: string
+          has_full_access: boolean
+          is_legacy_active: boolean
+          max_employees: number
+          pending_checkout_id: string
+          pending_max_employees: number
+          pending_plan_slug: string
+          plan_max_employees: number
         }[]
       }
       resolve_salon_access_v1: {

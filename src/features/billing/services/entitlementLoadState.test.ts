@@ -87,7 +87,7 @@ test("billing environment accepts exact test/live only and configuration errors 
 test("configuration failure does not become a successful read-only entitlement", async () => {
   const result = await loadEntitlements({ salonId: "salon", getAccessToken: async () => "test-token", request: async () => Response.json({ success: false, code: "ENTITLEMENTS_NOT_CONFIGURED" }, { status: 500 }) });
   assert.equal(result.error, "ENTITLEMENTS_NOT_CONFIGURED");
-  assert.deepEqual(getEntitlementActionState({ ...result, loading: false }), { ready: false, loadFailed: true, readOnly: false, canManage: false, canCreateEmployee: false });
+  assert.deepEqual(getEntitlementActionState({ ...result, loading: false }), { ready: false, loadFailed: true, readOnly: false, canManage: false, canDeactivate: false, canCreateEmployee: false });
 });
 
 test("network, session and malformed response failures fail closed; retry can restore access", async () => {

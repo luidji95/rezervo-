@@ -138,11 +138,15 @@ export class SupabaseBillingCheckoutRepository
         "BILLING_SUBSCRIPTION_ALREADY_ACTIVE",
         "BILLING_SUBSCRIPTION_PAYMENT_REQUIRED",
         "BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED",
+        "BILLING_PURCHASE_ACTIVATION_PENDING",
+        "EMPLOYEE_OVER_TARGET_LIMIT",
       ].find((candidate) => error.message === candidate);
       if (code) throw new BillingCheckoutError(code as
         | "BILLING_SUBSCRIPTION_ALREADY_ACTIVE"
         | "BILLING_SUBSCRIPTION_PAYMENT_REQUIRED"
-        | "BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED", 409);
+        | "BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED"
+        | "BILLING_PURCHASE_ACTIVATION_PENDING"
+        | "EMPLOYEE_OVER_TARGET_LIMIT", 409);
       if (error.message.startsWith("BILLING_RECONCILIATION_REQUIRED_")) {
         throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);
       }

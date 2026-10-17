@@ -27,6 +27,7 @@ function errorResponse(code: string, message: string, status: number) {
 
 function employeeRpcError(error: { code?: string; message?: string }) {
   const message = error.message ?? "";
+  if (message.includes("EMPLOYEE_PURCHASE_LIMIT_PENDING")) return errorResponse("EMPLOYEE_PURCHASE_LIMIT_PENDING", "Započeta kupovina paketa ograničava broj aktivnih zaposlenih dok se ne završi.", 403);
   if (message.includes("EMPLOYEE_LIMIT_REACHED")) return errorResponse("EMPLOYEE_LIMIT_REACHED", "Dostigli ste maksimalan broj zaposlenih za trenutni paket.", 403);
   if (message.includes("EMPLOYEE_ACCESS_REQUIRED")) return errorResponse("EMPLOYEE_ACCESS_REQUIRED", "Pretplata trenutno ne dozvoljava aktiviranje zaposlenih.", 403);
   if (message.includes("EMPLOYEE_ENTITLEMENT_NOT_CONFIGURED")) return errorResponse("EMPLOYEE_ENTITLEMENT_NOT_CONFIGURED", "Paket salona trenutno nije ispravno podešen.", 409);
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
   });
   if (error) {
     if (error.message.includes("EMPLOYEE_ACCESS_REQUIRED") || error.message.includes("EMPLOYEE_ENTITLEMENT_NOT_CONFIGURED")) return employeeRpcError(error);
+    if (error.message.includes("EMPLOYEE_PURCHASE_LIMIT_PENDING")) return employeeRpcError(error);
     if (error.message.includes("EMPLOYEE_LIMIT_REACHED")) return errorResponse("EMPLOYEE_LIMIT_REACHED", "Dostigli ste maksimalan broj zaposlenih za trenutni paket.", 403);
     if (error.message.includes("FORBIDDEN") || error.code === "42501") return errorResponse("FORBIDDEN", "Nemate dozvolu za dodavanje zaposlenih.", 403);
     return errorResponse("EMPLOYEE_CREATE_FAILED", "Zaposlenog trenutno nije moguće sačuvati.", 500);

@@ -18,12 +18,14 @@ import {
   deleteEmployeeSafely,
   EmployeeHasFutureAppointmentsError,
   restoreEmployee,
+  deactivateEmployee,
 } from "@/services/employeeService";
 import type { Employee } from "@/types/employee";
 import { getEmployeeMutationMessage } from "@/features/employees/services/employeeMutationPresentation";
 
 import { EntitlementStatus } from "@/features/billing/components/EntitlementStatus";
 import { getEntitlementActionState } from "@/features/billing/services/entitlementLoadState";
+import { getEffectiveEmployeeLimit, getPendingCheckoutNotice, getPurchaseActivationNotice } from "@/features/billing/services/billingCapacityPresentation";
 import "./employees.css";
 
 export default function EmployeesPage() {
@@ -40,6 +42,7 @@ export default function EmployeesPage() {
     null
   );
   const [restoreError, setRestoreError] = useState("");
+  const [deactivatingEmployeeId, setDeactivatingEmployeeId] = useState<string | null>(null);
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
 
   const {
@@ -66,8 +69,10 @@ export default function EmployeesPage() {
     setStatusFilter,
     statusFilter,
   } = useEmployeesPageData();
-  const { canManage, canCreateEmployee } = getEntitlementActionState(entitlementState, activeEmployeeCount);
-  const employeeLimit = entitlements?.planCapabilities.maxEmployees ?? null;
+  const { canManage, canCreateEmployee, canDeactivate } = getEntitlementActionState(entitlementState, activeEmployeeCount);
+  const employeeLimit = getEffectiveEmployeeLimit(entitlements);
+  const pendingCheckoutNotice = getPendingCheckoutNotice(entitlements);
+  const purchaseActivationNotice = getPurchaseActivationNotice(entitlements);
   const isEmployeeLimitReached = employeeLimit !== null && activeEmployeeCount >= employeeLimit;
 
   function handleSelectEmployee(employee: Employee) {
@@ -102,6 +107,22 @@ export default function EmployeesPage() {
       );
     } finally {
       setIsDeleting(false);
+    }
+  }
+
+  async function handleDeactivateEmployee(employee: Employee) {
+    if (!canDeactivate || !salonId || deactivatingEmployeeId) return;
+    try {
+      setDeactivatingEmployeeId(employee.id);
+      setRestoreError("");
+      await deactivateEmployee(employee.id);
+      await loadData();
+      await entitlementState.refetchEntitlements();
+    } catch (error) {
+      console.error("Failed to deactivate employee:", error);
+      setRestoreError(getEmployeeMutationMessage(error, "Zaposlenog trenutno nije moguće deaktivirati."));
+    } finally {
+      setDeactivatingEmployeeId(null);
     }
   }
 
@@ -180,6 +201,8 @@ export default function EmployeesPage() {
       </header>
 
       <EntitlementStatus />
+      {purchaseActivationNotice && <p className="employees-error" role="status">{purchaseActivationNotice}</p>}
+      {!purchaseActivationNotice && pendingCheckoutNotice && <p className="employees-error" role="status">{pendingCheckoutNotice}</p>}
       {restoreError && <p className="employees-error" role="alert">{restoreError}</p>}
 
       <section className="employee-kpi-grid">
@@ -234,6 +257,9 @@ export default function EmployeesPage() {
             employeeWorkingHours={selectedEmployeeHours}
             stats={selectedEmployeeStats}
             isRestoring={restoringEmployeeId === selectedEmployee?.id}
+            canDeactivate={canDeactivate}
+            isDeactivating={deactivatingEmployeeId === selectedEmployee?.id}
+            onDeactivate={handleDeactivateEmployee}
             mobileOpen={mobileDetailsOpen}
             onClose={closeMobileDetails}
             onEdit={(employee) => { setMobileDetailsOpen(false); setEditingEmployee(employee); }}

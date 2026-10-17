@@ -81,8 +81,12 @@ begin
 
   select pg_get_functiondef('public.enforce_employee_capacity_v1()'::regprocedure)
     into v_definition;
-  perform pg_temp.assert_true(v_definition ilike '%resolve_employee_capacity_v1%',
+  -- C1: the trigger reads the effective capacity (v2), which is defined over the canonical v1 projection.
+  perform pg_temp.assert_true(v_definition ilike '%resolve_employee_capacity_v2%',
     'EMPLOYEE_CAPACITY_TRIGGER_NOT_CANONICAL');
+  perform pg_temp.assert_true(
+    pg_get_functiondef('public.resolve_employee_capacity_v2(uuid,timestamptz)'::regprocedure) ilike '%resolve_employee_capacity_v1%',
+    'EMPLOYEE_CAPACITY_V2_NOT_CANONICAL');
 
   v_owner := 'b9a00000-0000-4000-8000-000000000001';
   v_salon := 'b9a00000-0000-4000-8000-000000000002';

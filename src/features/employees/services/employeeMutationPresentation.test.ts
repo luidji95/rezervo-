@@ -7,6 +7,7 @@ for (const [code, expected] of [
   ["EMPLOYEE_ACCESS_REQUIRED", "Pretplata trenutno ne dozvoljava aktiviranje zaposlenih."],
   ["FORBIDDEN", "Nemate ovlašćenje za izmenu ovog zaposlenog."],
   ["EMPLOYEE_NOT_FOUND", "Zaposleni nije pronađen."],
+  ["EMPLOYEE_PLAN_CHANGE_LIMIT_PENDING", "Zakazana promena paketa ograničava broj aktivnih zaposlenih na limit novog paketa."],
 ] as const) {
   test(`maps ${code} to safe employee UI copy`, () => {
     const error = new Error("internal details must not be shown");

@@ -73,6 +73,7 @@ npm run billing:recovery -- subscription --subscription <subscription-uuid> --ap
 | Stariji snapshot od lokalnog stanja | ❌ `stale_snapshot` | |
 | Isti timestamp, različit sadržaj | ❌ `same_timestamp_conflict` | |
 | Promena plana, pause, provider trial, expired reactivation, nepodržano stanje | ❌ `plan_change_unsupported` / `unsupported_state` | čak i ako deo snapshot-a izgleda bezbedno |
+| C2: snapshot dok postoji nerazrešena promena plana (`billing_subscription_plan_changes`) | ✅ samo kao lifecycle opažanje | target varijanta je očekivana, period se ograničava na `baseline_period_end`, plan se ne menja; završetak isključivo kroz zajednički evaluator uz plaćen `renewal` invoice (E3). Snapshot nikad sam ne dodeljuje target ni novi period. Neočekivana varijanta → promena u `manual_review`. |
 | Pogrešan tenant/customer/store/subscription ID, `test_mode`, okruženje | ❌ `identity_conflict` / `mapping_conflict` | |
 | Plaćen invoice bez povezane pretplate / bez potvrđenog stanja | ❌ ne aktivira ništa | vidi odeljak 5 |
 | Kreiranje pretplate iz snapshot-a ili invoice-a | ❌ nije podržano | samo postojeći created/checkout tok |
@@ -184,6 +185,13 @@ Snapshot recovery (`private.evaluate_billing_snapshot_recovery_v1`) namerno pona
 canonical pristupa kroz `resolve_salon_access_v1`). Nova stanja/razlozi se dodaju u `pg_temp.expected_recovery`.
 Bez toga recovery put ne sme da ostane omogućen.
 
+C2 (`202610190047`) je izmenio updated procesor i snapshot evaluaciju na isti način (očekivana
+target varijanta, ograničen period, zajednički evaluator). Parity za tranzicije je u
+`supabase/tests/billing_c2_plan_change_contract.sql` (odeljak 8: isti salon kroz webhook i kroz
+snapshot daje isti status promene, isto stanje pretplate i isti canonical pristup). Review token
+sada pokriva i stanje nerazrešene promene. Promena u `manual_review` nema apply alat u ovoj fazi
+i ostaje blokirajuća (read-only posle baseline-a) do eksplicitnog razrešenja.
+
 ## 11. Šta nije potvrđeno (kasniji remote acceptance)
 
 - Primena migracije `202610170045` i grants na remote bazi, remote migration history.
@@ -192,7 +200,9 @@ Bez toga recovery put ne sme da ostane omogućen.
   potvrđeno protiv živog providera.
 - Live: tek posle odvojene provere (kredencijali, store, jedan pregledan test-slučaj sa stvarnim
   tiketom). Kompletan lifecycle contract nije usvojen; live billing nije označen spremnim.
-- Upgrade/downgrade, resubscribe posle isteka, pilot handover i bulk/automatski recovery nisu deo ove faze.
+- Resubscribe posle isteka, pilot handover i bulk/automatski recovery nisu deo ove faze.
+  Upgrade/downgrade od sledeće obnove ima samo lokalnu DB osnovu (default-off), vidi
+  `docs/billing-plan-change-next-renewal.md`.
 
 ## 12. C1: kupovina koja čeka aktivaciju (`subscription_created`)
 

@@ -837,6 +837,174 @@ export type Database = {
         }
         Relationships: []
       }
+      billing_subscription_plan_changes: {
+        Row: {
+          attempt_count: number
+          baseline_period_end: string
+          baseline_provider_updated_at: string
+          completed_at: string | null
+          completed_period_end: string | null
+          confirmed_at: string | null
+          confirmed_provider_updated_at: string | null
+          confirmed_source: string | null
+          conflict_code: string | null
+          created_at: string
+          direction: string
+          environment: string
+          from_plan_id: string
+          from_provider_product_id: string
+          from_provider_variant_id: string
+          id: string
+          last_attempt_at: string | null
+          last_attempt_outcome: string | null
+          latest_from_observed_at: string | null
+          observed_period_end: string | null
+          observed_product_id: string | null
+          observed_provider_updated_at: string | null
+          observed_source: string | null
+          observed_status: string | null
+          observed_variant_id: string | null
+          provider: string
+          provider_customer_id: string
+          provider_store_id: string
+          provider_subscription_id: string
+          renewal_invoice_id: string | null
+          requested_at: string
+          requested_by_profile_id: string
+          resolved_at: string | null
+          salon_id: string
+          status: string
+          subscription_id: string
+          target_observed_at: string | null
+          target_plan_id: string
+          target_provider_product_id: string
+          target_provider_variant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          baseline_period_end: string
+          baseline_provider_updated_at: string
+          completed_at?: string | null
+          completed_period_end?: string | null
+          confirmed_at?: string | null
+          confirmed_provider_updated_at?: string | null
+          confirmed_source?: string | null
+          conflict_code?: string | null
+          created_at?: string
+          direction: string
+          environment: string
+          from_plan_id: string
+          from_provider_product_id: string
+          from_provider_variant_id: string
+          id?: string
+          last_attempt_at?: string | null
+          last_attempt_outcome?: string | null
+          latest_from_observed_at?: string | null
+          observed_period_end?: string | null
+          observed_product_id?: string | null
+          observed_provider_updated_at?: string | null
+          observed_source?: string | null
+          observed_status?: string | null
+          observed_variant_id?: string | null
+          provider?: string
+          provider_customer_id: string
+          provider_store_id: string
+          provider_subscription_id: string
+          renewal_invoice_id?: string | null
+          requested_at: string
+          requested_by_profile_id: string
+          resolved_at?: string | null
+          salon_id: string
+          status?: string
+          subscription_id: string
+          target_observed_at?: string | null
+          target_plan_id: string
+          target_provider_product_id: string
+          target_provider_variant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          baseline_period_end?: string
+          baseline_provider_updated_at?: string
+          completed_at?: string | null
+          completed_period_end?: string | null
+          confirmed_at?: string | null
+          confirmed_provider_updated_at?: string | null
+          confirmed_source?: string | null
+          conflict_code?: string | null
+          created_at?: string
+          direction?: string
+          environment?: string
+          from_plan_id?: string
+          from_provider_product_id?: string
+          from_provider_variant_id?: string
+          id?: string
+          last_attempt_at?: string | null
+          last_attempt_outcome?: string | null
+          latest_from_observed_at?: string | null
+          observed_period_end?: string | null
+          observed_product_id?: string | null
+          observed_provider_updated_at?: string | null
+          observed_source?: string | null
+          observed_status?: string | null
+          observed_variant_id?: string | null
+          provider?: string
+          provider_customer_id?: string
+          provider_store_id?: string
+          provider_subscription_id?: string
+          renewal_invoice_id?: string | null
+          requested_at?: string
+          requested_by_profile_id?: string
+          resolved_at?: string | null
+          salon_id?: string
+          status?: string
+          subscription_id?: string
+          target_observed_at?: string | null
+          target_plan_id?: string
+          target_provider_product_id?: string
+          target_provider_variant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_subscription_plan_changes_from_plan_id_fkey"
+            columns: ["from_plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_subscription_plan_changes_requested_by_profile_id_fkey"
+            columns: ["requested_by_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_subscription_plan_changes_salon_id_fkey"
+            columns: ["salon_id"]
+            isOneToOne: false
+            referencedRelation: "salons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_subscription_plan_changes_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_subscription_plan_changes_target_plan_id_fkey"
+            columns: ["target_plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       billing_subscription_reconciliation_checks: {
         Row: {
           attempt_count: number
@@ -2881,6 +3049,92 @@ export type Database = {
       process_billing_subscription_updated_v2: {
         Args: { p_now?: string; p_webhook_event_id: string }
         Returns: { error_code: string | null; outcome: string }[]
+      }
+      evaluate_billing_plan_change_v1: {
+        Args: {
+          p_environment: string
+          p_now?: string
+          p_subscription_id: string
+        }
+        Returns: {
+          error_code: string
+          outcome: string
+          plan_change_status: string
+        }[]
+      }
+      prepare_billing_plan_change_v1: {
+        Args: {
+          p_actor_profile_id: string
+          p_now?: string
+          p_salon_id: string
+          p_target_plan_id: string
+        }
+        Returns: {
+          baseline_period_end: string
+          direction: string
+          error_code: string
+          outcome: string
+          provider_subscription_id: string
+          state_token: string
+          subscription_id: string
+          target_provider_variant_id: string
+        }[]
+      }
+      record_billing_plan_change_provider_result_v1: {
+        Args: {
+          p_environment: string
+          p_now?: string
+          p_plan_change_id: string
+          p_provider_cancelled: boolean
+          p_provider_customer_id: string
+          p_provider_ends_at: string
+          p_provider_pause_mode: string
+          p_provider_product_id: string
+          p_provider_renews_at: string
+          p_provider_status: string
+          p_provider_store_id: string
+          p_provider_subscription_id: string
+          p_provider_trial_ends_at: string
+          p_provider_updated_at: string
+          p_provider_variant_id: string
+          p_result: string
+          p_test_mode: boolean
+        }
+        Returns: {
+          error_code: string
+          outcome: string
+          plan_change_status: string
+        }[]
+      }
+      request_billing_plan_change_v1: {
+        Args: {
+          p_actor_profile_id: string
+          p_now?: string
+          p_provider_cancelled: boolean
+          p_provider_checked_at: string
+          p_provider_customer_id: string
+          p_provider_ends_at: string
+          p_provider_pause_mode: string
+          p_provider_product_id: string
+          p_provider_renews_at: string
+          p_provider_status: string
+          p_provider_store_id: string
+          p_provider_subscription_id: string
+          p_provider_trial_ends_at: string
+          p_provider_updated_at: string
+          p_provider_variant_id: string
+          p_salon_id: string
+          p_state_token: string
+          p_target_plan_id: string
+          p_test_mode: boolean
+        }
+        Returns: {
+          baseline_period_end: string
+          direction: string
+          outcome: string
+          plan_change_id: string
+          target_provider_variant_id: string
+        }[]
       }
       accept_team_invitation: {
         Args: { p_invitation_id: string; p_profile_id: string }

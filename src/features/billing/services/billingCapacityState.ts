@@ -15,12 +15,12 @@ export function mapEmployeeCapacityRow(data: unknown): EmployeeCapacity | null {
   const row = firstRow(data);
   if (!row) return null;
   const reason = row.capacity_reason;
-  if (reason !== "plan" && reason !== "override" && reason !== "pending_checkout") return null;
+  if (reason !== "plan" && reason !== "override" && reason !== "pending_checkout" && reason !== "pending_plan_change") return null;
   return {
     maxEmployees: limit(row.max_employees),
     planMaxEmployees: limit(row.plan_max_employees),
     reason,
-    pendingPlanCode: reason === "pending_checkout" ? planCode(row.pending_plan_slug) : null,
+    pendingPlanCode: reason === "pending_checkout" || reason === "pending_plan_change" ? planCode(row.pending_plan_slug) : null,
   };
 }
 

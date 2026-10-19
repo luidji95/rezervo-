@@ -56,11 +56,11 @@ export type EffectiveCapabilities = {
 
 /** Effective employee limit from the database authority (resolve_employee_capacity_v2). */
 export type EmployeeCapacity = {
-  /** Limit for new activations: plan/override limit, narrowed by a pending checkout. Null = unlimited. */
+  /** Limit for new activations: plan/override limit, narrowed by a pending checkout or plan change. Null = unlimited. */
   maxEmployees: number | null;
   /** Limit of the plan or override that currently grants access. */
   planMaxEmployees: number | null;
-  reason: "plan" | "override" | "pending_checkout";
+  reason: "plan" | "override" | "pending_checkout" | "pending_plan_change";
   pendingPlanCode: PlanCode | null;
 };
 

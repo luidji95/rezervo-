@@ -13,6 +13,11 @@ test("database rows map to the authority shape and reject unknown values", () =>
   assert.deepEqual(mapEmployeeCapacityRow({ capacity_reason: "override", max_employees: null, plan_max_employees: null }), { maxEmployees: null, planMaxEmployees: null, reason: "override", pendingPlanCode: null });
   assert.equal(mapEmployeeCapacityRow([]), null);
   assert.equal(mapEmployeeCapacityRow([{ capacity_reason: "mystery", max_employees: 3 }]), null);
+  // A pending downgrade narrows the limit; the browser must never fall back to the wider plan limit.
+  const planChangeRow = { capacity_reason: "pending_plan_change", max_employees: 3, plan_max_employees: 10, pending_plan_slug: "starter" };
+  assert.deepEqual(mapEmployeeCapacityRow([planChangeRow]), { maxEmployees: 3, planMaxEmployees: 10, reason: "pending_plan_change", pendingPlanCode: "starter" });
+  assert.equal(getEffectiveEmployeeLimit({ ...base, employeeCapacity: mapEmployeeCapacityRow([planChangeRow]) }), 3);
+  assert.equal(getPendingCheckoutNotice({ ...base, employeeCapacity: mapEmployeeCapacityRow([planChangeRow]) }), null);
   assert.equal(mapPurchaseActivationRow([]), null);
   assert.deepEqual(mapPurchaseActivationRow([{ webhook_event_id: "e1", pending_reason: "capacity", target_plan_slug: "starter", target_max_employees: 3, payment_confirmed: false }]),
     { reason: "capacity", targetPlanCode: "starter", targetMaxEmployees: 3, paymentConfirmed: false });

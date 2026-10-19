@@ -66,6 +66,7 @@ enforcing.
 | `creating` / `open` (any `expires_at`) | `least(plan/override, target)` | activation (`completed`, atomic with the plan change), `failed` (provider rejected creation), `expired` (existing replacement in acquisition) |
 | `completed` | the activated plan's own limit | - |
 | `expired` / `failed` | plan/override limit | - |
+| C2 plan change `requested`/`unknown`/`confirmed`/`manual_review` (`billing_subscription_plan_changes`) | `least(plan/override, target)` (`pending_plan_change`, `EMPLOYEE_PLAN_CHANGE_LIMIT_PENDING`); an upgrade target never widens | `completed` (target plan's own limit), `not_applied`, `abandoned` — see `docs/billing-plan-change-next-renewal.md` |
 
 **Acquisition.** `acquire_billing_checkout_intent_v2` takes the capacity lock after the checkout
 rows, the subscription and the plan, and refuses with `EMPLOYEE_OVER_TARGET_LIMIT` before any

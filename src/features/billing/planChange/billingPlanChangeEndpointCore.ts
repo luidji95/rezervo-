@@ -9,6 +9,9 @@ import {
 } from "./billingPlanChangeCore.ts";
 import { BillingPlanChangeError, type BillingPlanChangeErrorCode } from "./billingPlanChangeErrors.ts";
 import type { BillingPlanChangeProvider } from "./lemonSqueezyPlanChangeProvider.ts";
+import type { PlanChangeView } from "../types/planChange.ts";
+
+export type { PlanChangeView } from "../types/planChange.ts";
 
 const MAX_BODY_BYTES = 256;
 
@@ -21,17 +24,6 @@ export type PlanChangeEndpointDependencies = {
   repository: BillingPlanChangeRepository;
   getProvider(config: BillingPlanChangeConfig): BillingPlanChangeProvider;
   now(): Date;
-};
-
-/** User-facing state; deliberately coarse. "completed" only when the database completed the change. */
-export type PlanChangeView = {
-  id: string;
-  state: "pending_confirmation" | "scheduled" | "review_required" | "completed" | "not_applied" | "abandoned";
-  direction: "upgrade" | "downgrade";
-  targetPlan: "starter" | "pro" | null;
-  /** Immutable effective date (the paid period end at request time). */
-  effectiveAt: string;
-  nextAction: "none" | "check_status_later" | "contact_support";
 };
 
 export type PlanChangeEndpointResult = {

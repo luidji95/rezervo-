@@ -1,3 +1,5 @@
+import type { PlanChangeOverview } from "./planChange.ts";
+
 export type BillingUsage = {
   activeEmployees: number;
 };
@@ -20,4 +22,6 @@ export type BillingOverview = {
   /** Coarse reason when the portal is unavailable; null when it is available. */
   portalUnavailableReason: "not_owner" | "not_applicable" | "unavailable" | null;
   canStartCheckout: boolean;
+  /** C2 plan-change availability and the latest relevant change (sanitized). */
+  planChange: PlanChangeOverview;
 };

@@ -25,7 +25,7 @@ import { getEmployeeMutationMessage } from "@/features/employees/services/employ
 
 import { EntitlementStatus } from "@/features/billing/components/EntitlementStatus";
 import { getEntitlementActionState } from "@/features/billing/services/entitlementLoadState";
-import { getEffectiveEmployeeLimit, getPendingCheckoutNotice, getPurchaseActivationNotice } from "@/features/billing/services/billingCapacityPresentation";
+import { getEffectiveEmployeeLimit, getPendingCheckoutNotice, getPendingPlanChangeNotice, getPurchaseActivationNotice } from "@/features/billing/services/billingCapacityPresentation";
 import "./employees.css";
 
 export default function EmployeesPage() {
@@ -71,7 +71,7 @@ export default function EmployeesPage() {
   } = useEmployeesPageData();
   const { canManage, canCreateEmployee, canDeactivate } = getEntitlementActionState(entitlementState, activeEmployeeCount);
   const employeeLimit = getEffectiveEmployeeLimit(entitlements);
-  const pendingCheckoutNotice = getPendingCheckoutNotice(entitlements);
+  const pendingCheckoutNotice = getPendingCheckoutNotice(entitlements) ?? getPendingPlanChangeNotice(entitlements);
   const purchaseActivationNotice = getPurchaseActivationNotice(entitlements);
   const isEmployeeLimitReached = employeeLimit !== null && activeEmployeeCount >= employeeLimit;
 

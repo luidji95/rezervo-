@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { getBillingPaymentPresentation } from "../services/billingPaymentPresentation";
 import { CalendarClock, Check, CircleMinus, Clock3, Sparkles, Users } from "lucide-react";
 import { useEntitlements } from "../hooks/useEntitlements";
@@ -8,11 +9,13 @@ import { useBillingUsage } from "../hooks/useBillingUsage";
 import { useBillingCheckout } from "../hooks/useBillingCheckout";
 import { useBillingCustomerPortal } from "../hooks/useBillingCustomerPortal";
 import { useBillingStatusRefresh } from "../hooks/useBillingStatusRefresh";
+import { usePlanChange } from "../hooks/usePlanChange";
+import { PlanChangePanel } from "./PlanChangePanel";
 import { useAuthorization } from "@/context/AuthorizationContext";
 import { useAuth } from "@/context/AuthContext";
 import { formatBillingDate, getSubscriptionStatusPresentation } from "../services/billingSubscriptionPresentation";
 import { getRefreshMessage } from "../services/billingStatusRefresh";
-import { getEffectiveEmployeeLimit, getPendingCheckoutNotice, getPurchaseActivationNotice } from "../services/billingCapacityPresentation";
+import { getEffectiveEmployeeLimit, getPendingCheckoutNotice, getPendingPlanChangeNotice, getPurchaseActivationNotice } from "../services/billingCapacityPresentation";
 import { PLAN_DESCRIPTIONS, PLAN_PRESENTATIONS, type PlanFeaturePresentation } from "../data/planPresentation";
 import { getBillingAccessPresentation } from "../services/billingAccessPresentation";
 import { getCheckoutButtonPresentation } from "../services/billingCheckoutPresentation";
@@ -55,6 +58,13 @@ export function BillingPreview() {
     refreshEntitlements: entitlementState.refreshEntitlements,
     refreshOverview: usageState.refresh,
   });
+  const planChange = usePlanChange({
+    scope: user && currentSalon ? `${user.id}:${currentSalon.id}` : null,
+    overview: usageState.overview,
+    refreshOverview: usageState.refresh,
+    refreshEntitlements: entitlementState.refreshEntitlements,
+  });
+  const [confirmTarget, setConfirmTarget] = useState<"starter" | "pro" | null>(null);
 
   if (entitlementState.loading) return <div className={styles.loading} aria-label="Učitavanje podataka o paketu" aria-busy="true"><span /><span /><span /></div>;
   if (entitlementState.error || !entitlements) {
@@ -67,7 +77,10 @@ export function BillingPreview() {
   const portal = subscriptionPresentation.portal;
   const employeeLimit = getEffectiveEmployeeLimit(entitlements);
   const purchaseActivationNotice = getPurchaseActivationNotice(entitlements);
-  const pendingCheckoutNotice = getPendingCheckoutNotice(entitlements);
+  const pendingCheckoutNotice = getPendingCheckoutNotice(entitlements) ?? getPendingPlanChangeNotice(entitlements);
+  const planChangeOverview = usageState.overview?.planChange ?? null;
+  const subscriptionPlan = entitlements.subscriptionPlanCode === "starter" || entitlements.subscriptionPlanCode === "pro" ? entitlements.subscriptionPlanCode : null;
+  const pendingChange = planChangeOverview?.current && ["pending_confirmation", "scheduled", "review_required"].includes(planChangeOverview.current.state) ? planChangeOverview.current : null;
   const status = accessPresentation.statusLabel
     ? { label: accessPresentation.statusLabel, tone: accessPresentation.statusTone! }
     : entitlements.isReadOnly ? { label: "Pristup samo za pregled", tone: "expired" } : STATUS[entitlements.subscriptionStatus];
@@ -97,12 +110,18 @@ export function BillingPreview() {
     {portal.kind === "note" && <p className={styles.portalNote} role="status">{portal.message}</p>}
     {portal.kind === "action" && <section className={styles.portalNotice} aria-labelledby="billing-portal-title"><div><h2 id="billing-portal-title">{portal.title}</h2><p>{portal.description}</p>{customerPortal.error && <p className={styles.checkoutError} role="alert">{customerPortal.error}</p>}</div><button type="button" className={styles.portalButton} disabled={customerPortal.loading} aria-busy={customerPortal.loading} onClick={() => void customerPortal.openPortal()}>{customerPortal.loading ? "Otvaranje portala…" : portal.cta}</button></section>}
 
+    {usageState.overview && <PlanChangePanel overview={usageState.overview} currentPlan={subscriptionPlan} activeEmployees={usageState.usage?.activeEmployees ?? null} actions={planChange} confirmTarget={confirmTarget} onConfirmTarget={setConfirmTarget} />}
+
     <section className={styles.plans} aria-labelledby="billing-plans-title"><div className={styles.sectionHeading}><div><span>Poređenje paketa</span><h2 id="billing-plans-title">Paketi prilagođeni fazi vašeg salona</h2></div><p>{paymentPresentation.summary}</p></div>{checkout.error && <p className={styles.checkoutError} role="alert">{checkout.error}</p>}<div className={styles.planGrid}>{PLAN_PRESENTATIONS.map((plan) => {
       const current = plan.code === entitlements.planCode;
       const catalogPlan = usageState.plans?.find((item) => item.code === plan.code);
       const comingSoon = catalogPlan ? !catalogPlan.isAvailable : Boolean(plan.comingSoon);
       const button = getCheckoutButtonPresentation({ planCode: plan.code, currentPlanCode: entitlements.planCode, accessReason: entitlements.accessReason, isBillingExempt: entitlements.isBillingExempt, checkoutEnabled: CHECKOUT_ENABLED, checkoutEligible: !usageState.loading && !usageState.error && usageState.overview?.canStartCheckout === true && !entitlements.purchaseActivation && catalogPlan?.isAvailable === true, loadingPlan: checkout.loadingPlan });
-      return <article key={plan.code} className={`${styles.planCard} ${current ? styles.current : ""}`}><div className={styles.planTop}><h3>{catalogPlan?.name ?? plan.name}</h3><div>{current && <span className={styles.currentBadge}>Trenutni paket</span>}{comingSoon && <span className={styles.soonBadge}>Uskoro</span>}</div></div>{catalogPlan && <div className={styles.planPrice}><strong>{plan.code === "premium" ? "od " : ""}{formatPlanPrice(catalogPlan.monthlyPrice, catalogPlan.currency)}</strong><span>/mesečno</span>{catalogPlan.maxEmployees !== null && <small>Do {catalogPlan.maxEmployees} aktivnih zaposlenih</small>}</div>}<p>{plan.description}</p><ul>{plan.features.map((feature) => <FeatureRow key={feature.label} feature={feature} entitlements={entitlements} current={current} />)}</ul><button type="button" className={!button.disabled ? styles.checkoutButton : undefined} disabled={button.disabled} aria-busy={checkout.loadingPlan === plan.code} onClick={button.checkoutPlan ? () => void checkout.startCheckout(button.checkoutPlan as "starter" | "pro") : undefined}>{button.label}</button></article>;
+      return <article key={plan.code} className={`${styles.planCard} ${current ? styles.current : ""}`}><div className={styles.planTop}><h3>{catalogPlan?.name ?? plan.name}</h3><div>{current && <span className={styles.currentBadge}>Trenutni paket</span>}{comingSoon && <span className={styles.soonBadge}>Uskoro</span>}</div></div>{catalogPlan && <div className={styles.planPrice}><strong>{plan.code === "premium" ? "od " : ""}{formatPlanPrice(catalogPlan.monthlyPrice, catalogPlan.currency)}</strong><span>/mesečno</span>{catalogPlan.maxEmployees !== null && <small>Do {catalogPlan.maxEmployees} aktivnih zaposlenih</small>}</div>}<p>{plan.description}</p><ul>{plan.features.map((feature) => <FeatureRow key={feature.label} feature={feature} entitlements={entitlements} current={current} />)}</ul>{planChangeOverview?.canRequest && !planChange.locked && !planChange.submitting && planChangeOverview.targetPlan === plan.code
+        ? <button type="button" className={styles.checkoutButton} onClick={() => setConfirmTarget(plan.code as "starter" | "pro")}>Pređi na {catalogPlan?.name ?? plan.name} od naredne obnove</button>
+        : pendingChange && pendingChange.targetPlan === plan.code
+          ? <button type="button" disabled>{pendingChange.state === "scheduled" ? "Promena zakazana" : "Promena čeka potvrdu"}</button>
+          : <button type="button" className={!button.disabled ? styles.checkoutButton : undefined} disabled={button.disabled} aria-busy={checkout.loadingPlan === plan.code} onClick={button.checkoutPlan ? () => void checkout.startCheckout(button.checkoutPlan as "starter" | "pro") : undefined}>{button.label}</button>}</article>;
     })}</div></section>
 
     <section className={styles.paymentNotice}><Clock3 size={20} /><div><h2>{paymentPresentation.title}</h2><p>{paymentPresentation.notice}</p><Link href="/pricing">Pogledajte javno poređenje paketa</Link></div></section>

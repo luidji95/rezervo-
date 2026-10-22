@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { getBillingPaymentPresentation } from "./billingPaymentPresentation.ts";
 import type { BillingOverview } from "../types/billingOverview.ts";
+import { UNAVAILABLE_PLAN_CHANGE_OVERVIEW } from "./billingPlanChangePresentation.ts";
 
-const overview: BillingOverview = { billingEnvironment: "live", canOpenCustomerPortal: true, portalUnavailableReason: null, canStartCheckout: false, plans: [], usage: { activeEmployees: 3 } };
+const overview: BillingOverview = { billingEnvironment: "live", canOpenCustomerPortal: true, portalUnavailableReason: null, canStartCheckout: false, plans: [], usage: { activeEmployees: 3 }, planChange: UNAVAILABLE_PLAN_CHANGE_OVERVIEW };
 
 test("live recovery portal stays visible with checkout disabled and has no test or plan-switch promise", () => {
   const result = getBillingPaymentPresentation(overview, false);

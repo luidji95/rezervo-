@@ -15,6 +15,7 @@ export function billingStatusKey(entitlements: SalonEntitlements | null, overvie
     entitlements.accessReason, entitlements.accessEndsAt, entitlements.currentPeriodEndsAt, entitlements.trialEndsAt,
     entitlements.overrideType, entitlements.overrideEndsAt,
     overview.canOpenCustomerPortal, overview.portalUnavailableReason, overview.canStartCheckout,
+    overview.planChange?.canRequest ?? null, overview.planChange?.current?.id ?? null, overview.planChange?.current?.state ?? null,
   ]);
 }
 

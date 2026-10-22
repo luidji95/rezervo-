@@ -2,8 +2,7 @@
 
 Migration: `supabase/migrations/202610190047_c2_next_renewal_plan_change.sql`.
 
-Status: **local database foundation and server endpoint, both default-off.** No UI calls the
-endpoint yet. The migration is not applied remotely. Provider semantics below are documented or
+Status: **local database foundation, server endpoint and billing UI, all default-off.** The migration is not applied remotely. Provider semantics below are documented or
 sandbox-observed assumptions, not proven by these local tests. C2 and live billing are not complete.
 
 ## Product contract
@@ -232,6 +231,82 @@ while an outcome is pending or unknown.
 the TS core and the real Supabase repository over the real C2 RPCs on a disposable database
 (`npm run test:billing-plan-change-db`). Nothing here is confirmed against Lemon Squeezy.
 
+## Billing UI (default-off through the server flag)
+
+Code: `src/features/billing/components/PlanChangePanel.tsx`, `hooks/usePlanChange.ts`,
+`services/billingPlanChangePresentation.ts`, `services/billingPlanChangeController.ts`, server
+availability `planChange/billingPlanChangeAvailability.ts` (added to `/api/billing/overview`).
+
+**Overview authority.** `/api/billing/overview` returns `planChange: {canRequest, unavailableReason,
+targetPlan, effectiveAt, canCheckStatus, current}`. It is computed with database reads only — the latest
+change of the salon and the read-only `prepare_billing_plan_change_v1` for the single possible target
+(Starter ↔ Pro) — so ownership, active provider-linked monthly subscription, trial/pilot/override/
+cancelled/expired/past-due limits, the 48 h buffer, an unresolved change and the employee precondition
+all come from the database contract. Loading the page never calls the provider, never mutates and never
+creates a request. Flag/config/parity off → `unavailableReason: "disabled"`, no action and no status
+check, **but an existing change is still shown** (`current`). Managers see the status read-only. No
+tokens, provider IDs, customer/store data or conflict codes are returned. The UI only explains; the
+endpoint and the database re-check everything.
+
+**Offer and confirmation.** For an eligible owner the target plan card shows "Pređi na <paket> od naredne
+obnove". It only opens a confirmation dialog (no request) listing: current plan, new plan with the catalog
+base monthly price (no tax-inclusive or next-invoice amount is invented), the effective date, that nothing
+is charged now, that the current plan stays until the renewal, that Pro starts only after a confirmed
+renewal (or that new activations are limited to the Starter limit for a downgrade), that without a
+confirmed renewal the account becomes read-only after the date, and that the request cannot be cancelled
+or replaced. "Potvrdi promenu na <paket>" sends one POST.
+
+**States and messages** (from the server view; the POST body is never treated as completion):
+
+| State | Message |
+| --- | --- |
+| `scheduled` (confirmed) | "Prelazak na <paket> zakazan je za <datum>." (+ Pro only after a confirmed renewal / Pro stays until then) — only this state names a switch date |
+| `pending_confirmation` (requested/unknown) or lost/unknown POST | "Ishod promene još nije potvrđen. Nemojte ponavljati zahtev. Proverite status." |
+| `review_required` | "Promenu je potrebno proveriti. Obratite se podršci." (no automatic resolution is promised) |
+| `completed` | "Prelazak na <paket> je potvrđen nakon uspešne obnove." (plan shown from canonical entitlements) |
+| `not_applied` / `abandoned` | the change was not applied / not carried out because the subscription was not renewed |
+
+Unavailable reasons are explained (48 h, surplus employees with the target limit and a link to
+`/employees` — nothing is deactivated automatically, payment problem, cancelled, purchase pending,
+override, unavailable). A pending downgrade shows the narrowed employee limit from the database capacity
+authority on the billing and employees pages. Never shown: "payment successful" from a POST, target
+capabilities before canonical confirmation, an optimistic new plan, or a generic retry after an unclear
+outcome.
+
+**Repeat protection.** One POST per confirmation (single-flight; repeated clicks are ignored). After a
+lost response, a 5xx, `status_unknown` or any unrecognised answer the UI shows the do-not-repeat message,
+locks new requests in this user:salon context and re-reads the local overview/entitlements only; it never
+sends another change request. Error codes that the server returns only before any provider mutation
+(48 h, capacity, provider read unavailable, state changed, …) show their message without the lock.
+
+**An unclear POST is not resolved by the absence of a change.** The original request may still be running
+on the server (prepare → provider GET → intent) when the browser loses the response, so an overview read
+can show "no change, requestable" before the intent is committed. The lock is therefore released only when
+a later local overview read (the request's own refresh, a B2 refresh or an explicit status check) shows a
+concrete transition whose id differs from the change known when the request was sent; no timeout is used
+to "prove" failure. A pending transition keeps the offer hidden anyway; its state is shown from the server
+view (requested → pending, confirmed → scheduled). After a full reload the lock is gone (it is in-memory
+only) and the page trusts the server overview. This is not exactly-once protection: the database stays
+the authority — a second request while the first intent exists gets `BILLING_PLAN_CHANGE_PENDING`, and
+only the caller that received the new intent id dispatches the PATCH.
+
+**Local refresh vs provider status check.** Focus/visibility/pageshow refreshes (B2) re-read only the
+local overview and entitlements; their fingerprint now includes the plan-change state. The explicit
+"Proveri promenu" button (shown only when `canCheckStatus`) calls `/api/billing/plan-change/status`
+(provider read + evaluation, never a PATCH), then re-reads overview and entitlements. No polling.
+Single-flight per action; results after logout, user/salon change or unmount are dropped; a failed check
+keeps the last valid data and says the data may be stale. If the flag is switched off while a change is
+pending, the status stays visible from the database but neither action is offered; the browser cannot
+bypass the server flag.
+
+**Tested locally (not provider-confirmed).** Unit/controller tests, plus real components and hooks in
+headless Chrome over an isolated `next dev` (every `.env.local` value overridden with inert values, all
+`/api/*` and Supabase calls answered by CDP mocks before navigation, every external request blocked),
+desktop and a 390×844 mobile viewport, including the lost-response race (an overview read before the late
+commit does not re-offer the change; the late requested and then confirmed state is shown; exactly one
+plan-change POST; local refreshes never call the status endpoint). This does not prove server
+authorization, the real database, the provider or webhook processing.
+
 ## Integration
 
 | Caller | Behaviour with an unresolved change |
@@ -280,7 +355,7 @@ applied alone it fails with `PERIOD_EXECUTE_ACL` with or without this migration.
    renewed `subscription_updated` (order and timestamps relative to `renews_at`).
 2. Which paid event arrives when a failed renewal is later recovered.
 3. Customer portal plan switching disabled in the provider dashboard.
-4. Plan-change UI (pending/scheduled/review states, no repeat after an unknown outcome) and an
-   operator resolution for `manual_review` and for changes left `requested` after an interruption.
+4. Operator resolution for `manual_review` and for changes left `requested` after an interruption
+   (the UI only tells the owner to contact support).
 5. Remote migration, flag and provider configuration per environment, then live acceptance, as
    separate steps.

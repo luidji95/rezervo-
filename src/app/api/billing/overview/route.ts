@@ -10,6 +10,10 @@ import { getTrustedBillingEnvironment } from "@/features/billing/config/billingE
 import type { BillingEnvironment } from "@/features/billing/config/billingEnvironment";
 import { getBillingCheckoutConfig } from "@/features/billing/services/billingCheckoutConfig";
 import { canOfferNewCheckout } from "@/features/billing/services/billingCheckoutEligibility";
+import { getBillingPlanChangeConfig } from "@/features/billing/planChange/billingPlanChangeConfig";
+import { resolvePlanChangeOverview } from "@/features/billing/planChange/billingPlanChangeAvailability";
+import { SupabaseBillingPlanChangeRepository } from "@/features/billing/planChange/supabaseBillingPlanChangeRepository";
+import type { PlanChangeDatabaseClient } from "@/features/billing/planChange/supabaseBillingPlanChangeRepositoryCore";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +82,19 @@ export async function GET(request: Request) {
       getConfig: getBillingCustomerPortalConfig,
       environmentMatches: (environment) => billingPortalEnvironmentMatches(supabaseServer, environment),
     });
-    return NextResponse.json({ success: true, usage: { activeEmployees: count ?? 0 }, plans: catalog, canOpenCustomerPortal: portal.available, portalUnavailableReason: portal.reason, canStartCheckout, billingEnvironment: resolveTrustedBillingEnvironment() }, { headers: { "Cache-Control": "no-store" } });
+    // Database reads only (latest change, read-only prepare); never a provider call or a mutation.
+    const planChange = await resolvePlanChangeOverview({
+      userId: auth.user.id,
+      salonId,
+      isOwner: salon.owner_id === auth.user.id,
+      currentPlanCode: entitlements.subscriptionPlanCode,
+      now: new Date(),
+    }, {
+      getConfig: getBillingPlanChangeConfig,
+      environmentMatches: (environment) => billingPortalEnvironmentMatches(supabaseServer, environment),
+      repository: new SupabaseBillingPlanChangeRepository(supabaseServer as unknown as PlanChangeDatabaseClient),
+    });
+    return NextResponse.json({ success: true, usage: { activeEmployees: count ?? 0 }, plans: catalog, canOpenCustomerPortal: portal.available, portalUnavailableReason: portal.reason, canStartCheckout, billingEnvironment: resolveTrustedBillingEnvironment(), planChange }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const code = error instanceof EntitlementError ? error.code : "BILLING_OVERVIEW_LOAD_FAILED";
     return NextResponse.json({ success: false, code }, { status: code === "FORBIDDEN" ? 403 : 500 });

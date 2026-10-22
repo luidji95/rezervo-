@@ -19,6 +19,14 @@ export function getPendingCheckoutNotice(entitlements: View | null): string | nu
   return `Započeta kupovina paketa ${plan} ograničava broj aktivnih zaposlenih na ${capacity.maxEmployees} dok se kupovina ne završi.`;
 }
 
+/** A pending (unresolved) downgrade narrows new activations to the target limit until it resolves. */
+export function getPendingPlanChangeNotice(entitlements: View | null): string | null {
+  const capacity = entitlements?.employeeCapacity;
+  if (!capacity || capacity.reason !== "pending_plan_change" || capacity.maxEmployees === null) return null;
+  const plan = capacity.pendingPlanCode ? PLAN_NAMES[capacity.pendingPlanCode] : "izabrani";
+  return `Zakazana promena na paket ${plan} ograničava broj aktivnih zaposlenih na ${capacity.maxEmployees}. Postojeći zaposleni se ne deaktiviraju automatski.`;
+}
+
 /** Never claims a payment unless the database recorded a paid initial invoice for that subscription. */
 export function getPurchaseActivationNotice(entitlements: View | null): string | null {
   const activation = entitlements?.purchaseActivation;

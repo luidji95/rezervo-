@@ -1,9 +1,9 @@
-# C2: Starter/Pro plan change from the next renewal (database foundation)
+# C2: Starter/Pro plan change from the next renewal
 
 Migration: `supabase/migrations/202610190047_c2_next_renewal_plan_change.sql`.
 
-Status: **local database foundation only, default-off.** No user route, provider adapter or UI calls
-these RPCs. The migration is not applied remotely. Provider semantics below are documented or
+Status: **local database foundation and server endpoint, both default-off.** No UI calls the
+endpoint yet. The migration is not applied remotely. Provider semantics below are documented or
 sandbox-observed assumptions, not proven by these local tests. C2 and live billing are not complete.
 
 ## Product contract
@@ -145,6 +145,93 @@ is trusted as validated by the server adapter, exactly like D snapshot recovery.
 prove the origin of arbitrary service-role parameters. The provider GET and PATCH happen outside any
 database transaction; the request RPC re-checks the local version (state token) after the read.
 
+## Server endpoint and Lemon Squeezy adapter (default-off)
+
+Code: `src/features/billing/planChange/`, routes `src/app/api/billing/plan-change/route.ts` and
+`src/app/api/billing/plan-change/status/route.ts`.
+
+**Flag.** `BILLING_PLAN_CHANGE_ENABLED === "true"` plus a complete trusted Lemon Squeezy configuration
+for the deployed `BILLING_ENVIRONMENT` (`resolveLemonSqueezyProviderConfig`). Not set anywhere.
+
+**Order of checks** (both routes):
+
+1. Authentication: `getAuthenticatedRequestUser` verifies the bearer token (a Supabase Auth call). No
+   token or an invalid one → `401`; nothing else runs.
+2. Request shape (no I/O): query string, size, content type, exact body → `400`.
+3. Configuration (no I/O): flag off or incomplete/invalid configuration → `503
+   BILLING_PLAN_CHANGE_DISABLED`; no database call and no provider call.
+4. Runtime parity: one read-only database call, `billing_environment_matches_v1`. Mismatch or error →
+   the same `503`; no billing RPC and no provider call follow. The response never says which of 3/4
+   failed.
+5. Owner lookup (service-role read of `salons.owner_id`), then the billing RPCs and the provider
+   calls of the flow below.
+
+**Owner and tenant.** The user comes from the verified bearer token (`getAuthenticatedRequestUser`);
+the salon is the one whose `owner_id` is that user (none → `403`, managers/employees included;
+more than one → not eligible). The database re-checks ownership. Authentication is a bearer token,
+not a cookie, so there is no ambient-credential CSRF path; no origin allowlist exists in this
+codebase and none is added here.
+
+**Request contract.** `POST /api/billing/plan-change`, `Content-Type: application/json`, body
+exactly `{"targetPlan":"starter"|"pro"}` (max 256 bytes), no query string. Provider, store,
+subscription, variant and environment are never accepted from the browser; the target variant is the
+one the database recorded. `POST /api/billing/plan-change/status`: empty body (or `{}`).
+
+**Request flow.** prepare (DB) → expected provider customer read from the local subscription
+(service-role, never from the browser) → provider `GET /v1/subscriptions/{id}` outside any DB
+transaction → local validation (same subscription and customer, configured store, environment test mode, `active`, not
+cancelled/paused/trial/ended, `renews_at` equal to the local paid period end, `payment_processor`
+exactly `stripe`) → `request_billing_plan_change_v1` with the state token and the validated
+evidence (the DB re-checks customer, from-variant and versions) → **one** `PATCH`
+`{variant_id, disable_prorations: true}` (never `invoice_immediately`) → `record` → sanitized view.
+PayPal and any payment processor not positively identified as `stripe` are refused before the
+intent (the provider API cannot change PayPal subscriptions). The interval is enforced by the
+database mapping (only monthly Starter/Pro variants exist there).
+
+**At most one application dispatch.** The dispatch right is the new intent id returned by the
+atomic `request_billing_plan_change_v1` (subscription lock + one-unresolved-change unique index).
+Only the call that receives it sends the PATCH; every other call gets `BILLING_PLAN_CHANGE_PENDING`
+and answers `already_pending` without any provider mutation. No new migration was needed. There is
+no automatic retry anywhere; the HTTP client uses `redirect: "error"`.
+
+| Crash/loss window | Result |
+| --- | --- |
+| request RPC response lost (intent may be committed) | no id → no PATCH; `status_unknown`; a committed intent stays `requested` (blocking) |
+| intent committed, process stops before the PATCH | `requested`, attempt 0, blocking; never re-dispatched; refresh cannot confirm while the provider shows the old variant; operator investigation |
+| PATCH sent, process stops before `record` | same as above; a later webhook or status check may still confirm (E1) |
+| `record` committed but its response lost | one in-process replay of the same result (idempotent), never a second PATCH |
+| `record` never committed | `status_unknown`; the change stays `requested` (never `not_applied` or success) |
+| browser aborts the request | the server flow continues; the outcome is visible through the status route |
+
+This is not exactly-once delivery of the external HTTP request; it is at most one application
+dispatch, with an explicitly unknown outcome after interruptions.
+
+**Classification.** GET failures are only "unavailable" (nothing sent). After the dispatch:
+2xx with a valid body for the same subscription, expected customer, configured store and test mode
+→ `accepted`
+(neither payment nor completion; it contributes E1 evidence). Everything else — timeout, transport
+failure, redirect, 429, any 4xx, 5xx, invalid/foreign/oversized body (64 KiB limit), or a throwing
+adapter — is `ambiguous` → `unknown`. No provider response is classified `rejected`: there is no
+proven allowlist of responses that prove the change was not applied.
+
+**Status route.** Loads the latest local change; with none, or a terminal one, it answers without a
+provider call. For an unresolved change it does a validated GET (same subscription and the customer recorded with
+the change; otherwise nothing is recorded), records it as `observed` and runs
+`evaluate_billing_plan_change_v1`. It never sends a PATCH. A bare provider read is not E2 (047
+semantics), so a status check alone never completes a change.
+
+**Response.** `{success, outcome, doNotRepeat, planChange: {id, state, direction, targetPlan,
+effectiveAt, nextAction}}` with `outcome` in `requested | already_pending | status_unknown | current
+| none`; `state` in `pending_confirmation | scheduled | review_required | completed | not_applied |
+abandoned` (`completed` only when the database completed the change). No provider IDs, customer,
+store, tokens, raw provider data, conflict codes or URLs are returned. Errors are stable
+`BILLING_PLAN_CHANGE_*` codes; `doNotRepeat` tells a later UI not to offer another change or purchase
+while an outcome is pending or unknown.
+
+**Local vs provider-confirmed.** All of the above is tested locally with a mocked provider, including
+the TS core and the real Supabase repository over the real C2 RPCs on a disposable database
+(`npm run test:billing-plan-change-db`). Nothing here is confirmed against Lemon Squeezy.
+
 ## Integration
 
 | Caller | Behaviour with an unresolved change |
@@ -193,4 +280,7 @@ applied alone it fails with `PERIOD_EXECUTE_ACL` with or without this migration.
    renewed `subscription_updated` (order and timestamps relative to `renews_at`).
 2. Which paid event arrives when a failed renewal is later recovered.
 3. Customer portal plan switching disabled in the provider dashboard.
-4. TS provider adapter/endpoint, UI, then remote migration and live acceptance as separate steps.
+4. Plan-change UI (pending/scheduled/review states, no repeat after an unknown outcome) and an
+   operator resolution for `manual_review` and for changes left `requested` after an interruption.
+5. Remote migration, flag and provider configuration per environment, then live acceptance, as
+   separate steps.

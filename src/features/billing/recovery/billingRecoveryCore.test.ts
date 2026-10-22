@@ -21,6 +21,7 @@ const snapshot = (patch: Partial<NormalizedLemonSqueezySubscription> = {}): Norm
 
 function harness(environment: BillingEnvironment = "test", options: { snap?: NormalizedLemonSqueezySubscription; providerError?: unknown; local?: { providerSubscriptionId: string } | null; planVerdict?: string; applyOutcome?: string; rpcFails?: boolean } = {}) {
   const calls = { provider: 0, getLocal: 0, planEvent: 0, applyEvent: 0, planSnap: 0, applySnap: 0 };
+  const changeCalls = { getChange: 0, planChange: 0, applyChange: 0 };
   const seen: { apply?: RecoveryApply } = {};
   const repository: BillingRecoveryRepository = {
     async getLinkedSubscription() { calls.getLocal++; return options.local === undefined ? { providerSubscriptionId: "900" } : options.local; },
@@ -28,6 +29,9 @@ function harness(environment: BillingEnvironment = "test", options: { snap?: Nor
     async applyEventReprocess(_e, _id, apply) { calls.applyEvent++; seen.apply = apply; return { outcome: options.applyOutcome ?? "reprocessed", errorCode: null }; },
     async planSnapshot() { calls.planSnap++; return { verdict: options.planVerdict ?? "eligible", errorCode: null, reviewToken: TOKEN, details: { Proposed: "status=active" } }; },
     async applySnapshot(_e, _id, _s, apply) { calls.applySnap++; seen.apply = apply; return { outcome: options.applyOutcome ?? "applied", errorCode: null }; },
+    async getPlanChange() { changeCalls.getChange++; return options.local === undefined ? { providerSubscriptionId: "900" } : options.local; },
+    async planPlanChange() { changeCalls.planChange++; return { verdict: options.planVerdict ?? "eligible", errorCode: options.planVerdict === "unsupported" ? "recovery_plan_change_e1_order_unprovable" : null, reviewToken: TOKEN, details: { Proposed: "record_observed" } }; },
+    async applyPlanChange(_e, _id, _s, apply) { changeCalls.applyChange++; seen.apply = apply; return { outcome: options.applyOutcome ?? "recorded", errorCode: null }; },
   };
   const provider: BillingReconciliationProvider = {
     async retrieveSubscription() {
@@ -37,7 +41,7 @@ function harness(environment: BillingEnvironment = "test", options: { snap?: Nor
     },
   };
   const run = (argv: string[]) => runBillingRecovery({ command: parseRecoveryArgs(argv), environment, storeId: "30", repository, provider });
-  return { calls, seen, run };
+  return { calls, changeCalls, seen, run };
 }
 
 // ---- argument parsing -------------------------------------------------------
@@ -181,4 +185,44 @@ test("reports never contain credentials, customer identifiers or provider URLs",
   const h = harness();
   const text = formatRecoveryReport(await h.run(["subscription", "--subscription", ID]));
   assert.doesNotMatch(text, /77-secret-customer|Bearer|api[_-]?key|https?:\/\//i);
+});
+
+// ---- C2 plan-change recovery ---------------------------------------------------
+test("plan-change: --change target only, dry-run default, other target flags refused", () => {
+  assert.deepEqual(parseRecoveryArgs(["plan-change", "--change", ID]), { kind: "plan-change", targetId: ID, apply: null });
+  assert.throws(() => parseRecoveryArgs(["plan-change", "--subscription", ID]), RecoveryUsageError);
+  assert.throws(() => parseRecoveryArgs(["plan-change", "--change", ID, "--subscription", ID]), /does not apply/);
+  assert.throws(() => parseRecoveryArgs(["plan-change", "--change", ID, "--force-complete"]), RecoveryUsageError);
+  assert.equal(parseRecoveryArgs(["plan-change", "--change", ID, ...APPLY]).apply?.ticket, "OPS-42");
+});
+
+test("plan-change dry-run reads the provider once and never applies; apply passes the audit inputs", async () => {
+  const dry = harness();
+  const report = await dry.run(["plan-change", "--change", ID]);
+  assert.deepEqual([report.mode, report.status, report.exitCode], ["dry-run", "eligible", 0]);
+  assert.deepEqual([dry.calls.provider, dry.changeCalls.planChange, dry.changeCalls.applyChange, dry.calls.planSnap], [1, 1, 0, 0]);
+  assert.match(formatRecoveryReport(report), /--change 11111111-1111-4111-8111-111111111111 --apply --review-token/);
+  const applied = harness();
+  const result = await applied.run(["plan-change", "--change", ID, ...APPLY]);
+  assert.deepEqual([result.status, result.exitCode, applied.changeCalls.applyChange], ["recorded", 0, 1]);
+  assert.equal(applied.seen.apply?.ticket, "OPS-42");
+});
+
+test("plan-change: unsupported verdicts are reported precisely, identity mismatch and missing change stop early", async () => {
+  const unsupported = harness("test", { planVerdict: "unsupported" });
+  const report = await unsupported.run(["plan-change", "--change", ID]);
+  assert.deepEqual([report.status, report.errorCode, report.exitCode], ["unsupported", "recovery_plan_change_e1_order_unprovable", 2]);
+  assert.doesNotMatch(formatRecoveryReport(report), /--apply/);
+  const foreign = harness("test", { snap: snapshot({ providerStoreId: "999" }) });
+  assert.equal((await foreign.run(["plan-change", "--change", ID])).status, "identity_conflict");
+  assert.equal(foreign.changeCalls.planChange, 0);
+  const missing = harness("test", { local: null });
+  assert.deepEqual([(await missing.run(["plan-change", "--change", ID])).errorCode, missing.calls.provider], ["recovery_plan_change_not_found", 0]);
+  const providerDown = harness("test", { providerError: new BillingReconciliationProviderError("provider_unavailable", "provider_timeout", false) });
+  assert.deepEqual([(await providerDown.run(["plan-change", "--change", ID])).exitCode, providerDown.changeCalls.planChange], [3, 0]);
+});
+
+test("plan-change report carries no customer identifiers or credentials", async () => {
+  const text = formatRecoveryReport(await harness().run(["plan-change", "--change", ID]));
+  assert.doesNotMatch(text, /77-secret-customer|test-key|Bearer/);
 });

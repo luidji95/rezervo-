@@ -355,7 +355,9 @@ applied alone it fails with `PERIOD_EXECUTE_ACL` with or without this migration.
    renewed `subscription_updated` (order and timestamps relative to `renews_at`).
 2. Which paid event arrives when a failed renewal is later recovered.
 3. Customer portal plan switching disabled in the provider dashboard.
-4. Operator resolution for `manual_review` and for changes left `requested` after an interruption
-   (the UI only tells the owner to contact support).
+4. Operator recovery is minimal (migration `202610220048`, runbook section 13): `record_observed`
+   (E1 from a validated provider read) and `resolve_not_applied` (renewal on the previous plan with a
+   paid renewal invoice). Same-timestamp E1 conflicts, post-boundary-only target reads and an
+   unresolved dispatch while the provider still shows the previous plan stay unsupported by design.
 5. Remote migration, flag and provider configuration per environment, then live acceptance, as
    separate steps.

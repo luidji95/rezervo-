@@ -17,11 +17,15 @@ export interface BillingRecoveryRepository {
   applyEventReprocess(environment: BillingEnvironment, eventId: string, apply: RecoveryApply): Promise<RecoveryApplyResult>;
   planSnapshot(environment: BillingEnvironment, subscriptionId: string, snapshot: NormalizedLemonSqueezySubscription): Promise<RecoveryPlan>;
   applySnapshot(environment: BillingEnvironment, subscriptionId: string, snapshot: NormalizedLemonSqueezySubscription, apply: RecoveryApply): Promise<RecoveryApplyResult>;
+  /** C2: the provider subscription of one plan change in this environment. */
+  getPlanChange(changeId: string, environment: BillingEnvironment): Promise<{ providerSubscriptionId: string } | null>;
+  planPlanChange(environment: BillingEnvironment, changeId: string, snapshot: NormalizedLemonSqueezySubscription): Promise<RecoveryPlan>;
+  applyPlanChange(environment: BillingEnvironment, changeId: string, snapshot: NormalizedLemonSqueezySubscription, apply: RecoveryApply): Promise<RecoveryApplyResult>;
 }
 
 export type RecoveryReport = {
   mode: "dry-run" | "apply";
-  target: { kind: "event" | "subscription"; id: string };
+  target: { kind: RecoveryCommand["kind"]; id: string };
   environment: BillingEnvironment;
   /** dry-run verdict or apply outcome */
   status: string;
@@ -32,8 +36,8 @@ export type RecoveryReport = {
   exitCode: 0 | 2 | 3;
 };
 
-const OK_DRY_RUN = new Set(["eligible", "no_change", "already_processed"]);
-const OK_APPLY = new Set(["applied", "reprocessed", "no_change", "dependency_pending"]);
+const OK_DRY_RUN = new Set(["eligible", "no_change", "already_processed", "not_pending"]);
+const OK_APPLY = new Set(["applied", "reprocessed", "no_change", "dependency_pending", "recorded", "resolved_not_applied"]);
 
 function report(
   command: RecoveryCommand,
@@ -88,8 +92,10 @@ export async function runBillingRecovery(input: {
       return report(command, environment, result.outcome, result.errorCode);
     }
 
-    const local = await repository.getLinkedSubscription(command.targetId, environment);
-    if (!local) return report(command, environment, "not_found", "recovery_subscription_not_found");
+    const local = command.kind === "plan-change"
+      ? await repository.getPlanChange(command.targetId, environment)
+      : await repository.getLinkedSubscription(command.targetId, environment);
+    if (!local) return report(command, environment, "not_found", command.kind === "plan-change" ? "recovery_plan_change_not_found" : "recovery_subscription_not_found");
 
     let snapshot: NormalizedLemonSqueezySubscription;
     try {
@@ -104,6 +110,15 @@ export async function runBillingRecovery(input: {
       return report(command, environment, "identity_conflict", "recovery_snapshot_identity_conflict");
     }
 
+    if (command.kind === "plan-change") {
+      // C2: never a provider mutation; the database decides whether the read is usable evidence.
+      if (!command.apply) {
+        const plan = await repository.planPlanChange(environment, command.targetId, snapshot);
+        return report(command, environment, plan.verdict, plan.errorCode, { reviewToken: plan.reviewToken, details: plan.details });
+      }
+      const applied = await repository.applyPlanChange(environment, command.targetId, snapshot, command.apply);
+      return report(command, environment, applied.outcome, applied.errorCode);
+    }
     if (!command.apply) {
       const plan = await repository.planSnapshot(environment, command.targetId, snapshot);
       return report(command, environment, plan.verdict, plan.errorCode, { reviewToken: plan.reviewToken, details: plan.details });
@@ -131,7 +146,7 @@ export function formatRecoveryReport(result: RecoveryReport, binary = "billing-r
     line("Review token", result.reviewToken),
   ];
   if (result.mode === "dry-run" && result.status === "eligible" && result.reviewToken) {
-    const flag = result.target.kind === "event" ? "--event" : "--subscription";
+    const flag = result.target.kind === "event" ? "--event" : result.target.kind === "plan-change" ? "--change" : "--subscription";
     lines.push(`To apply after review: ${binary} ${result.target.kind} ${flag} ${result.target.id} --apply --review-token ${result.reviewToken} --ticket <ref> --reason "<why>" --operator <label>`);
   }
   if (result.status === "stale") lines.push("The state or the provider evidence changed after the dry-run. Run the dry-run again and review the new proposal.");

@@ -76,6 +76,7 @@
     "test:billing-c1-capacity-concurrency": "node scripts/test-billing-c1-capacity-concurrency.mjs",
     "test:billing-c2-plan-change-db": "node scripts/test-billing-c2-plan-change.mjs",
     "test:billing-c2-plan-change-concurrency": "node scripts/test-billing-c2-plan-change-concurrency.mjs",
+    "test:billing-c2-operator-recovery-db": "node scripts/test-billing-c2-operator-recovery.mjs",
     "test:billing-plan-change": "node --experimental-strip-types --test src/features/billing/planChange/lemonSqueezyPlanChangeProvider.test.ts src/features/billing/planChange/billingPlanChangeCore.test.ts src/features/billing/planChange/billingPlanChangeEndpointCore.test.ts src/features/billing/planChange/supabaseBillingPlanChangeRepository.test.ts src/features/billing/planChange/billingPlanChangeAvailability.test.ts src/features/billing/services/billingPlanChangePresentation.test.ts src/features/billing/services/billingPlanChangeController.test.ts",
     "test:billing-plan-change-db": "node --experimental-strip-types --test src/features/billing/planChange/billingPlanChangeDb.test.ts",
     "test:billing-c2-access-parity": "node --experimental-strip-types --test src/features/billing/services/planChangeAccessParity.test.ts",

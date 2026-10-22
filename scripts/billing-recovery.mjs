@@ -1,6 +1,7 @@
 // Operator billing recovery (one target per call, dry-run by default).
 //   node --experimental-strip-types scripts/billing-recovery.mjs event --event <uuid>
 //   node --experimental-strip-types scripts/billing-recovery.mjs subscription --subscription <uuid>
+//   node --experimental-strip-types scripts/billing-recovery.mjs plan-change --change <uuid>   (C2, migration 048)
 // See docs/billing-operator-recovery-runbook.md. Credentials and the billing environment come only
 // from the operator shell environment; they are never accepted as arguments and never printed.
 import { createClient } from "@supabase/supabase-js";

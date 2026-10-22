@@ -3136,6 +3136,70 @@ export type Database = {
           target_provider_variant_id: string
         }[]
       }
+      apply_billing_plan_change_recovery_v1: {
+        Args: {
+          p_environment: string
+          p_now?: string
+          p_operator_label: string
+          p_plan_change_id: string
+          p_provider_cancelled: boolean
+          p_provider_created_at: string
+          p_provider_customer_id: string
+          p_provider_ends_at: string
+          p_provider_pause_mode: string
+          p_provider_pause_resumes_at: string
+          p_provider_product_id: string
+          p_provider_renews_at: string
+          p_provider_status: string
+          p_provider_store_id: string
+          p_provider_subscription_id: string
+          p_provider_trial_ends_at: string
+          p_provider_updated_at: string
+          p_provider_variant_id: string
+          p_reason: string
+          p_review_token: string
+          p_test_mode: boolean
+          p_ticket_ref: string
+        }
+        Returns: {
+          audit_id: string
+          error_code: string
+          outcome: string
+          plan_change_status: string
+        }[]
+      }
+      plan_billing_plan_change_recovery_v1: {
+        Args: {
+          p_environment: string
+          p_now?: string
+          p_plan_change_id: string
+          p_provider_cancelled: boolean
+          p_provider_created_at: string
+          p_provider_customer_id: string
+          p_provider_ends_at: string
+          p_provider_pause_mode: string
+          p_provider_pause_resumes_at: string
+          p_provider_product_id: string
+          p_provider_renews_at: string
+          p_provider_status: string
+          p_provider_store_id: string
+          p_provider_subscription_id: string
+          p_provider_trial_ends_at: string
+          p_provider_updated_at: string
+          p_provider_variant_id: string
+          p_test_mode: boolean
+        }
+        Returns: {
+          baseline_period_end: string
+          change_status: string
+          error_code: string
+          evidence_fingerprint: string
+          local_period_ends_at: string
+          proposed_action: string
+          review_token: string
+          verdict: string
+        }[]
+      }
       accept_team_invitation: {
         Args: { p_invitation_id: string; p_profile_id: string }
         Returns: {

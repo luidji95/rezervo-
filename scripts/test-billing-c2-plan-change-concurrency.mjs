@@ -191,6 +191,65 @@ try {
   assert(res === "confirmed" && e1 === "processed", `K6 result=${res} webhook=${e1}`);
   assert(await one(`select c2t.state('k6');`, "k6 state") === "confirmed:starter:false", "K6 confirmed, plan unchanged");
 
+  // K7. operator record_observed (C2 recovery, migration 048) versus the confirming webhook, both orders
+  for (const order of ["operator-first", "webhook-first"]) {
+    const label = `k7-${order}`;
+    await one(`select c2t.mk('${label}','starter',0); select c2t.request('${label}','pro');
+      select 1 from public.record_billing_plan_change_provider_result_v1('test',(select change_id from c2t.salons where label='${label}'),'ambiguous',
+        null,null,null,null,null,null,null,null,null,null,null,null,null,c2t.t(interval '1 second'));`, label);
+    const snap = `s.pid,s.customer,'501229',true,'1451030','2264940','active',false,null,null,null,c2t.b(),null,c2t.t(interval '-1 day'),c2t.t(interval '5 seconds')`;
+    const token = await one(`select r.review_token from c2t.salons s cross join lateral public.plan_billing_plan_change_recovery_v1('test',s.change_id,${snap},c2t.t(interval '1 minute')) r where s.label='${label}';`, "k7 plan");
+    const event = await one(`select c2t.event('${label}','${label}-e1','pro',c2t.t(interval '6 seconds'),c2t.b());`, "k7 event");
+    const operatorTx = (hold) => tx(`${label}-operator`, `select r.outcome into v_out from c2t.salons s cross join lateral public.apply_billing_plan_change_recovery_v1('test',s.change_id,${snap},'${token}','OPS-K7','concurrent operator recovery','c2-k7',c2t.t(interval '1 minute')) r where s.label='${label}';`, hold);
+    const webhookTx = (hold) => tx(`${label}-webhook`, `select r.outcome||coalesce(':'||r.error_code,'') into v_out from public.process_billing_subscription_updated_v2('${event}', c2t.t(interval '1 minute')) r;`, hold);
+    const [first, second] = order === "operator-first"
+      ? await race(operatorTx(1.5), `${label}-operator`, webhookTx(0), `${label}-webhook`)
+      : await race(webhookTx(1.5), `${label}-webhook`, operatorTx(0), `${label}-operator`);
+    const operator = order === "operator-first" ? first : second;
+    const webhook = order === "operator-first" ? second : first;
+    assert(webhook === "processed", `K7 ${order} webhook=${webhook}`);
+    assert(order === "operator-first" ? operator === "recorded" : ["precondition_unmet", "stale"].includes(operator), `K7 ${order} operator=${operator}`);
+    assert(await one(`select c2t.state('${label}');`, "k7 state") === "confirmed:starter:false", `K7 ${order} confirmed once, plan unchanged`);
+  }
+
+  // K8. resolve_not_applied: two operators at once, and operator versus a concurrent invoice/evaluator
+  const renewedOnPrevious = async (label) => {
+    await one(`select c2t.mk('${label}','starter',0); select c2t.request('${label}','pro');
+      select 1 from public.record_billing_plan_change_provider_result_v1('test',(select change_id from c2t.salons where label='${label}'),'ambiguous',
+        null,null,null,null,null,null,null,null,null,null,null,null,null,c2t.t(interval '1 second'));`, label);
+    const renewal = await one(`select c2t.event('${label}','${label}-renew','starter',c2t.b(interval '1 minute'),c2t.b(interval '1 month'));`, "renewal event");
+    await one(`select outcome from public.process_billing_subscription_updated_v2('${renewal}', c2t.b(interval '2 minutes'));`, "renewal");
+    const invoice = await one(`select nextval('c2t.ids');`, "invoice id");
+    await one(`select c2t.invoice('${label}','${invoice}');`, "invoice");
+    const snap = `s.pid,s.customer,'501229',true,'1451030','2264918','active',false,null,null,null,c2t.b(interval '1 month'),null,c2t.t(interval '-1 day'),c2t.b(interval '1 minute')`;
+    const token = await one(`select r.review_token from c2t.salons s cross join lateral public.plan_billing_plan_change_recovery_v1('test',s.change_id,${snap},c2t.b(interval '1 hour')) r where s.label='${label}';`, "plan");
+    const applyTx = (name, hold) => tx(name, `select r.outcome into v_out from c2t.salons s cross join lateral public.apply_billing_plan_change_recovery_v1('test',s.change_id,${snap},'${token}','OPS-K8','concurrent operator resolution','c2-k8',c2t.b(interval '1 hour')) r where s.label='${label}';`, hold);
+    return { invoice, applyTx };
+  };
+  const claims = (invoice) => one(`select count(*) from public.billing_subscription_plan_changes where renewal_invoice_id='${invoice}';`, "claims");
+  const status = (label) => one(`select c.status||':'||(sub.current_period_ends_at=c2t.b(interval '1 month'))::text from c2t.salons s join public.billing_subscription_plan_changes c on c.id=s.change_id join public.subscriptions sub on sub.id=s.sub_id where s.label='${label}';`, "status");
+
+  const k8a = await renewedOnPrevious("k8a");
+  const ops = (await race(k8a.applyTx("k8a-op1", 1.5), "k8a-op1", k8a.applyTx("k8a-op2", 0), "k8a-op2")).sort();
+  assert(ops.join(",") === "no_change,resolved_not_applied", `K8a operators=${ops}`);
+  assert(await claims(k8a.invoice) === "1" && await status("k8a") === "not_applied:true", "K8a resolved once, invoice claimed once");
+
+  for (const order of ["operator-first", "invoice-first"]) {
+    const label = `k8b-${order}`;
+    const k8b = await renewedOnPrevious(label);
+    const extra = await one(`select nextval('c2t.ids');`, "extra invoice");
+    const invoiceTx = (hold) => tx(`${label}-invoice`, `v_out := c2t.invoice('${label}','${extra}');`, hold);
+    const [first, second] = order === "operator-first"
+      ? await race(k8b.applyTx(`${label}-op`, 1.5), `${label}-op`, invoiceTx(0), `${label}-invoice`)
+      : await race(invoiceTx(1.5), `${label}-invoice`, k8b.applyTx(`${label}-op`, 0), `${label}-op`);
+    const operator = order === "operator-first" ? first : second;
+    const invoice = order === "operator-first" ? second : first;
+    assert(invoice === "invoice_evidence_recorded", `K8b ${order} invoice=${invoice}`);
+    assert(operator === "resolved_not_applied", `K8b ${order} operator=${operator}`);
+    assert(await status(label) === "not_applied:true", `K8b ${order} final state`);
+    assert(await claims(k8b.invoice) === "1" && await claims(extra) === "0", `K8b ${order} invoice claims`);
+  }
+
   console.log("Billing C2 plan change concurrency checks passed on disposable PostgreSQL.");
 } finally {
   postgres.cleanup();

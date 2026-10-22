@@ -247,3 +247,94 @@ automatski ni operatorski apply; salon ostaje blokiran za novu kupovinu dok je d
 **Tok za „plaćeno, ali previše zaposlenih“:** owner vidi poruku i deaktivira višak (deaktivacija
 radi i kad je pristup read-only) → `billing-recovery event --event <id>` dry-run → `eligible` →
 apply sa tiketom → proveri `/api/entitlements` (`purchaseActivation` nestaje, plan je Starter).
+
+
+## 13. C2: nerazrešena promena paketa (`plan-change`)
+
+Migracija `202610220048` dodaje komandu `plan-change --change <plan-change-uuid>`. Tok je isti kao
+kod D: dry-run (validiran provider GET van DB transakcije) → pregled → apply sa review tokenom,
+tiketom, razlogom i operator labelom → audit u `billing_recovery_attempts` (`recovery_kind =
+plan_change`). Ne postoji javni endpoint, bulk, scheduler ni automatski healing. Operator label je
+slobodan tekst, a service credentials nisu identitet fizičke osobe. Alat **nikad** ne šalje PATCH,
+ne vraća plan kod providera, ne završava promenu i ne dodeljuje novi paket ni period bez dokaza.
+
+Kada se koristi: UI prikazuje „Ishod promene još nije potvrđen…“ (`requested`/`unknown`) ili
+„Promenu je potrebno proveriti. Obratite se podršci.“ (`manual_review`). ID promene se dobija iz
+service-role čitanja `billing_subscription_plan_changes` za salon (bez ručnih UPDATE-a).
+
+```
+node --experimental-strip-types scripts/billing-recovery.mjs plan-change --change <uuid>
+# pregledati Verdict / Code / Proposed / Plan change / Evidence
+node --experimental-strip-types scripts/billing-recovery.mjs plan-change --change <uuid> \
+  --apply --review-token <token iz dry-run-a> --ticket OPS-123 --reason "<zašto>" --operator <label>
+```
+
+### Podržane akcije (samo ove dve)
+
+| Akcija | Kada je ponuđena | Šta radi |
+| --- | --- | --- |
+| `record_observed` | `requested` ili `unknown`; svež provider snapshot pokazuje target varijantu, `renews_at` = baseline, a provider `updated_at` je posle pre-request čitanja i pre baseline-a (postojeći E1 contract, bez izuzetaka) | beleži snapshot kao dokaz i poziva zajednički evaluator → `confirmed`. Paket i period se **ne** menjaju; i dalje su potrebni E2 (lifecycle) i E3 (plaćen renewal invoice). |
+| `resolve_not_applied` | `requested`, `unknown` ili `manual_review` sa razlogom `plan_change_renewed_on_previous_plan`; target **nikad** nije viđen; primenjeni lifecycle pokazuje obnovu na **staroj** varijanti posle baseline-a (u granici jednog meseca + 4 dana); postoji plaćen `renewal` invoice za taj period (ista pretplata/kupac/store/okruženje, posle baseline-a, neiskorišćen); svež provider GET i dalje pokazuje staru varijantu | promena → `not_applied`, a granica pristupa se podiže na već plaćeni period **starog** paketa. Invoice se upisuje u `renewal_invoice_id` reda promene, iste kolone kao completion invoice, pa ga postojeći unique indeks čini isključivim (ne može razrešiti drugu promenu ni završiti drugu). Rezervacija kapaciteta se oslobađa tek tada. |
+
+Dupli apply nema efekat (`precondition_unmet` / `no_change`). Promena stanja između dry-run-a i
+apply-a (promena, pretplata, dokaz, invoice ili broj aktivnih zaposlenih) daje `stale` — ponoviti
+dry-run. Apply ponovo procenjuje sve pod lockom pretplate i reda promene.
+
+**Audit — stvarna garancija.** Audit red (`recovery_kind = plan_change`) nastaje za svaki apply koji
+stigne do procene: `recorded`, `resolved_not_applied`, `stale`, `unsupported`, `precondition_unmet`,
+`identity_conflict`, `conflict`, `unsupported_state` i ponovljeni apply (`no_change` /
+`precondition_unmet`). Audit reda **nema** za: nevalidan unos (ticket, razlog, operator label, token,
+okruženje — odbija se izuzetkom pre procene; CLI ga odbija i pre poziva), nepostojeću promenu
+(`not_found`) i environment mismatch. Izuzetak tokom apply-a (npr. procesor/evaluator ili constraint)
+poništava celu transakciju zajedno sa audit redom; CLI tada prijavljuje `operational_failure`.
+Podtransakcija u ovom alatu ne postoji. Operator label je slobodan tekst, a service-role kredencijal
+je granica poverenja; audit ne dokazuje identitet osobe.
+
+**Kasni dokaz posle `not_applied`.** Zakasneli ili noviji target `subscription_updated` posle
+razrešenja daje `processor_updated_plan_change_unsupported` (događaj u `manual_review`), D snapshot sa
+target varijantom daje `plan_change_unsupported`, a dodatni invoice nema efekat: promena se ne
+otvara ponovo, ne završava retroaktivno, i plaćeni period starog paketa ostaje. Ako u međuvremenu
+postoji nova promena, stari target dokaz stariji od njenog pre-request čitanja označava novu promenu
+kao `manual_review` (`plan_change_evidence_order_conflict`), uz zadržan plaćeni pristup.
+
+### Primeri
+
+**`requested` posle prekida procesa (ili `unknown` posle nejasnog PATCH-a).** Dry-run:
+- provider pokazuje target pre granice → `eligible` / `record_observed` → apply → `confirmed`.
+  Ako nedostaje obnova, posle `renews_at` koristiti `subscription` komandu (odeljak 4) za propušten
+  update; plaćen invoice stiže webhook-om. Tek tada evaluator završava promenu.
+- provider pokazuje **staru** varijantu pre obnove → `recovery_plan_change_dispatch_unresolved`.
+  **Stati.** Čitanje sa starom varijantom ne dokazuje ni da PATCH nije poslat ni da neće biti
+  primenjen. Sačekati obnovu: ako se obnovi na staroj varijanti i stigne plaćen renewal invoice,
+  dry-run nudi `resolve_not_applied`.
+- provider pokazuje target tek posle granice → `recovery_plan_change_pre_boundary_evidence_missing`.
+  **Stati.** Jedini poznati dodatni dokaz: ponovo poslati (resend) originalni `subscription_updated`
+  webhook iz Lemon Squeezy dashboarda; potpisana isporuka sa originalnim `updated_at` pre granice
+  automatski potvrđuje E1 (i kad je zakasnela). Bez toga nema razrešenja.
+
+**`manual_review`, obnova na prethodnom paketu bez plaćanja.** Dry-run vraća
+`recovery_plan_change_payment_evidence_missing`. **Stati.** Proveriti u provider dashboardu da li je
+renewal plaćen; ako jeste, ponovo poslati `subscription_payment_success` webhook (resend) da invoice
+uđe u evidenciju, pa ponoviti dry-run. Bez plaćenog invoice-a alat ne daje novi period.
+
+**`confirmed`, ali nema završetka.** `recovery_plan_change_lifecycle_evidence_missing` → propušten
+lifecycle update kroz `subscription` komandu (cap i payment gate ostaju). Zatim
+`recovery_plan_change_payment_evidence_missing` → invoice webhook resend. Alat ne nudi akciju.
+
+**E1 sa istim timestamp-om** (`plan_change_evidence_order_conflict`). Dry-run vraća
+`recovery_plan_change_e1_order_unprovable`. **Nije podržano i neće biti forsirano**: provider
+`updated_at` ima preciznost od sekunde, pa redosled u odnosu na pre-request čitanje nije dokaziv;
+operatorovo uverenje nije dokaz. Promena ostaje blokirajuća, a pristup posle baseline-a ostaje
+read-only. Nastavak zahteva novi autoritativni dokaz koji ne postoji u trenutnim izvorima (npr.
+provider zapis o vremenu promene sa većom preciznošću); do tada je ovo poslovna odluka van alata.
+
+**Ostali konflikti** (`plan_change_variant_unexpected`, `plan_change_variant_reverted`,
+`plan_change_renewal_period_unexpected`, identity/store konflikti) →
+`recovery_plan_change_conflict_unsupported` ili `identity_conflict`. Ručna istraga kod providera;
+nema apply-a.
+
+### Šta nije podržano
+
+Force complete, force reject, zanemarivanje timestamp-a, ponovni PATCH, provider rollback,
+refundacija, razrešenje bez plaćenog invoice-a, oslobađanje rezervacije bez razrešenja i ručni SQL
+UPDATE. Opisi istrage iznad nisu implementirano razrešenje.

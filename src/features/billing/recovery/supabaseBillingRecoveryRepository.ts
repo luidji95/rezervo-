@@ -7,7 +7,7 @@ type RpcResult = PromiseLike<{ data: unknown; error: unknown }>;
 /** The subset of a service-role Supabase client this repository needs. */
 export interface RecoveryDatabaseClient {
   rpc(name: string, args: Record<string, unknown>): RpcResult;
-  from(table: "subscriptions"): {
+  from(table: "subscriptions" | "billing_subscription_plan_changes"): {
     select(columns: string): {
       eq(column: string, value: string): {
         eq(column: string, value: string): {
@@ -25,6 +25,12 @@ function singleRow(data: unknown): Record<string, unknown> {
 }
 const text = (value: unknown) => (typeof value === "string" ? value : null);
 const show = (value: unknown) => (value === null || value === undefined ? "none" : String(value));
+
+function planChangeArgs(environment: BillingEnvironment, changeId: string, s: NormalizedLemonSqueezySubscription) {
+  const { p_subscription_id: unused, ...rest } = snapshotArgs(environment, changeId, s);
+  void unused;
+  return { ...rest, p_plan_change_id: changeId };
+}
 
 function snapshotArgs(environment: BillingEnvironment, subscriptionId: string, s: NormalizedLemonSqueezySubscription) {
   return {
@@ -69,6 +75,38 @@ export class SupabaseBillingRecoveryRepository implements BillingRecoveryReposit
     if (error) throw new Error("BILLING_RECOVERY_LOOKUP_FAILED");
     const id = text((data as { provider_subscription_id?: unknown } | null)?.provider_subscription_id);
     return id && id.trim() ? { providerSubscriptionId: id } : null;
+  }
+
+  async getPlanChange(changeId: string, environment: BillingEnvironment) {
+    const { data, error } = await this.client.from("billing_subscription_plan_changes")
+      .select("provider_subscription_id")
+      .eq("id", changeId).eq("provider", "lemonsqueezy").eq("environment", environment)
+      .maybeSingle();
+    if (error) throw new Error("BILLING_RECOVERY_LOOKUP_FAILED");
+    const id = text((data as { provider_subscription_id?: unknown } | null)?.provider_subscription_id);
+    return id && id.trim() ? { providerSubscriptionId: id } : null;
+  }
+
+  async planPlanChange(environment: BillingEnvironment, changeId: string, snapshot: NormalizedLemonSqueezySubscription): Promise<RecoveryPlan> {
+    const row = await this.call("plan_billing_plan_change_recovery_v1", planChangeArgs(environment, changeId, snapshot));
+    return {
+      verdict: text(row.verdict) ?? "unknown",
+      errorCode: text(row.error_code),
+      reviewToken: text(row.review_token),
+      details: {
+        "Plan change": `status=${show(row.change_status)} baseline=${show(row.baseline_period_end)} access_period_end=${show(row.local_period_ends_at)}`,
+        ...(text(row.proposed_action) ? { "Proposed": show(row.proposed_action) } : {}),
+        "Evidence": `operator provider read, provider updated_at=${snapshot.providerUpdatedAt}, variant=${snapshot.providerVariantId}, fingerprint=${show(row.evidence_fingerprint).slice(0, 12)}`,
+      },
+    };
+  }
+
+  async applyPlanChange(environment: BillingEnvironment, changeId: string, snapshot: NormalizedLemonSqueezySubscription, apply: RecoveryApply): Promise<RecoveryApplyResult> {
+    const row = await this.call("apply_billing_plan_change_recovery_v1", {
+      ...planChangeArgs(environment, changeId, snapshot),
+      p_review_token: apply.reviewToken, p_ticket_ref: apply.ticket, p_reason: apply.reason, p_operator_label: apply.operator,
+    });
+    return { outcome: text(row.outcome) ?? "unknown", errorCode: text(row.error_code) };
   }
 
   async planEventReprocess(environment: BillingEnvironment, eventId: string): Promise<RecoveryPlan> {

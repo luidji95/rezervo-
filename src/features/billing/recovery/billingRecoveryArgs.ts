@@ -6,19 +6,22 @@ const OPERATOR = /^[A-Za-z0-9._@-]{1,64}$/;
 export type RecoveryApply = { reviewToken: string; ticket: string; reason: string; operator: string };
 export type RecoveryCommand =
   | { kind: "event"; targetId: string; apply: RecoveryApply | null }
-  | { kind: "subscription"; targetId: string; apply: RecoveryApply | null };
+  | { kind: "subscription"; targetId: string; apply: RecoveryApply | null }
+  | { kind: "plan-change"; targetId: string; apply: RecoveryApply | null };
 
 export class RecoveryUsageError extends Error {
   constructor(message: string) { super(message); this.name = "RecoveryUsageError"; }
 }
 
-const VALUE_FLAGS = new Set(["--event", "--subscription", "--review-token", "--ticket", "--reason", "--operator"]);
+const TARGET_FLAGS = { event: "--event", subscription: "--subscription", "plan-change": "--change" } as const;
+const VALUE_FLAGS = new Set(["--event", "--subscription", "--change", "--review-token", "--ticket", "--reason", "--operator"]);
 const SWITCH_FLAGS = new Set(["--apply"]);
 
 export const RECOVERY_USAGE = [
   "Usage:",
   "  billing-recovery event --event <webhook-event-uuid>                 (dry-run)",
   "  billing-recovery subscription --subscription <subscription-uuid>    (dry-run)",
+  "  billing-recovery plan-change --change <plan-change-uuid>            (dry-run, C2)",
   "  ... --apply --review-token <token> --ticket <ref> --reason <text> --operator <label>",
   "Dry-run is the default. The billing environment and credentials come from the trusted",
   "environment of the operator shell and can not be passed as arguments.",
@@ -27,7 +30,7 @@ export const RECOVERY_USAGE = [
 /** Parses operator arguments. Anything unknown is rejected, so secrets or an environment can never be smuggled in. */
 export function parseRecoveryArgs(argv: readonly string[]): RecoveryCommand {
   const [kind, ...rest] = argv;
-  if (kind !== "event" && kind !== "subscription") throw new RecoveryUsageError("A command (event|subscription) is required.");
+  if (kind !== "event" && kind !== "subscription" && kind !== "plan-change") throw new RecoveryUsageError("A command (event|subscription|plan-change) is required.");
   const values = new Map<string, string>();
   let apply = false;
   for (let index = 0; index < rest.length; index += 1) {
@@ -40,10 +43,11 @@ export function parseRecoveryArgs(argv: readonly string[]): RecoveryCommand {
     values.set(flag, value);
     index += 1;
   }
-  const targetFlag = kind === "event" ? "--event" : "--subscription";
-  const otherFlag = kind === "event" ? "--subscription" : "--event";
+  const targetFlag = TARGET_FLAGS[kind];
   const targetId = values.get(targetFlag);
-  if (values.has(otherFlag)) throw new RecoveryUsageError(`${otherFlag} does not apply to the ${kind} command.`);
+  for (const otherFlag of Object.values(TARGET_FLAGS)) {
+    if (otherFlag !== targetFlag && values.has(otherFlag)) throw new RecoveryUsageError(`${otherFlag} does not apply to the ${kind} command.`);
+  }
   if (!targetId || !UUID.test(targetId)) throw new RecoveryUsageError(`${targetFlag} must be a UUID.`);
 
   const applyFlags = ["--review-token", "--ticket", "--reason", "--operator"].filter((flag) => values.has(flag));

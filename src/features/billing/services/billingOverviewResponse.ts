@@ -1,5 +1,6 @@
 import type { BillingOverview } from "../types/billingOverview.ts";
 import { parsePlanChangeOverview } from "./billingPlanChangePresentation.ts";
+import { parseResubscribeOverview } from "./billingResubscribeAvailability.ts";
 
 const REASONS = ["not_owner", "not_applicable", "unavailable"];
 
@@ -19,5 +20,6 @@ export function parseBillingOverviewBody(body: unknown): BillingOverview | null 
     canStartCheckout: value.canStartCheckout,
     billingEnvironment: value.billingEnvironment,
     planChange: parsePlanChangeOverview((value as { planChange?: unknown }).planChange),
+    resubscribe: parseResubscribeOverview((value as { resubscribe?: unknown }).resubscribe),
   };
 }

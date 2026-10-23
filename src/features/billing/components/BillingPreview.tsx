@@ -19,6 +19,7 @@ import { getEffectiveEmployeeLimit, getPendingCheckoutNotice, getPendingPlanChan
 import { PLAN_DESCRIPTIONS, PLAN_PRESENTATIONS, type PlanFeaturePresentation } from "../data/planPresentation";
 import { getBillingAccessPresentation } from "../services/billingAccessPresentation";
 import { getCheckoutButtonPresentation } from "../services/billingCheckoutPresentation";
+import { getResubscribeMessage } from "../services/billingResubscribeAvailability";
 import { remainingTrialDays } from "../services/billingPricingPresentation";
 import { formatPlanPrice, getTrialPlanPriceMessage } from "../services/planCatalog";
 import type { SalonEntitlements } from "../types/entitlements";
@@ -79,6 +80,7 @@ export function BillingPreview() {
   const purchaseActivationNotice = getPurchaseActivationNotice(entitlements);
   const pendingCheckoutNotice = getPendingCheckoutNotice(entitlements) ?? getPendingPlanChangeNotice(entitlements);
   const planChangeOverview = usageState.overview?.planChange ?? null;
+  const resubscribeMessage = getResubscribeMessage(usageState.overview?.resubscribe);
   const subscriptionPlan = entitlements.subscriptionPlanCode === "starter" || entitlements.subscriptionPlanCode === "pro" ? entitlements.subscriptionPlanCode : null;
   const pendingChange = planChangeOverview?.current && ["pending_confirmation", "scheduled", "review_required"].includes(planChangeOverview.current.state) ? planChangeOverview.current : null;
   const status = accessPresentation.statusLabel
@@ -106,7 +108,8 @@ export function BillingPreview() {
     {usageState.error && <section className={styles.fallback} role="alert"><p>Billing pregled nije učitan. Pokušajte ponovo.</p><button type="button" onClick={() => void usageState.refetch()}>Pokušaj ponovo</button></section>}
     {purchaseActivationNotice && <p className={styles.portalNote} role="status">{purchaseActivationNotice}</p>}
     {!purchaseActivationNotice && pendingCheckoutNotice && <p className={styles.portalNote} role="status">{pendingCheckoutNotice}</p>}
-    {entitlements.isReadOnly && usageState.overview && !usageState.overview.canStartCheckout && !usageState.overview.canOpenCustomerPortal && <p role="status">Za proveru ili ponovno aktiviranje pretplate kontaktirajte podršku.</p>}
+    {resubscribeMessage && !purchaseActivationNotice && <p className={styles.portalNote} role="status">{resubscribeMessage}</p>}
+    {entitlements.isReadOnly && !resubscribeMessage && usageState.overview && !usageState.overview.canStartCheckout && !usageState.overview.canOpenCustomerPortal && <p role="status">Za proveru ili ponovno aktiviranje pretplate kontaktirajte podršku.</p>}
     {portal.kind === "note" && <p className={styles.portalNote} role="status">{portal.message}</p>}
     {portal.kind === "action" && <section className={styles.portalNotice} aria-labelledby="billing-portal-title"><div><h2 id="billing-portal-title">{portal.title}</h2><p>{portal.description}</p>{customerPortal.error && <p className={styles.checkoutError} role="alert">{customerPortal.error}</p>}</div><button type="button" className={styles.portalButton} disabled={customerPortal.loading} aria-busy={customerPortal.loading} onClick={() => void customerPortal.openPortal()}>{customerPortal.loading ? "Otvaranje portala…" : portal.cta}</button></section>}
 

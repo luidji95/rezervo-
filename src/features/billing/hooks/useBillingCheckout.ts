@@ -28,6 +28,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   BILLING_RECONCILIATION_REQUIRED: "Checkout se još proverava. Nemojte ponavljati zahtev odmah.",
   BILLING_OVERRIDE_ACTIVE: "Checkout nije dostupan za salon sa posebnim billing pristupom.",
   BILLING_PURCHASE_ACTIVATION_PENDING: "Kupovina čeka aktivaciju. Nemojte pokretati novu kupovinu.",
+  BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED: "Istek prethodne pretplate još nije potvrđen. Nova kupovina biće dostupna nakon potvrde; za pomoć kontaktirajte podršku.",
+  BILLING_SUBSCRIPTION_ALREADY_ACTIVE: "Pretplata je još aktivna, pa nova kupovina nije potrebna.",
+  BILLING_SUBSCRIPTION_PAYMENT_REQUIRED: "Poslednja naplata nije uspela. Ažurirajte način plaćanja umesto nove kupovine.",
+  BILLING_RESUBSCRIBE_PLAN_CHANGE_UNRESOLVED: "Prethodna promena paketa mora biti razrešena pre nove kupovine. Obratite se podršci.",
   EMPLOYEE_OVER_TARGET_LIMIT: "Izabrani paket dozvoljava manje aktivnih zaposlenih nego što salon trenutno ima. Prvo deaktivirajte višak zaposlenih.",
   INVALID_INPUT: FALLBACK_ERROR,
 };

@@ -124,9 +124,17 @@ export class SupabaseBillingPlanChangeRepository implements BillingPlanChangeRep
   }
 
   async latestChange(salonId: string): Promise<PlanChangeRecord | null> {
+    // E1: only changes of the current provider identity; a superseded subscription's terminal change
+    // (abandoned at expiry) is history and must not be presented for the new subscription.
+    const { data: subscriptions, error: subscriptionError } = await this.client.from("subscriptions")
+      .select("provider_subscription_id").eq("salon_id", salonId).limit(1);
+    if (subscriptionError || !Array.isArray(subscriptions)) throw new Error("BILLING_PLAN_CHANGE_LOOKUP_FAILED");
+    const currentProviderSubscriptionId = text((subscriptions[0] as Record<string, unknown> | undefined)?.provider_subscription_id);
+    if (!currentProviderSubscriptionId) return null;
     const { data, error } = await this.client.from("billing_subscription_plan_changes")
       .select("id,subscription_id,provider_subscription_id,provider_customer_id,status,direction,target_plan_id,baseline_period_end,conflict_code")
-      .eq("salon_id", salonId).order("created_at", { ascending: false }).limit(1);
+      .eq("salon_id", salonId).eq("provider_subscription_id", currentProviderSubscriptionId)
+      .order("created_at", { ascending: false }).limit(1);
     if (error || !Array.isArray(data)) throw new Error("BILLING_PLAN_CHANGE_LOOKUP_FAILED");
     const row = data[0] as Record<string, unknown> | undefined;
     if (!row) return null;

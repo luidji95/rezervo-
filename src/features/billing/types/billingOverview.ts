@@ -1,4 +1,5 @@
 import type { PlanChangeOverview } from "./planChange.ts";
+import type { ResubscribeOverview } from "../services/billingResubscribeAvailability.ts";
 
 export type BillingUsage = {
   activeEmployees: number;
@@ -24,4 +25,6 @@ export type BillingOverview = {
   canStartCheckout: boolean;
   /** C2 plan-change availability and the latest relevant change (sanitized). */
   planChange: PlanChangeOverview;
+  /** E1 resubscribe availability after a verified expiry (reason codes only). */
+  resubscribe?: ResubscribeOverview;
 };

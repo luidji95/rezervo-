@@ -583,6 +583,8 @@ export type Database = {
           provider_order_id: string | null
           provider_session_id: string | null
           requested_plan_id: string
+          resubscribe_from_generation: number | null
+          resubscribe_from_provider_subscription_id: string | null
           resulting_subscription_id: string | null
           salon_id: string
           status: string
@@ -603,6 +605,8 @@ export type Database = {
           provider_order_id?: string | null
           provider_session_id?: string | null
           requested_plan_id: string
+          resubscribe_from_generation?: number | null
+          resubscribe_from_provider_subscription_id?: string | null
           resulting_subscription_id?: string | null
           salon_id: string
           status?: string
@@ -623,6 +627,8 @@ export type Database = {
           provider_order_id?: string | null
           provider_session_id?: string | null
           requested_plan_id?: string
+          resubscribe_from_generation?: number | null
+          resubscribe_from_provider_subscription_id?: string | null
           resulting_subscription_id?: string | null
           salon_id?: string
           status?: string
@@ -1005,6 +1011,112 @@ export type Database = {
           },
         ]
       }
+      billing_subscription_provider_generations: {
+        Row: {
+          cancelled_at: string | null
+          created_at: string
+          current_period_ends_at: string | null
+          current_period_starts_at: string | null
+          environment: string
+          final_status: Database["public"]["Enums"]["subscription_status"]
+          generation: number
+          id: string
+          plan_id: string
+          provider: string
+          provider_customer_id: string
+          provider_last_webhook_event_id: string | null
+          provider_state_updated_at: string
+          provider_subscription_id: string
+          salon_id: string
+          subscription_id: string
+          superseded_at: string
+          superseded_by_checkout_session_id: string
+          superseded_by_provider_subscription_id: string
+          superseded_by_webhook_event_id: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          created_at?: string
+          current_period_ends_at?: string | null
+          current_period_starts_at?: string | null
+          environment: string
+          final_status: Database["public"]["Enums"]["subscription_status"]
+          generation: number
+          id?: string
+          plan_id: string
+          provider: string
+          provider_customer_id: string
+          provider_last_webhook_event_id?: string | null
+          provider_state_updated_at: string
+          provider_subscription_id: string
+          salon_id: string
+          subscription_id: string
+          superseded_at: string
+          superseded_by_checkout_session_id: string
+          superseded_by_provider_subscription_id: string
+          superseded_by_webhook_event_id: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          created_at?: string
+          current_period_ends_at?: string | null
+          current_period_starts_at?: string | null
+          environment?: string
+          final_status?: Database["public"]["Enums"]["subscription_status"]
+          generation?: number
+          id?: string
+          plan_id?: string
+          provider?: string
+          provider_customer_id?: string
+          provider_last_webhook_event_id?: string | null
+          provider_state_updated_at?: string
+          provider_subscription_id?: string
+          salon_id?: string
+          subscription_id?: string
+          superseded_at?: string
+          superseded_by_checkout_session_id?: string
+          superseded_by_provider_subscription_id?: string
+          superseded_by_webhook_event_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_subscription_provider_generations_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_subscription_provider_generations_salon_id_fkey"
+            columns: ["salon_id"]
+            isOneToOne: false
+            referencedRelation: "salons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_subscription_provider_generations_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_subscription_provider_superseded_by_checkout_sessi_fkey"
+            columns: ["superseded_by_checkout_session_id"]
+            isOneToOne: false
+            referencedRelation: "billing_checkout_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_subscription_provider_superseded_by_webhook_event__fkey"
+            columns: ["superseded_by_webhook_event_id"]
+            isOneToOne: false
+            referencedRelation: "billing_webhook_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+
       billing_subscription_reconciliation_checks: {
         Row: {
           attempt_count: number
@@ -2773,6 +2885,28 @@ export type Database = {
           status: string
         }[]
       }
+
+      acquire_billing_checkout_intent_v3: {
+        Args: {
+          p_actor_profile_id: string
+          p_allow_resubscribe: boolean
+          p_provider: string
+          p_requested_plan_id: string
+          p_salon_id: string
+        }
+        Returns: {
+          acquisition_outcome: string
+          actor_profile_id: string
+          checkout_session_id: string
+          environment: string
+          expires_at: string | null
+          idempotency_key: string
+          provider: string
+          provider_session_id: string | null
+          requested_plan_id: string
+          status: string
+        }[]
+      }
       claim_billing_checkout_recovery_v1: {
         Args: {
           p_checkout_session_id: string
@@ -3745,6 +3879,14 @@ export type Database = {
           webhook_event_id: string
         }[]
       }
+      resolve_billing_resubscribe_eligibility_v1: {
+        Args: { p_actor_profile_id: string; p_now?: string; p_salon_id: string }
+        Returns: {
+          eligible: boolean
+          reason: string
+        }[]
+      }
+
       resolve_employee_capacity_v1: {
         Args: { p_now?: string; p_salon_id: string }
         Returns: {

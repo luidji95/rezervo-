@@ -56,6 +56,7 @@ export async function POST(request: Request) {
     const retrievalProvider = new LemonSqueezyCheckoutRetrievalClient(config, fetch);
     const repository = new SupabaseBillingCheckoutRepository(
       config.environment,
+      config.resubscribeEnabled,
     );
     const recoveryRepository =
       createSupabaseBillingCheckoutRecoveryRepository();

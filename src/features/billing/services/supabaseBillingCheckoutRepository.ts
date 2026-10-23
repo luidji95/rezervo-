@@ -57,7 +57,11 @@ const LEDGER_COLUMNS =
 export class SupabaseBillingCheckoutRepository
   implements BillingCheckoutRepository
 {
-  constructor(private readonly environment: BillingEnvironment) {}
+  constructor(
+    private readonly environment: BillingEnvironment,
+    // E1: server-owned rollout gate (BILLING_RESUBSCRIBE_ENABLED); never taken from the browser.
+    private readonly allowResubscribe = false,
+  ) {}
 
   async isSalonOwner(salonId: string, actorProfileId: string) {
     const { data, error } = await supabaseServer
@@ -125,12 +129,13 @@ export class SupabaseBillingCheckoutRepository
     planId: string;
   }) {
     const { data, error } = await supabaseServer.rpc(
-      "acquire_billing_checkout_intent_v2",
+      "acquire_billing_checkout_intent_v3",
       {
         p_salon_id: input.salonId,
         p_actor_profile_id: input.actorProfileId,
         p_requested_plan_id: input.planId,
         p_provider: "lemonsqueezy",
+        p_allow_resubscribe: this.allowResubscribe,
       },
     );
     if (error) {
@@ -139,6 +144,8 @@ export class SupabaseBillingCheckoutRepository
         "BILLING_SUBSCRIPTION_PAYMENT_REQUIRED",
         "BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED",
         "BILLING_PURCHASE_ACTIVATION_PENDING",
+        "BILLING_OVERRIDE_ACTIVE",
+        "BILLING_RESUBSCRIBE_PLAN_CHANGE_UNRESOLVED",
         "EMPLOYEE_OVER_TARGET_LIMIT",
       ].find((candidate) => error.message === candidate);
       if (code) throw new BillingCheckoutError(code as
@@ -146,6 +153,8 @@ export class SupabaseBillingCheckoutRepository
         | "BILLING_SUBSCRIPTION_PAYMENT_REQUIRED"
         | "BILLING_SUBSCRIPTION_REACTIVATION_REQUIRED"
         | "BILLING_PURCHASE_ACTIVATION_PENDING"
+        | "BILLING_OVERRIDE_ACTIVE"
+        | "BILLING_RESUBSCRIBE_PLAN_CHANGE_UNRESOLVED"
         | "EMPLOYEE_OVER_TARGET_LIMIT", 409);
       if (error.message.startsWith("BILLING_RECONCILIATION_REQUIRED_")) {
         throw new BillingCheckoutError("BILLING_RECONCILIATION_REQUIRED", 503);

@@ -91,7 +91,11 @@ test("acquire result parser accepts only the trusted active-intent contract", ()
 
 test("acquire RPC receives only trusted server identity arguments", () => {
   const method = methodSource("acquireCheckoutIntent", "getCheckoutSessionById");
-  assert.match(method, /"acquire_billing_checkout_intent_v2"/);
+  assert.match(method, /"acquire_billing_checkout_intent_v3"/);
+  // the resubscribe gate is the server-owned constructor flag, never request input
+  assert.match(method, /p_allow_resubscribe: this\.allowResubscribe/);
+  assert.doesNotMatch(method, /p_allow_resubscribe: input/);
+  assert.match(method, /BILLING_RESUBSCRIBE_PLAN_CHANGE_UNRESOLVED/);
   assert.match(method, /p_salon_id: input\.salonId/);
   assert.match(method, /p_actor_profile_id: input\.actorProfileId/);
   assert.match(method, /p_requested_plan_id: input\.planId/);

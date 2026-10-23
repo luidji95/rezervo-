@@ -14,6 +14,7 @@ import { getBillingPlanChangeConfig } from "@/features/billing/planChange/billin
 import { resolvePlanChangeOverview } from "@/features/billing/planChange/billingPlanChangeAvailability";
 import { SupabaseBillingPlanChangeRepository } from "@/features/billing/planChange/supabaseBillingPlanChangeRepository";
 import type { PlanChangeDatabaseClient } from "@/features/billing/planChange/supabaseBillingPlanChangeRepositoryCore";
+import { resolveResubscribeOverview } from "@/features/billing/services/billingResubscribeAvailability";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,7 @@ export async function GET(request: Request) {
     const [{ count, error }, { data: plans, error: plansError }, { data: subscription, error: subscriptionError }] = await Promise.all([
       supabaseServer.from("employees").select("id", { count: "exact", head: true }).eq("salon_id", salonId).eq("is_active", true),
       supabaseServer.from("plans").select("slug, name, monthly_price, yearly_price, currency, max_employees, is_active").in("slug", ["starter", "pro", "premium"]).order("sort_order"),
-      supabaseServer.from("subscriptions").select("status,billing_provider,billing_environment,provider_subscription_id,provider_customer_id,trial_starts_at,trial_ends_at").eq("salon_id", salonId).maybeSingle(),
+      supabaseServer.from("subscriptions").select("status,billing_provider,billing_environment,provider_subscription_id,provider_customer_id,trial_starts_at,trial_ends_at,current_period_ends_at").eq("salon_id", salonId).maybeSingle(),
     ]);
     if (error || plansError || subscriptionError) throw error ?? plansError ?? subscriptionError;
     const catalog = normalizePlanCatalog((plans ?? []) as unknown as PlanCatalogRow[]);
@@ -46,8 +47,10 @@ export async function GET(request: Request) {
     let checkoutConfigured = false;
     let databaseEnvironmentMatches = false;
     let hasCompletedCheckout = true;
+    let resubscribeEnabled = false;
     try {
       const config = getBillingCheckoutConfig();
+      resubscribeEnabled = config.resubscribeEnabled;
       const { data: environmentMatches, error: environmentError } = await supabaseServer
         .rpc("billing_environment_matches_v1", { p_environment: config.environment });
       databaseEnvironmentMatches = !environmentError && environmentMatches === true;
@@ -61,7 +64,24 @@ export async function GET(request: Request) {
     } catch {
       // Checkout configuration does not prevent read-only billing overview.
     }
-    const canStartCheckout = canOfferNewCheckout({
+    // E1: database-owned eligibility (read-only RPC), only when checkout, parity and the
+    // default-off resubscribe flag are all on. Acquisition re-checks everything under its locks.
+    const resubscribe = await resolveResubscribeOverview({
+      isOwner: salon.owner_id === auth.user.id,
+      subscription: subscription ?? null,
+      enabled: checkoutConfigured && databaseEnvironmentMatches && resubscribeEnabled,
+      now: new Date(),
+    }, {
+      eligibility: async () => {
+        const { data, error: eligibilityError } = await supabaseServer.rpc("resolve_billing_resubscribe_eligibility_v1", {
+          p_salon_id: salonId, p_actor_profile_id: auth.user.id,
+        });
+        const row = Array.isArray(data) ? data[0] : null;
+        if (eligibilityError || !row || typeof row.eligible !== "boolean") throw new Error("BILLING_RESUBSCRIBE_LOOKUP_FAILED");
+        return { eligible: row.eligible, reason: typeof row.reason === "string" ? row.reason : null };
+      },
+    });
+    const canStartCheckout = resubscribe.state === "eligible" || canOfferNewCheckout({
       isOwner: salon.owner_id === auth.user.id,
       configured: checkoutConfigured,
       databaseEnvironmentMatches,
@@ -94,7 +114,7 @@ export async function GET(request: Request) {
       environmentMatches: (environment) => billingPortalEnvironmentMatches(supabaseServer, environment),
       repository: new SupabaseBillingPlanChangeRepository(supabaseServer as unknown as PlanChangeDatabaseClient),
     });
-    return NextResponse.json({ success: true, usage: { activeEmployees: count ?? 0 }, plans: catalog, canOpenCustomerPortal: portal.available, portalUnavailableReason: portal.reason, canStartCheckout, billingEnvironment: resolveTrustedBillingEnvironment(), planChange }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ success: true, usage: { activeEmployees: count ?? 0 }, plans: catalog, canOpenCustomerPortal: portal.available, portalUnavailableReason: portal.reason, canStartCheckout, billingEnvironment: resolveTrustedBillingEnvironment(), planChange, resubscribe }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const code = error instanceof EntitlementError ? error.code : "BILLING_OVERVIEW_LOAD_FAILED";
     return NextResponse.json({ success: false, code }, { status: code === "FORBIDDEN" ? 403 : 500 });

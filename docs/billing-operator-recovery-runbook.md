@@ -338,3 +338,22 @@ nema apply-a.
 Force complete, force reject, zanemarivanje timestamp-a, ponovni PATCH, provider rollback,
 refundacija, razrešenje bez plaćenog invoice-a, oslobađanje rezervacije bez razrešenja i ručni SQL
 UPDATE. Opisi istrage iznad nisu implementirano razrešenje.
+
+## 14. E1: ponovna kupovina posle isteka (resubscribe)
+
+Contract: `docs/billing-resubscribe-after-expiry.md`, migracija `202610230049`. Samo lokalno
+testirano; nije primenjeno remote.
+
+| Situacija | Šta operator radi |
+| --- | --- |
+| Pretplata je `cancelled`, period je prošao, a `expired` događaj nije stigao (`terminal_state_unconfirmed`) | `billing-recovery subscription` dry-run sa svežim provider GET-om; ako provider pokazuje `expired`, apply. Primenjen snapshot je dokaz terminalnosti; ništa drugo (lokalni datum, mišljenje) nije. |
+| Resubscribe aktivacija parkirana zbog kapaciteta (`processor_checkout_capacity_exceeded`) | owner smanji broj aktivnih zaposlenih → `billing-recovery event --event <id>` dry-run → `eligible` → apply. Važi samo dok je vezana (stara) generacija i dalje trenutna i terminalna. |
+| `recovery_resubscribe_generation_conflict` / `processor_resubscribe_generation_conflict` | druga kupovina je već aktivirana ili vezana generacija više nije trenutna. Nema apply-a. Proveri kod providera da li postoje dve naplate; razrešenje (refundacija/otkazivanje) je van Rezervo-a. |
+| `processor_resubscribe_previous_not_terminal` | vezana pretplata više nije terminalna u lokalnom stanju; istraga, nema apply-a. |
+| `BILLING_PURCHASE_ACTIVATION_PENDING` zbog nepoznate provider pretplate za salon | moguće neaktivirana kupovina; istraga kod providera. Alat je ne oslobađa. |
+| Completed ambiguity (`reconciliation_required`) | istraga; nema apply-a. |
+
+Stari tokeni (snapshot/event) postaju `stale` ili `identity_conflict` čim se trenutna generacija
+promeni. Kasni događaji stare pretplate obrađuju se kao istorija (`superseded_identity_ignored`) i
+ne traže intervenciju. Nije podržano: ručno kreiranje nove pretplate, prepisivanje istorije
+generacija, prisilna zamena identiteta, ručni SQL UPDATE.

@@ -10,6 +10,12 @@ test("accepts a complete canonical overview, including null environment", () => 
   assert.equal(closed?.portalUnavailableReason, "not_owner");
 });
 
+test("resubscribe availability is parsed and never guessed", () => {
+  assert.deepEqual(parseBillingOverviewBody(valid)?.resubscribe, { state: "not_applicable", reason: null });
+  assert.deepEqual(parseBillingOverviewBody({ ...valid, resubscribe: { state: "eligible", reason: null } })?.resubscribe, { state: "eligible", reason: null });
+  assert.deepEqual(parseBillingOverviewBody({ ...valid, resubscribe: { state: "blocked", reason: "provider_id_123" } })?.resubscribe, { state: "not_applicable", reason: null });
+});
+
 test("rejects partial, inconsistent or unknown responses instead of guessing", () => {
   for (const body of [
     null, { ...valid, success: false }, { ...valid, usage: undefined }, { ...valid, billingEnvironment: "staging" },

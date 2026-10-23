@@ -316,6 +316,7 @@ authorization, the real database, the provider or webhook processing.
 | D snapshot plan/apply (`private.evaluate_billing_snapshot_recovery_v1`) | same expected-variant and cap rules; apply records the observation and runs the evaluator; never completes without E3; unexpected variant marks the change |
 | D review tokens | `private.billing_subscription_state_fingerprint_v1` now includes the unresolved change, so snapshot and event-reprocess tokens go stale when it moves |
 | Read-only reconciliation | unchanged and still read-only; with a capped period it reports drift, which is expected while a change is pending |
+| E1 resubscribe (`202610230049`) | an unresolved change blocks a resubscribe; a change still `requested`/`unknown`/`confirmed` is abandoned by the evaluator when the expiry is applied, `manual_review` stays blocking; the overview/status `latestChange` reads only changes of the current provider subscription, so a superseded identity's terminal change is not shown as current |
 | `resolve_employee_capacity_v2` / `enforce_employee_capacity_v1` | unresolved change narrows to the target limit (`pending_plan_change`, `EMPLOYEE_PLAN_CHANGE_LIMIT_PENDING`), also under an override created later |
 
 Lock protocol (no writer takes the subscription after the plan-change row or the capacity lock):

@@ -24,7 +24,23 @@ test("checkout config preserves the sandbox contract", () => {
       storeId: "123",
       appUrl: "https://sandbox.example.test",
       liveAllowedSalonIds: null,
+      resubscribeEnabled: false,
     },
+  );
+});
+
+test("resubscribe is default-off and gated per environment", () => {
+  const url = "https://sandbox.example.test";
+  assert.equal(resolveBillingCheckoutConfig(base, url, "test").resubscribeEnabled, false);
+  for (const value of ["1", "TRUE", "yes", ""]) {
+    assert.equal(resolveBillingCheckoutConfig({ ...base, BILLING_RESUBSCRIBE_ENABLED: value }, url, "test").resubscribeEnabled, false);
+  }
+  assert.equal(resolveBillingCheckoutConfig({ ...base, BILLING_RESUBSCRIBE_ENABLED: "true" }, url, "test").resubscribeEnabled, true);
+  // the live flag never enables test, and resubscribe never enables checkout itself
+  assert.equal(resolveBillingCheckoutConfig({ ...base, BILLING_LIVE_RESUBSCRIBE_ENABLED: "true" }, url, "test").resubscribeEnabled, false);
+  assert.throws(
+    () => resolveBillingCheckoutConfig({ ...base, BILLING_CHECKOUT_ENABLED: undefined, BILLING_RESUBSCRIBE_ENABLED: "true" }, url, "test"),
+    (error) => error instanceof BillingCheckoutError && error.code === "BILLING_CHECKOUT_DISABLED",
   );
 });
 

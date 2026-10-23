@@ -10,6 +10,8 @@ export type BillingCheckoutConfig = {
   storeId: string;
   appUrl: string;
   liveAllowedSalonIds: ReadonlySet<string> | null;
+  /** E1: resubscribe after a verified terminal expiry; default-off, separate from the checkout capability. */
+  resubscribeEnabled: boolean;
 };
 
 type BillingCheckoutEnvironment = Record<string, string | undefined>;
@@ -73,10 +75,15 @@ export function resolveBillingCheckoutConfig(
   ) {
     throw new BillingCheckoutError("BILLING_NOT_CONFIGURED", 503);
   }
+  const resubscribeEnabled =
+    trustedEnvironment === "test"
+      ? environment.BILLING_RESUBSCRIBE_ENABLED === "true"
+      : environment.BILLING_LIVE_RESUBSCRIBE_ENABLED === "true";
   return {
     enabled: true,
     ...providerConfig,
     appUrl,
     liveAllowedSalonIds,
+    resubscribeEnabled,
   };
 }

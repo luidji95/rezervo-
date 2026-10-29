@@ -257,3 +257,19 @@ Portal se ne uključuje. Najmanja zamena (mali kodni korak, posebno odobrenje): 
 iz signed `urls.update_payment_method` (postojeći adapter već čita pretplatu) i owner-only serverska akcija
 „Otkaži pretplatu“ preko `DELETE /v1/subscriptions/{id}` (otkazivanje na kraju perioda) uz postojeću webhook
 obradu `cancelled`. „Kontaktirajte podršku“ nije zamena za self-service cancel.
+
+## Trial od 3 meseca — migracija 050 (izvršeno 2026-10-29)
+
+Commit `f91cc5e` (`feat(billing): give new salons a 3-month Pro trial`). Projekat `vsfdeb…`.
+
+1. Pre: history 70 zapisa do `202610230049`, pending samo `202610280050`; helper ne postoji; trigger
+   `create_trial_subscription_for_new_salon` = stara verzija (md5 `373e7873…`).
+2. Backup `C:\Users\User\rezervo-backups\20261029-2245-pre-migration-050\` (41 tabela, 22.504 reda, ACL
+   samo `User`; isti obuhvat i ograničenja kao A2, nije atomski). Restore u disposable `--network none`:
+   40 tabela, 0 razlika u broju redova, 0 FK prekršaja (`auth.identities` platform-managed, preskočen);
+   proba 050 nad kopijom uspešna.
+3. Dry-run (CLI iz kopije `supabase/` zbog BOM-a u `.env.local`): tačno `202610280050`. Primenjeno.
+4. Posle: history 71, poslednji `202610280050`; helper `private.billing_internal_trial_ends_at_v1` (md5
+   `6add6160…`, `stable`, `strict`, `search_path=""`, bez EXECUTE za `anon`/`authenticated`/`service_role`);
+   trigger funkcija md5 `1874e530…` = lokalno, ACL nepromenjen; otisci pretplata, override-a, broj salona,
+   runtime `test` i 0 otvorenih checkout-a nepromenjeni. Nijedan remote salon nije kreiran radi provere.

@@ -18,7 +18,7 @@ export function PricingCards({ plans, compact = false }: { plans: PublicPlan[]; 
   const salonState = resolution === "loading" ? "loading" : resolution === "loaded_without_salon" ? "missing" : resolution === "loaded_with_incomplete_onboarding" ? "incomplete" : "complete";
 
   return <div className={`${styles.wrapper} ${compact ? styles.compact : ""}`}>
-    <p className={styles.trialNotice}>Svi novi saloni dobijaju 14 dana Pro funkcija bez kartice. Paket birate nakon probnog perioda.</p>
+    <p className={styles.trialNotice}>Novi saloni dobijaju Pro funkcije 3 meseca besplatno, bez kartice. Paket birate nakon probnog perioda.</p>
     <div className={styles.grid}>{plans.map((plan) => {
       const presentation = PLAN_PRESENTATIONS.find((item) => item.code === plan.code)!;
       const premium = plan.code === "premium";
@@ -33,8 +33,8 @@ export function PricingCards({ plans, compact = false }: { plans: PublicPlan[]; 
           const included = feature.availability === "included" && !planned;
           return <li key={feature.label}>{planned ? <Clock3 aria-hidden /> : included ? <Check aria-hidden /> : <Minus aria-hidden />}<span>{feature.label}{planned ? " — U pripremi" : included ? " — Uključeno" : " — Nije uključeno"}</span></li>;
         })}</ul>
-        {href ? <Link className={styles.cta} href={href}>{plan.code === "pro" ? "Probaj Pro 14 dana" : "Započni besplatno"}</Link> : <button className={styles.cta} type="button" disabled aria-describedby={`premium-note-${compact ? "compact" : "full"}`}>Uskoro</button>}
-        <small id={premium ? `premium-note-${compact ? "compact" : "full"}` : undefined} className={styles.note}>{premium ? "Premium još nije javno dostupan. AI, WhatsApp, Instagram i marketing funkcije su planirane." : plan.code === "pro" ? "Kartica nije potrebna." : "Novi salon prvo dobija 14 dana Pro funkcija."}</small>
+        {href ? <Link className={styles.cta} href={href}>{plan.code === "pro" ? "Probaj Pro 3 meseca" : "Započni besplatno"}</Link> : <button className={styles.cta} type="button" disabled aria-describedby={`premium-note-${compact ? "compact" : "full"}`}>Uskoro</button>}
+        <small id={premium ? `premium-note-${compact ? "compact" : "full"}` : undefined} className={styles.note}>{premium ? "Premium još nije javno dostupan. AI, WhatsApp, Instagram i marketing funkcije su planirane." : plan.code === "pro" ? "3 meseca besplatno, bez kartice." : "Novi salon prvo dobija 3 meseca Pro funkcija besplatno."}</small>
       </article>;
     })}</div>
   </div>;

@@ -4,7 +4,7 @@ The public catalogue is loaded server-side from `public.plans`, sanitized, and c
 
 The public response contains only the plan slug/code, display name, monthly and nullable yearly price, currency, employee limit, public availability and relevant capability flags. It excludes plan UUIDs, timestamps, provider metadata, subscriptions and administrative fields. The loader fails closed unless Starter, Pro and Premium all match the canonical RSD contract: 2,990/5,990/17,990 RSD, employee limits 3/10/25, no yearly price, Starter and Pro active, Premium inactive.
 
-Starter and Pro CTA clicks are acquisition context only. Both create the same account flow and every newly created salon receives the existing 14-day Pro trial from the database trigger. No pricing query parameter writes `plan_id`, purchases a plan, creates a second trial, or stores a requested plan. Premium is visible as coming soon and has no signup action.
+Starter and Pro CTA clicks are acquisition context only. Both create the same account flow and every newly created salon receives the Pro trial from the database trigger: 3 calendar months, without a card (migration `202610280050`; salons created earlier keep their 14-day dates). No pricing query parameter writes `plan_id`, purchases a plan, creates a second trial, or stores a requested plan. Premium is visible as coming soon and has no signup action.
 
 The optional `next` parameter is restricted to an explicit internal allowlist. Authentication first resolves the authoritative salon/onboarding state: missing or incomplete salons go to onboarding; completed salons may continue to a safe internal route. Existing owners cannot obtain another trial by opening registration or onboarding.
 

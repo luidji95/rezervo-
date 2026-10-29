@@ -31,7 +31,7 @@ This is a conditional provider recommendation, not approval or legal advice. No 
 
 The `subscriptions_provider_metadata_consistent` constraint permits provider-null rows only when both provider identifiers are null. It also permits a known provider/customer before a provider subscription exists. It must remain; future schema should strengthen uniqueness of non-null provider customer/subscription identifiers without creating another subscription table.
 
-The salon trigger creates exactly one 14-day Pro trial with all provider metadata null. `create_primary_salon_once_v1()` is idempotent. A trial is internal state, not a provider trial.
+The salon trigger creates exactly one Pro trial with all provider metadata null; its length is 3 calendar months since migration `202610280050` (`private.billing_internal_trial_ends_at_v1`, UTC calendar, month end clamped), 14 days before it. `create_primary_salon_once_v1()` is idempotent. A trial is internal state, not a provider trial.
 
 `resolve_salon_access_v1()` and the TypeScript `resolveSubscriptionAccess()` derive access at request time:
 
@@ -134,7 +134,7 @@ Decision-change conditions:
 
 ### Internal trial
 
-The current 14-day Pro trial remains entirely internal: `billing_provider`, customer ID and provider subscription ID are null. Checkout does not recreate or extend it.
+The current internal Pro trial (3 calendar months for new salons) remains entirely internal: `billing_provider`, customer ID and provider subscription ID are null. Checkout does not recreate or extend it.
 
 MVP decision: checkout during or after trial **starts paid service immediately after authoritative successful payment**. The user must see that any unused trial time ends when payment succeeds. Scheduling first billing at the internal trial end would duplicate trial clocks across systems, add card-consent edge cases and complicate reconciliation.
 

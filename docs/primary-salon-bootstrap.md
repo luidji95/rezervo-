@@ -4,7 +4,7 @@ Rezervo currently supports one primary salon per owner profile. PostgreSQL is th
 
 ## Contract
 
-`public.create_primary_salon_once_v1()` authenticates with `auth.uid()`, takes a transaction advisory lock scoped to that profile, and checks for an existing salon before attempting creation. A new salon, active owner membership, and the existing trigger-created 14-day Pro trial are committed in one transaction. A retry returns the existing salon with `was_created = false` and does not rewrite salon or trial data.
+`public.create_primary_salon_once_v1()` authenticates with `auth.uid()`, takes a transaction advisory lock scoped to that profile, and checks for an existing salon before attempting creation. A new salon, active owner membership, and the existing trigger-created Pro trial (3 calendar months since migration `202610280050`; 14 days for salons created before it) are committed in one transaction. A retry returns the existing salon with `was_created = false` and does not rewrite salon or trial data.
 
 The named `salons_owner_id_unique` constraint is the final concurrency guard. Slug collisions use a bounded numeric suffix. Missing owner membership may be healed only when no membership row exists; a conflicting role or status fails with `OWNER_MEMBERSHIP_CONFLICT`.
 

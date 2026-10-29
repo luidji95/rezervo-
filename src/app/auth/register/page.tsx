@@ -103,9 +103,9 @@ function RegisterContent() {
         <div className="auth-header">
           <p className="auth-eyebrow">Novi nalog</p>
 
-          <h1>Započnite 14-dnevni Pro probni period</h1>
+          <h1>Isprobajte Pro: 3 meseca besplatno</h1>
 
-          <p>Kartica nije potrebna. Paket birate nakon probnog perioda.</p>
+          <p>3 meseca besplatno, bez kartice. Paket birate nakon probnog perioda.</p>
           {acquisitionMessage && (
             <p className="auth-plan-context">
               {acquisitionMessage}

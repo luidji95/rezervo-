@@ -3,7 +3,7 @@
 Cilj prvog release-a: kupovina Starter/Pro mesečnog paketa, prava posle potvrđene kupovine,
 payment management i self-service otkazivanje (pristup do kraja plaćenog perioda) i jasno stanje
 neuspele naplate sa postojećim recovery putem. Ostaju isključeni: C2 promena paketa, E1 ponovna
-kupovina, E2 pilot → plaćeno. 14-dnevni interni trial se ne menja.
+kupovina, E2 pilot → plaćeno. Interni Pro trial za nove salone traje 3 kalendarska meseca (migracija `202610280050`); postojeći saloni zadržavaju svoje datume.
 
 Svaki odeljak A–F je zaseban korak sa sopstvenim odobrenjem i kriterijumom za zaustavljanje.
 **„Billing radi live“ se ne tvrdi pre završenog odeljka E.**

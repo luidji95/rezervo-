@@ -1,0 +1,91 @@
+name: Billing live retry worker
+
+# Drives the existing live webhook retry worker (POST /api/internal/billing/process-pending/live) on
+# Production. This file must exist on the default branch for dispatch and schedule to be discoverable.
+# Scheduled runs are default-off: they only run when the repository variable
+# BILLING_LIVE_RETRY_SCHEDULE_ENABLED is exactly 'true'. Manual dispatch is the pre-enable check.
+on:
+  workflow_dispatch:
+  schedule:
+    # Every 30 minutes (UTC); GitHub may start scheduled runs late under congestion.
+    - cron: "7,37 * * * *"
+
+permissions: {}
+
+concurrency:
+  group: billing-live-retry
+  cancel-in-progress: false
+
+jobs:
+  retry:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' &&
+      vars.BILLING_LIVE_RETRY_SCHEDULE_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      # Fixed Production target; deliberately not configurable through a variable.
+      WORKER_URL: https://rezervo-app-gamma.vercel.app/api/internal/billing/process-pending/live
+      WORKER_SECRET: ${{ secrets.BILLING_LIVE_WORKER_SECRET }}
+    steps:
+      - name: Invoke live retry worker
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${WORKER_SECRET:-}" ]]; then
+            echo "BILLING_LIVE_WORKER_SECRET is not configured." >&2
+            exit 1
+          fi
+
+          umask 077
+          body_file="$(mktemp)"
+          header_file="$(mktemp)"
+          cleanup() { rm -f "$body_file" "$header_file"; }
+          trap cleanup EXIT
+          # The bearer secret is passed through a private header file, never on the command line.
+          printf 'Authorization: Bearer %s\n' "$WORKER_SECRET" > "$header_file"
+
+          # Empty POST, HTTPS only, no redirects, no HTTP retries. curl exits non-zero on transport errors.
+          http_status="$(curl \
+            --silent \
+            --show-error \
+            --proto '=https' \
+            --tlsv1.2 \
+            --max-redirs 0 \
+            --request POST \
+            --connect-timeout 10 \
+            --max-time 60 \
+            --header "Content-Length: 0" \
+            --header "@${header_file}" \
+            --output "$body_file" \
+            --write-out "%{http_code}" \
+            "$WORKER_URL")"
+
+          # Only the HTTP status, a known error code or sanitized counters are ever printed.
+          HTTP_STATUS="$http_status" BODY_FILE="$body_file" node <<'NODE'
+          const fs = require("node:fs");
+          const status = process.env.HTTP_STATUS;
+          let payload = null;
+          try { payload = JSON.parse(fs.readFileSync(process.env.BODY_FILE, "utf8")); } catch {}
+
+          if (status !== "200") {
+            const code = typeof payload?.code === "string" && /^[A-Z_]{1,64}$/.test(payload.code) ? payload.code : "unrecognized";
+            console.error(`Live retry worker returned HTTP ${/^\d{3}$/.test(status) ? status : "unknown"} (${code}).`);
+            process.exit(1);
+          }
+
+          const keys = ["claimed", "processed", "alreadyTerminal", "retried", "manualReview", "claimLost"];
+          if (payload?.success !== true || !payload.summary || typeof payload.summary !== "object"
+              || !keys.every((key) => Number.isInteger(payload.summary[key]) && payload.summary[key] >= 0)) {
+            console.error("Live retry worker returned an invalid success contract.");
+            process.exit(1);
+          }
+
+          const summary = Object.fromEntries(keys.map((key) => [key, payload.summary[key]]));
+          console.log(`Live retry worker completed: ${JSON.stringify(summary)}`);
+          if (summary.manualReview > 0 || summary.claimLost > 0) {
+            console.log("::warning::Live retry worker reported manual review or lost claims; follow the billing runbook section F.");
+          }
+          NODE

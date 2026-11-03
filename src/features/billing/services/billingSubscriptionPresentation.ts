@@ -1,5 +1,6 @@
 import type { BillingOverview } from "../types/billingOverview.ts";
 import type { SalonEntitlements } from "../types/entitlements.ts";
+import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "./supportContact.ts";
 
 type EntitlementsView = Pick<SalonEntitlements, "accessSource" | "accessReason" | "rawSubscriptionStatus" | "currentPeriodEndsAt">;
 type OverviewView = Pick<BillingOverview, "canOpenCustomerPortal" | "portalUnavailableReason" | "billingEnvironment">;
@@ -9,11 +10,22 @@ export type PortalPresentation =
   | { kind: "note"; message: string }
   | { kind: "action"; title: string; description: string; cta: string };
 
+export type SupportContactPresentation = { message: string; email: string; href: string };
+
 export type SubscriptionStatusPresentation = {
   /** Status lines derived only from canonical entitlements; empty when nothing reliable can be said. */
   lines: string[];
   portal: PortalPresentation;
+  /** Visible support contact, shown with a mailto link; null when not applicable. */
+  supportContact: SupportContactPresentation | null;
 };
+
+// MVP: the customer portal cannot resume a cancelled subscription; resuming before the end goes through support.
+function supportContact(entitlements: EntitlementsView): SupportContactPresentation | null {
+  if (entitlements.accessSource !== "subscription" || entitlements.accessReason !== "cancelled_until_period_end") return null;
+  if (!formatBillingDate(entitlements.currentPeriodEndsAt)) return null;
+  return { message: "Ako želite da nastavite pretplatu pre isteka, obratite se podršci:", email: SUPPORT_EMAIL, href: SUPPORT_MAILTO };
+}
 
 /** Formats an ISO timestamp with the product date convention; null for missing or invalid input. */
 export function formatBillingDate(value: string | null | undefined): string | null {
@@ -95,6 +107,7 @@ function portalUnavailable(entitlements: EntitlementsView, overview: OverviewVie
 
 export function getSubscriptionStatusPresentation(entitlements: EntitlementsView, overview: OverviewView | null): SubscriptionStatusPresentation {
   const lines = entitlements.accessSource === "subscription" ? subscriptionLines(entitlements) : overrideLines(entitlements);
-  if (!overview) return { lines, portal: { kind: "hidden" } };
-  return { lines, portal: overview.canOpenCustomerPortal ? portalAction(entitlements, overview) : portalUnavailable(entitlements, overview) };
+  const support = supportContact(entitlements);
+  if (!overview) return { lines, portal: { kind: "hidden" }, supportContact: support };
+  return { lines, portal: overview.canOpenCustomerPortal ? portalAction(entitlements, overview) : portalUnavailable(entitlements, overview), supportContact: support };
 }

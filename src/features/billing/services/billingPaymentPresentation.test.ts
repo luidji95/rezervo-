@@ -18,6 +18,13 @@ test("test portal is clearly identified even when checkout is disabled", () => {
   assert.match(result.summary, /test okruženje/);
 });
 
+test("checkout availability needs both the public flag and the authoritative overview", () => {
+  assert.equal(getBillingPaymentPresentation({ ...overview, canStartCheckout: true }, true).checkoutAvailable, true);
+  assert.equal(getBillingPaymentPresentation({ ...overview, canStartCheckout: true }, false).checkoutAvailable, false);
+  assert.equal(getBillingPaymentPresentation({ ...overview, canStartCheckout: false }, true).checkoutAvailable, false);
+  assert.equal(getBillingPaymentPresentation(null, true).checkoutAvailable, false);
+});
+
 test("loading/error and disabled/parity-rejected overview never promise a portal", () => {
   for (const candidate of [null, { ...overview, canOpenCustomerPortal: false, portalUnavailableReason: "unavailable" as const }]) {
     const result = getBillingPaymentPresentation(candidate, true);

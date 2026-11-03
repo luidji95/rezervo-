@@ -24,7 +24,20 @@ test("cancelled before period end states the access end date; no resume promise"
   const cancelled = { ...base, rawSubscriptionStatus: "cancelled" as const, accessReason: "cancelled_until_period_end" as const };
   const result = getSubscriptionStatusPresentation(cancelled, open);
   assert.match(result.lines[0], /^Pretplata je otkazana\. Pristup imate do .*2026\.$/);
-  assert.doesNotMatch(text(result), /nastavi|otkaži|pauz/i);
+  // MVP: resuming before the end goes through support (visible mailto); the portal is never promised as the resume path
+  assert.deepEqual(result.supportContact, {
+    message: "Ako želite da nastavite pretplatu pre isteka, obratite se podršci:",
+    email: "milos.petrovic09.95@gmail.com",
+    href: "mailto:milos.petrovic09.95@gmail.com",
+  });
+  assert.doesNotMatch(text(result), /otkaži|pauz|resume|nova kupovin|ponovo kupi/i);
+  assert.doesNotMatch(text(result.portal), /nastav/i);
+  assert.deepEqual(getSubscriptionStatusPresentation(cancelled, closed("unavailable")).supportContact, result.supportContact);
+  assert.deepEqual(getSubscriptionStatusPresentation(cancelled, null).supportContact, result.supportContact);
+  assert.equal(getSubscriptionStatusPresentation({ ...cancelled, currentPeriodEndsAt: "garbage" }, open).supportContact, null);
+  for (const other of [base, { ...base, accessReason: "cancelled" as const, rawSubscriptionStatus: "cancelled" as const }, { ...base, accessReason: "expired" as const, rawSubscriptionStatus: "expired" as const }]) {
+    assert.equal(getSubscriptionStatusPresentation(other, open).supportContact, null);
+  }
   assert.equal(getSubscriptionStatusPresentation({ ...cancelled, currentPeriodEndsAt: "garbage" }, open).lines.length, 0);
 });
 
@@ -50,7 +63,7 @@ test("past_due explains read-only access and offers a payment-method path withou
 
 test("override access never claims paid-subscription facts and gives no recovery promise", () => {
   const pilot = { ...base, accessSource: "billing_override" as const, accessReason: "billing_override" as const, rawSubscriptionStatus: null, currentPeriodEndsAt: null };
-  assert.deepEqual(getSubscriptionStatusPresentation(pilot, closed("not_applicable")), { lines: [], portal: { kind: "hidden" } });
+  assert.deepEqual(getSubscriptionStatusPresentation(pilot, closed("not_applicable")), { lines: [], portal: { kind: "hidden" }, supportContact: null });
   const linked = getSubscriptionStatusPresentation({ ...pilot, rawSubscriptionStatus: "past_due" }, open);
   // billing state and effective access are shown separately; read-only is never claimed for override access
   assert.equal(linked.lines.length, 1);
@@ -63,7 +76,7 @@ test("override access never claims paid-subscription facts and gives no recovery
 
 test("trial and provider-free subscriptions get no portal CTA and no payment lines", () => {
   const trial = getSubscriptionStatusPresentation({ ...base, rawSubscriptionStatus: "trialing", accessReason: "active_trial" }, closed("not_applicable"));
-  assert.deepEqual(trial, { lines: [], portal: { kind: "hidden" } });
+  assert.deepEqual(trial, { lines: [], portal: { kind: "hidden" }, supportContact: null });
 });
 
 test("owner sees an action; non-owner only a note; disabled/invalid environment is an honest unavailability", () => {

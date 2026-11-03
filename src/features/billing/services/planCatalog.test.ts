@@ -23,5 +23,13 @@ test("catalog exposes Premium as unavailable without removing it", () => {
 
 test("trial billing copy uses canonical Pro price and does not imply payment", () => {
   const [pro] = normalizePlanCatalog([{ slug: "pro", name: "Pro", monthly_price: "5990", yearly_price: null, currency: "RSD", max_employees: 10, is_active: true }]);
-  assert.equal(getTrialPlanPriceMessage(pro), "Cena Pro paketa nakon probnog perioda: 5.990 RSD mesečno. Kartica nije dodata, a checkout još nije dostupan.");
+  const base = "Cena Pro paketa nakon probnog perioda: 5.990 RSD mesečno. Kartica nije dodata i nema automatske naplate.";
+  // unknown availability (loading/error) claims nothing about checkout
+  assert.equal(getTrialPlanPriceMessage(pro), base);
+  assert.equal(getTrialPlanPriceMessage(pro, null), base);
+  assert.equal(getTrialPlanPriceMessage(pro, true), `${base} Paket možete izabrati ispod.`);
+  assert.equal(getTrialPlanPriceMessage(pro, false), `${base} Online izbor paketa trenutno nije dostupan.`);
+  for (const value of [null, true, false]) {
+    assert.doesNotMatch(getTrialPlanPriceMessage(pro, value), /checkout još nije dostupan|automatski (naplać|naplat)|14 dana/i);
+  }
 });

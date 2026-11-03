@@ -239,17 +239,49 @@ Postojeći `test` ostaci (nisu blocker): 8 × `subscription_updated` `manual_rev
 `processor_updated_subscription_unknown` i 2 × legacy `subscription_payment_success` `received` (0 pokušaja,
 2026-07-28). Posle prelaska na `live` filtrirati po `environment='live'`.
 
-### Retry schedule pre javnog puštanja (predlog, nije implementiran)
+### Live retry schedule (`.github/workflows/billing-live-retry.yml`)
 
 Ruta `process-pending/live` prima samo **prazan** POST (`400` za bilo koje telo), pa pg_cron/pg_net obrazac
-iz reminder-a (`net.http_post` uvek šalje JSON telo) ne odgovara bez izmene koda. Najmanji predlog:
-GitHub Actions workflow `billing-live-retry.yml` po uzoru na `billing-reconciliation-sandbox.yml`:
-`workflow_dispatch` + `schedule: "*/30 * * * *"`, posao samo kada je `vars.BILLING_LIVE_RETRY_SCHEDULE_ENABLED
-== 'true'` (kill switch), `permissions: {}`, `concurrency` grupa, `timeout-minutes: 2`, URL iz
-`vars.BILLING_LIVE_WORKER_URL` (https, tačan host, bez redirect-a), `secrets.BILLING_LIVE_WORKER_SECRET`,
-`curl -X POST` bez tela, očekivan `200`. Prvo samo ručno (dispatch) tokom E, schedule tek posle uspešnog E.
-Interval 30 min drži privatni repo u okviru besplatnih GitHub minuta (~1.440 min/mes); worker ionako
-poštuje backoff 1 min – 24 h. Workflow mora biti na `main` (push) i dobija zaseban live secret.
+iz reminder-a ne odgovara; zato GitHub Actions.
+
+Workflow: `workflow_dispatch` + `schedule` `7,37 * * * *` (UTC, svakih 30 min); scheduled posao radi samo kada
+je repository variable `BILLING_LIVE_RETRY_SCHEDULE_ENABLED` tačno `true` (default-off kill switch; ručni
+dispatch nije time ograničen). `permissions: {}`, `concurrency` bez paralelnih run-ova, `timeout-minutes: 2`,
+bez checkout-a i tuđih action-a. Cilj je **fiksan** u workflow-u:
+`https://rezervo-app-gamma.vercel.app/api/internal/billing/process-pending/live` (ako se uvede sopstveni
+domen, menja se konstanta u workflow-u, ne variable). `curl`: samo HTTPS, `--max-redirs 0`, bez retry-ja,
+connect 10 s / ukupno 60 s; bearer ide kroz privatni header fajl, ne kroz komandnu liniju. Sve osim `200` sa
+validnim `summary` obara run; loguje se samo HTTP status, poznat `code` i brojači; `manualReview`/`claimLost`
+> 0 daje upozorenje (vidi F). Interval drži privatni repo u besplatnim minutama; worker poštuje backoff.
+
+**Potrebno (nije postavljeno):**
+
+| Gde | Ime | Vrednost |
+| --- | --- | --- |
+| GitHub → Settings → Secrets and variables → Actions → **Secrets** | `BILLING_LIVE_WORKER_SECRET` | ista nasumična vrednost kao Vercel Production `BILLING_LIVE_WORKER_SECRET` (≥ 32 bajta, samo za live worker) |
+| GitHub → … → **Variables** | `BILLING_LIVE_RETRY_SCHEDULE_ENABLED` | ne postavljati do kraja ručne provere; zatim `true` |
+| Vercel Production | `BILLING_LIVE_WORKER_ENABLED=true`, `BILLING_LIVE_WORKER_SECRET`, uz `BILLING_PROVIDER=lemonsqueezy` i `BILLING_ENVIRONMENT=live` | deo koraka D |
+
+**Ručna provera pre uključivanja rasporeda** (posle D i redeploy-a; workflow mora biti na `main`):
+
+1. Actions → „Billing live retry worker“ → Run workflow (`main`).
+2. Očekivano: run zelen, log `Live retry worker completed: {"claimed":0,...}` (ili mali broj). `HTTP 503
+   (BILLING_WORKER_DISABLED)` = Vercel env nije kompletan; `HTTP 401` = secret se ne poklapa; oba obaraju run.
+3. Read-only SQL F1 za `environment='live'`: nema novih `manual_review` posle run-a.
+4. Tek tada `BILLING_LIVE_RETRY_SCHEDULE_ENABLED=true`; isključenje = obrisati variable ili postaviti na
+   bilo šta drugo.
+
+Granica: lokalno validirano (struktura + ponašanje koraka protiv mock servera); stvarni GitHub run i live
+worker nad remote bazom nisu izvršeni.
+
+### Resume otkazane pretplate (MVP)
+
+Test 2026-11-03: LS customer portal nudi Cancel, ali ne i nastavak otkazane pretplate (resume je radio samo
+iz LS administratorskog dashboarda i webhook ga je ispravno obradio). Dok se to ne reši, korisnik sa
+otkazanom pretplatom i važećim pristupom vidi „Ako želite da nastavite pretplatu pre isteka, obratite se
+podršci:“ sa linkom `mailto:` na adresu podrške (`src/features/billing/services/supportContact.ts`); operater
+radi Resume u LS dashboardu (test/live mod prema pretplati). Nova kupovina se ne nudi kao
+zamena za resume.
 
 ## Blocker za portal (samo ako A1.4 ne uspe)
 

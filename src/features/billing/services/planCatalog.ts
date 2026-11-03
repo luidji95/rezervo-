@@ -42,6 +42,10 @@ export function formatPlanPrice(value: string | number | null, currency: string)
   return `${new Intl.NumberFormat("sr-Latn-RS", { maximumFractionDigits: 2 }).format(parsed)} ${currency}`;
 }
 
-export function getTrialPlanPriceMessage(plan: BillingPlanCatalogItem): string {
-  return `Cena Pro paketa nakon probnog perioda: ${formatPlanPrice(plan.monthlyPrice, plan.currency)} mesečno. Kartica nije dodata, a checkout još nije dostupan.`;
+/** checkoutAvailable: real availability (flag + overview); null while unknown, so nothing is claimed about checkout. */
+export function getTrialPlanPriceMessage(plan: BillingPlanCatalogItem, checkoutAvailable: boolean | null = null): string {
+  const base = `Cena Pro paketa nakon probnog perioda: ${formatPlanPrice(plan.monthlyPrice, plan.currency)} mesečno. Kartica nije dodata i nema automatske naplate.`;
+  if (checkoutAvailable === true) return `${base} Paket možete izabrati ispod.`;
+  if (checkoutAvailable === false) return `${base} Online izbor paketa trenutno nije dostupan.`;
+  return base;
 }

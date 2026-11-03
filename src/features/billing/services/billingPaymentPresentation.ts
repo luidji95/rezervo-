@@ -7,6 +7,7 @@ export function getBillingPaymentPresentation(overview: BillingOverview | null, 
   const test = available && overview?.billingEnvironment === "test";
   return {
     portalAvailable,
+    checkoutAvailable,
     title: available ? (test ? "Lemon Squeezy test okruženje" : "Plaćanje preko Lemon Squeezy") : "Upravljanje plaćanjem",
     summary: available
       ? (test ? "Dostupne akcije koriste Lemon Squeezy test okruženje." : "Dostupne akcije za plaćanje prikazane su iznad.")

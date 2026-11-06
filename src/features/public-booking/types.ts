@@ -61,16 +61,33 @@ export type CreatePublicBookingInput = {
   serviceId: string;
   employeeId: string;
   idempotencyKey: string;
+  manageToken: string;
   startTime: string;
   customer: PublicCustomerData;
 };
 
 export type CreatePublicBookingResult = {
   appointmentId: string;
+  // True when the server attached this request's manage token to the appointment.
+  manageAccess: boolean;
 };
 
 export type PublicBookingResult = CreatePublicBookingResult & {
   customer: PublicCustomerData;
+  manageToken: string | null;
+};
+
+export type PublicManagedBooking = {
+  salonName: string;
+  salonSlug: string;
+  salonPhone: string | null;
+  timeZone: string;
+  serviceName: string | null;
+  startTime: string;
+  endTime: string;
+  status: string;
+  canCancel: boolean;
+  cancelDeadline: string;
 };
 
 export type PublicSalonPageData = {

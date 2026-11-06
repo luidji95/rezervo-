@@ -35,7 +35,7 @@ export function PublicBookingSelection({ salon, services }: Props) {
     return (
       <div className="pb-shell">
         <PublicBookingProgress step={4} />
-        <PublicBookingSuccess date={selection.selectedDate} employee={employee} salonName={salon.name} service={service} slot={slot} timeZone={timeZone}
+        <PublicBookingSuccess date={selection.selectedDate} employee={employee} manageToken={selection.bookingResult.manageToken} salonName={salon.name} service={service} slot={slot} timeZone={timeZone}
           onBookAnother={() => { selection.resetBookingFlow(); setCustomer({ fullName: "", phone: "", email: "", note: "" }); goTo(1); }} />
         <PublicBookingFooter />
       </div>

@@ -7,12 +7,16 @@ import { getDateKeyInTimeZone } from "@/lib/salonDateTime";
 import { normalizeClientEmail } from "@/services/clientService";
 import { normalizePhoneToE164 } from "@/lib/phone/phoneNumber";
 import { hasPublicBookingAccess } from "@/features/public-booking/services/publicBookingAccessService";
+import { MANAGE_TOKEN_PATTERN } from "@/lib/publicBookingManage/manageToken";
+import { hashManageToken } from "@/lib/publicBookingManage/manageTokenHash.server";
 
 const publicCreateBookingSchema = z.object({
   salonSlug: z.string().trim().min(1),
   serviceId: z.string().uuid(),
   employeeId: z.string().uuid(),
   idempotencyKey: z.string().uuid(),
+  // Private manage-link token (optional: older clients do not send one and get no link). Never logged.
+  manageToken: z.string().regex(MANAGE_TOKEN_PATTERN).optional(),
   startTime: z.string().datetime(),
   customer: z
     .object({
@@ -59,7 +63,9 @@ export async function POST(req: Request) {
       startTime,
       customer,
       idempotencyKey,
+      manageToken,
     } = parsed.data;
+    const manageTokenHash = manageToken ? hashManageToken(manageToken) : undefined;
 
     const { data: salon, error: salonError } = await supabaseServer
       .from("salons")
@@ -90,7 +96,21 @@ export async function POST(req: Request) {
       if (!matchesOriginalRequest) return NextResponse.json(
         { error: "Booking request cannot be repeated.", code: "IDEMPOTENCY_CONFLICT" }, { status: 409 }
       );
-      return NextResponse.json({ success: true, appointmentId: existingAppointment.id });
+      // The same token as in the original request gets the same link again; it is never replaced. A booking made
+      // without a link stays without one.
+      let manageAccess = false;
+      if (manageTokenHash) {
+        const { data: tokenState, error: tokenStateError } = await supabaseServer.rpc(
+          "get_public_booking_manage_token_state_v1",
+          { p_appointment_id: existingAppointment.id, p_token_hash: manageTokenHash }
+        );
+        if (tokenStateError) throw tokenStateError;
+        if (tokenState === "mismatch") return NextResponse.json(
+          { error: "Booking request cannot be repeated.", code: "IDEMPOTENCY_CONFLICT" }, { status: 409 }
+        );
+        manageAccess = tokenState === "match";
+      }
+      return NextResponse.json({ success: true, appointmentId: existingAppointment.id, manageAccess });
     };
     const slotTakenResponse = async () => (await replayResponse()) ?? NextResponse.json(
       { error: "Selected time is no longer available.", code: "SLOT_UNAVAILABLE" },
@@ -186,6 +206,7 @@ export async function POST(req: Request) {
             email: normalizeClientEmail(customer.email) ?? "",
           },
           idempotencyKey,
+          manageTokenHash,
         },
         supabaseServer
       );
@@ -227,6 +248,7 @@ export async function POST(req: Request) {
       {
         success: true,
         appointmentId: appointment.id,
+        manageAccess: appointment.manageAccess,
       },
       { status: appointment.wasCreated ? 201 : 200 }
     );

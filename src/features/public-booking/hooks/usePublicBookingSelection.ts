@@ -13,6 +13,7 @@ import {
   PublicBookingUnavailableError,
 } from "../services/publicBookingService";
 import { PHONE_INVALID_MESSAGE } from "@/lib/phone/phoneNumber";
+import { createManageToken } from "@/lib/publicBookingManage/manageToken";
 import type {
   PublicAvailabilitySlot,
   PublicBookingResult,
@@ -60,6 +61,9 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string, in
   const lastSlotRequestKeyRef = useRef<string | null>(null);
   const creatingBookingRef = useRef(false);
   const idempotencyKeyRef = useRef<string | null>(null);
+  // Generated together with the idempotency key and reset with it: a retry of the same request sends the same token,
+  // so a lost response still ends with the same private link.
+  const manageTokenRef = useRef<string | null>(null);
 
   useEffect(() => () => slotAbortControllerRef.current?.abort(), []);
 
@@ -67,6 +71,7 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string, in
     setSelectedSlot(null);
     setBookingError(null);
     idempotencyKeyRef.current = null;
+    manageTokenRef.current = null;
   }, []);
 
   const loadSlots = useCallback(async ({ force = false } = {}) => {
@@ -182,20 +187,24 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string, in
       // network failure or 503 BOOKING_RETRY can never create a second appointment.
       const idempotencyKey = idempotencyKeyRef.current ?? crypto.randomUUID();
       idempotencyKeyRef.current = idempotencyKey;
+      const manageToken = manageTokenRef.current ?? createManageToken();
+      manageTokenRef.current = manageToken;
       const result = await createPublicBooking({
         salonSlug,
         serviceId: selectedServiceId,
         employeeId: selectedEmployeeId,
         idempotencyKey,
+        manageToken,
         startTime: selectedSlot.startTime,
         customer,
       });
-      setBookingResult({ ...result, customer });
+      setBookingResult({ ...result, customer, manageToken: result.manageAccess ? manageToken : null });
       return "created";
     } catch (error) {
       if (error instanceof PublicBookingConflictError) {
         setSelectedSlot(null);
         idempotencyKeyRef.current = null;
+        manageTokenRef.current = null;
         await loadSlots({ force: true });
         setBookingError(SLOT_CONFLICT_MESSAGE);
         return "conflict";
@@ -232,6 +241,7 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string, in
   const resetBookingFlow = useCallback(() => {
     creatingBookingRef.current = false;
     idempotencyKeyRef.current = null;
+    manageTokenRef.current = null;
     setBookingResult(null);
     setBookingError(null);
     setCustomerForm(EMPTY_CUSTOMER);
@@ -241,6 +251,7 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string, in
 
   const selectSlot = useCallback((slot: PublicAvailabilitySlot | null) => {
     idempotencyKeyRef.current = null;
+    manageTokenRef.current = null;
     setBookingError(null);
     setSelectedSlot(slot);
   }, []);

@@ -4,6 +4,7 @@ import type {
   PublicAvailabilityInput,
   PublicAvailabilitySlot,
   PublicEmployee,
+  PublicManagedBooking,
 } from "../types";
 
 export class PublicBookingConflictError extends Error {
@@ -151,5 +152,52 @@ export async function createPublicBooking(
     throw new Error("Invalid public booking response.");
   }
 
-  return { appointmentId: body.appointmentId };
+  return { appointmentId: body.appointmentId, manageAccess: "manageAccess" in body && body.manageAccess === true };
+}
+
+export type ManagedBookingView =
+  | { kind: "booking"; booking: PublicManagedBooking }
+  | { kind: "invalid" }
+  | { kind: "error" };
+
+export type ManagedBookingCancelResult =
+  | { kind: "cancelled" | "already_cancelled" }
+  | { kind: "too_late" | "not_cancellable"; salonPhone: string | null }
+  | { kind: "invalid" }
+  | { kind: "error" };
+
+// The token goes only in the POST body, never in a URL.
+async function postManage(path: string, token: string) {
+  return fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+    cache: "no-store",
+    referrerPolicy: "no-referrer",
+  });
+}
+
+export async function getManagedBooking(token: string): Promise<ManagedBookingView> {
+  try {
+    const response = await postManage("/api/public-booking/manage/view", token);
+    if (response.status === 404) return { kind: "invalid" };
+    const body = await response.json().catch(() => null) as { success?: boolean; booking?: PublicManagedBooking } | null;
+    return response.ok && body?.success && body.booking ? { kind: "booking", booking: body.booking } : { kind: "error" };
+  } catch {
+    return { kind: "error" };
+  }
+}
+
+export async function cancelManagedBooking(token: string): Promise<ManagedBookingCancelResult> {
+  try {
+    const response = await postManage("/api/public-booking/manage/cancel", token);
+    const body = await response.json().catch(() => null) as { outcome?: string; code?: string; salonPhone?: string | null } | null;
+    if (response.ok && (body?.outcome === "cancelled" || body?.outcome === "already_cancelled")) return { kind: body.outcome };
+    if (response.status === 404) return { kind: "invalid" };
+    if (body?.code === "CANCELLATION_TOO_LATE") return { kind: "too_late", salonPhone: body.salonPhone ?? null };
+    if (body?.code === "NOT_CANCELLABLE") return { kind: "not_cancellable", salonPhone: body.salonPhone ?? null };
+    return { kind: "error" };
+  } catch {
+    return { kind: "error" };
+  }
 }

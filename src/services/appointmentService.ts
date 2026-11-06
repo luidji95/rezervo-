@@ -25,11 +25,14 @@ type CreatePublicBookingAtomicInput = {
     email?: string;
   };
   idempotencyKey: string;
+  // SHA-256 digest (hex) of the private manage-link token; absent for clients that do not send a token.
+  manageTokenHash?: string;
 };
 
 type CreatePublicBookingAtomicResult = {
   id: string;
   wasCreated: boolean;
+  manageAccess: boolean;
 };
 
 type PublicBookingRpcRow = {
@@ -37,6 +40,7 @@ type PublicBookingRpcRow = {
   was_created: boolean;
   booked_service_name: string;
   appointment_start: string;
+  manage_access?: boolean;
 };
 
 function addMinutes(date: Date, minutes: number) {
@@ -265,19 +269,20 @@ export async function createPublicBookingAtomic(
   input: CreatePublicBookingAtomicInput,
   supabaseClient: SupabaseClientLike = supabase
 ): Promise<CreatePublicBookingAtomicResult> {
-  const { data, error } = await supabaseClient.rpc(
-    "create_public_booking_atomic",
-    {
-      p_salon_slug: input.salonSlug,
-      p_service_id: input.serviceId,
-      p_employee_id: input.employeeId,
-      p_start_time: input.startTime,
-      p_customer_full_name: input.customer.fullName,
-      p_customer_phone: input.customer.phone || "",
-      p_customer_email: input.customer.email || "",
-      p_idempotency_key: input.idempotencyKey,
-    }
-  );
+  const bookingArgs = {
+    p_salon_slug: input.salonSlug,
+    p_service_id: input.serviceId,
+    p_employee_id: input.employeeId,
+    p_start_time: input.startTime,
+    p_customer_full_name: input.customer.fullName,
+    p_customer_phone: input.customer.phone || "",
+    p_customer_email: input.customer.email || "",
+    p_idempotency_key: input.idempotencyKey,
+  };
+  // With a manage token the digest is attached in the same transaction as the booking (migration 056).
+  const { data, error } = input.manageTokenHash
+    ? await supabaseClient.rpc("create_public_booking_with_manage_token_v1", { ...bookingArgs, p_manage_token_hash: input.manageTokenHash })
+    : await supabaseClient.rpc("create_public_booking_atomic", bookingArgs);
 
   if (error) {
     throw error;
@@ -314,6 +319,7 @@ export async function createPublicBookingAtomic(
   return {
     id: result.appointment_id,
     wasCreated: result.was_created,
+    manageAccess: result.manage_access === true,
   };
 }
 

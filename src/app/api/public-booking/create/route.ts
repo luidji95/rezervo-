@@ -76,12 +76,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: existingAppointment, error: idempotencyLookupError } =
-      await supabaseServer.from("appointments")
-        .select("id, salon_id, primary_service_id, employee_id, start_time")
-        .eq("idempotency_key", idempotencyKey).maybeSingle();
-    if (idempotencyLookupError) throw idempotencyLookupError;
-    if (existingAppointment) {
+    // Answers a request whose key already has a booking. Also used before any "slot taken" answer, because a
+    // concurrent request with the same key may have just booked this slot for the same visitor.
+    const replayResponse = async () => {
+      const { data: existingAppointment, error: idempotencyLookupError } =
+        await supabaseServer.from("appointments")
+          .select("id, salon_id, primary_service_id, employee_id, start_time")
+          .eq("idempotency_key", idempotencyKey).maybeSingle();
+      if (idempotencyLookupError) throw idempotencyLookupError;
+      if (!existingAppointment) return null;
       const matchesOriginalRequest = existingAppointment.salon_id === salon.id &&
         existingAppointment.primary_service_id === serviceId &&
         existingAppointment.employee_id === employeeId &&
@@ -90,7 +93,14 @@ export async function POST(req: Request) {
         { error: "Booking request cannot be repeated.", code: "IDEMPOTENCY_CONFLICT" }, { status: 409 }
       );
       return NextResponse.json({ success: true, appointmentId: existingAppointment.id });
-    }
+    };
+    const slotTakenResponse = async () => (await replayResponse()) ?? NextResponse.json(
+      { error: "Selected time is no longer available.", code: "SLOT_UNAVAILABLE" },
+      { status: 409 }
+    );
+
+    const existingResponse = await replayResponse();
+    if (existingResponse) return existingResponse;
 
     if (salon.status !== "active" || !salon.booking_enabled ||
       !salon.online_booking_enabled || !(await hasPublicBookingAccess(salon.id))) {
@@ -141,48 +151,64 @@ export async function POST(req: Request) {
       appointmentStart,
       salon.timezone || "Europe/Belgrade",
     );
-    const availability = await generateAvailableSlots(
-      {
-        salonId: salon.id,
-        serviceId,
-        employeeId,
-        date: bookingDate,
-      },
-      supabaseServer
-    );
-
-    const isAvailable = availability.slots.some(
-      (slot) =>
-        slot.employeeId === employeeId &&
-        new Date(slot.startTime).getTime() === appointmentStart.getTime()
-    );
-
-    if (!isAvailable) {
-      return NextResponse.json(
+    const isSlotAvailable = async () => {
+      const availability = await generateAvailableSlots(
         {
-          error: "Selected time is no longer available.",
-          code: "SLOT_UNAVAILABLE",
+          salonId: salon.id,
+          serviceId,
+          employeeId,
+          date: bookingDate,
         },
-        { status: 409 }
+        supabaseServer
       );
+
+      return availability.slots.some(
+        (slot) =>
+          slot.employeeId === employeeId &&
+          new Date(slot.startTime).getTime() === appointmentStart.getTime()
+      );
+    };
+
+    if (!(await isSlotAvailable())) {
+      return slotTakenResponse();
     }
 
-    const appointment = await createPublicBookingAtomic(
-      {
-        salonId: salon.id,
-        salonSlug,
-        serviceId,
-        employeeId,
-        startTime,
-        customer: {
-          fullName: customer.fullName.trim(),
-          phone: normalizeClientPhone(customer.phone) ?? "",
-          email: normalizeClientEmail(customer.email) ?? "",
+    let appointment: Awaited<ReturnType<typeof createPublicBookingAtomic>>;
+    try {
+      appointment = await createPublicBookingAtomic(
+        {
+          salonId: salon.id,
+          salonSlug,
+          serviceId,
+          employeeId,
+          startTime,
+          customer: {
+            fullName: customer.fullName.trim(),
+            phone: normalizeClientPhone(customer.phone) ?? "",
+            email: normalizeClientEmail(customer.email) ?? "",
+          },
+          idempotencyKey,
         },
-        idempotencyKey,
-      },
-      supabaseServer
-    );
+        supabaseServer
+      );
+    } catch (bookingError) {
+      const bookingErrorCode = getPostgresErrorCode(bookingError);
+      if (bookingErrorCode === "23P01") return slotTakenResponse();
+      if (bookingErrorCode !== "40P01") throw bookingError;
+
+      // PostgREST may already have retried the transaction. The deadlocked attempt was rolled back and wrote nothing,
+      // so re-read committed state before answering: a booking under this key is a replay, a slot that is really
+      // taken is a conflict, anything else is unresolved and the client retries with the same idempotency key.
+      const replay = await replayResponse();
+      if (replay) return replay;
+      if (!(await isSlotAvailable())) return slotTakenResponse();
+
+      console.error("PUBLIC_CREATE_BOOKING_DEADLOCK_UNRESOLVED");
+      return NextResponse.json(
+        { error: "Booking could not be completed. Please try again.", code: "BOOKING_RETRY" },
+        { status: 503 }
+      );
+    }
 
     if (appointment.wasCreated && customer.note?.trim()) {
       const { error: noteError } = await supabaseServer

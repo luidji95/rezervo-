@@ -41,6 +41,7 @@
     "test:appointment-mutations": "docker exec -i supabase_db_rezervo psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/tests/appointment_mutation_contract.sql",
     "test:appointment-mutation-ui": "node --experimental-strip-types --test src/features/appointments/services/appointmentMutationError.test.ts src/features/appointments/appointmentOutcomeTiming.test.ts",
     "test:appointment-final-outcome-db": "node scripts/test-appointment-final-outcome-timing.mjs",
+    "test:public-booking-concurrency-db": "node scripts/test-public-booking-concurrency.mjs",
     "test:business-data": "docker exec -i supabase_db_rezervo psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/tests/business_data_mutation_contract.sql",
     "test:business-data-ui": "node --experimental-strip-types --test src/features/business-data/services/businessDataMutationError.test.ts",
     "test:salon-write-access": "docker exec -i supabase_db_rezervo psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/tests/salon_settings_mutation_contract.sql",

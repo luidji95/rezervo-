@@ -4,23 +4,23 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Pencil } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { optionalEmailSchema, optionalPhoneSchema, requiredStringSchema } from "@/lib/validation/commonSchemas";
+import { getPhoneValidationMessage, PHONE_EXAMPLE } from "@/lib/phone/phoneNumber";
+import { optionalEmailSchema, requiredStringSchema } from "@/lib/validation/commonSchemas";
 import { formatDateShort, formatPrice, formatTimeRange, getDayParts } from "../publicBookingFormat";
 import type { PublicAvailabilitySlot, PublicCustomerData, PublicEmployee, PublicService } from "../types";
 
 export const PUBLIC_DETAILS_FORM_ID = "pb-details-form";
 
-// Same rule as the API: name plus phone OR email. Phone is presented as the main contact; making it required
-// comes together with server-side validation and normalization.
+// Same rule as the API: name and phone are required (the phone is normalized to E.164 by the same function on the
+// server); email and note are optional.
 const publicCustomerSchema = z.object({
   fullName: requiredStringSchema("Ime i prezime", 2, 120),
-  phone: optionalPhoneSchema,
+  phone: z.string().superRefine((phone, context) => {
+    const message = getPhoneValidationMessage(phone);
+    if (message) context.addIssue({ code: "custom", message });
+  }),
   email: optionalEmailSchema,
   note: z.string().trim().max(1000, "Napomena može imati najviše 1000 karaktera."),
-}).superRefine((customer, context) => {
-  if (!customer.phone && !customer.email) {
-    context.addIssue({ code: "custom", path: ["phone"], message: "Unesite broj telefona ili email." });
-  }
 });
 
 type Props = {
@@ -67,12 +67,12 @@ export function PublicDetailsStep({ service, employee, date, slot, timeZone, def
           {errors.fullName && <small className="pb-error" role="alert">{errors.fullName.message}</small>}
         </label>
         <label className="pb-field pb-field-primary">
-          <span className="pb-label">Broj telefona <span className="pb-tag">glavni kontakt</span></span>
-          <input type="tel" inputMode="tel" autoComplete="tel" placeholder="npr. 064 123 4567" disabled={disabled} aria-invalid={Boolean(errors.phone)} aria-describedby="pb-phone-help" {...register("phone")} />
-          {errors.phone ? <small className="pb-error" role="alert">{errors.phone.message}</small> : <small className="pb-help" id="pb-phone-help">Salon vas kontaktira na ovaj broj. Potreban je telefon ili email.</small>}
+          <span className="pb-label">Broj telefona <span className="pb-required" aria-hidden="true">*</span></span>
+          <input type="tel" inputMode="tel" autoComplete="tel" placeholder="npr. 064 123 4567" required disabled={disabled} aria-invalid={Boolean(errors.phone)} aria-describedby="pb-phone-help" {...register("phone")} />
+          {errors.phone ? <small className="pb-error" role="alert" id="pb-phone-help">{errors.phone.message}</small> : <small className="pb-help" id="pb-phone-help">Salon vas kontaktira na ovaj broj. Primer: {PHONE_EXAMPLE}.</small>}
         </label>
         <label className="pb-field">
-          <span className="pb-label">Email <span className="pb-tag">opciono uz telefon</span></span>
+          <span className="pb-label">Email <span className="pb-tag">opciono</span></span>
           <input type="email" inputMode="email" autoComplete="email" placeholder="ana@primer.rs" disabled={disabled} aria-invalid={Boolean(errors.email)} {...register("email")} />
           {errors.email && <small className="pb-error" role="alert">{errors.email.message}</small>}
         </label>

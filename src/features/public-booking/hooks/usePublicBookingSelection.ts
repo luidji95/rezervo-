@@ -7,8 +7,11 @@ import {
   getPublicAvailability,
   getPublicEmployeesForService,
   PublicBookingConflictError,
+  PublicBookingContactSalonError,
+  PublicBookingInvalidPhoneError,
   PublicBookingUnavailableError,
 } from "../services/publicBookingService";
+import { PHONE_INVALID_MESSAGE } from "@/lib/phone/phoneNumber";
 import type {
   PublicAvailabilitySlot,
   PublicBookingResult,
@@ -24,9 +27,10 @@ const EMPTY_CUSTOMER: PublicCustomerData = {
   note: "",
 };
 
-export type PublicBookingOutcome = "created" | "conflict" | "unavailable" | "error" | "ignored";
+export type PublicBookingOutcome = "created" | "conflict" | "unavailable" | "invalid_phone" | "contact_salon" | "error" | "ignored";
 
 export const SLOT_CONFLICT_MESSAGE = "Izabrani termin više nije dostupan. Izaberite drugi termin.";
+export const CONTACT_SALON_MESSAGE = "Termin trenutno ne možemo zakazati online. Molimo vas da kontaktirate salon.";
 
 // The date stays selected while the service or employee changes; only the time slot, which belongs to one
 // service/employee/date combination, is cleared and availability is loaded again from the server.
@@ -193,6 +197,16 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string, in
         await loadSlots({ force: true });
         setBookingError(SLOT_CONFLICT_MESSAGE);
         return "conflict";
+      }
+      if (error instanceof PublicBookingContactSalonError) {
+        // Neutral on purpose: it must not reveal anything about the salon's existing clients. Nothing was written.
+        setBookingError(CONTACT_SALON_MESSAGE);
+        return "contact_salon";
+      }
+      if (error instanceof PublicBookingInvalidPhoneError) {
+        // Nothing was written; the same key can be reused once the number is corrected.
+        setBookingError(PHONE_INVALID_MESSAGE);
+        return "invalid_phone";
       }
       if (error instanceof PublicBookingUnavailableError) {
         setBookingError("Online zakazivanje trenutno nije dostupno.");

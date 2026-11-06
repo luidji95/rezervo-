@@ -4,10 +4,8 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { createPublicBookingAtomic } from "@/services/appointmentService";
 import { generateAvailableSlots } from "@/services/availabilityService";
 import { getDateKeyInTimeZone } from "@/lib/salonDateTime";
-import {
-  normalizeClientEmail,
-  normalizeClientPhone,
-} from "@/services/clientService";
+import { normalizeClientEmail } from "@/services/clientService";
+import { normalizePhoneToE164 } from "@/lib/phone/phoneNumber";
 import { hasPublicBookingAccess } from "@/features/public-booking/services/publicBookingAccessService";
 
 const publicCreateBookingSchema = z.object({
@@ -19,18 +17,10 @@ const publicCreateBookingSchema = z.object({
   customer: z
     .object({
       fullName: z.string().trim().min(2),
-      phone: z.string().trim().optional(),
+      // Required; validated and normalized to E.164 below, before anything is read or written.
+      phone: z.string().trim().max(40).optional(),
       email: z.union([z.string().trim().email(), z.literal("")]).optional(),
       note: z.string().trim().max(1000).optional(),
-    })
-    .superRefine((customer, context) => {
-      if (!customer.phone && !customer.email) {
-        context.addIssue({
-          code: "custom",
-          path: ["phone"],
-          message: "Phone or email is required.",
-        });
-      }
     }),
 });
 
@@ -50,6 +40,14 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json(
         { error: "Invalid booking data." },
+        { status: 400 }
+      );
+    }
+
+    const phone = normalizePhoneToE164(parsed.data.customer.phone);
+    if (!phone.ok) {
+      return NextResponse.json(
+        { error: "A valid phone number is required.", code: phone.reason === "empty" ? "PHONE_REQUIRED" : "INVALID_PHONE" },
         { status: 400 }
       );
     }
@@ -184,7 +182,7 @@ export async function POST(req: Request) {
           startTime,
           customer: {
             fullName: customer.fullName.trim(),
-            phone: normalizeClientPhone(customer.phone) ?? "",
+            phone: phone.e164,
             email: normalizeClientEmail(customer.email) ?? "",
           },
           idempotencyKey,
@@ -236,6 +234,10 @@ export async function POST(req: Request) {
     const postgresMessage = error && typeof error === "object" && "message" in error && typeof error.message === "string" ? error.message : "";
     if (postgresMessage.includes("PUBLIC_BOOKING_UNAVAILABLE")) {
       return NextResponse.json({ error: "Online booking is currently unavailable.", code: "BOOKING_UNAVAILABLE" }, { status: 403 });
+    }
+    if (postgresMessage.includes("CLIENT_CONTACT_SALON")) {
+      // Several salon clients share this number; nothing was written and no client is chosen.
+      return NextResponse.json({ error: "Online booking could not be completed. Please contact the salon.", code: "CONTACT_SALON" }, { status: 422 });
     }
     if (postgresMessage.includes("IDEMPOTENCY_CONFLICT")) {
       return NextResponse.json({ error: "Booking request cannot be repeated.", code: "IDEMPOTENCY_CONFLICT" }, { status: 409 });

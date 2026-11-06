@@ -20,6 +20,20 @@ export class PublicBookingUnavailableError extends Error {
   }
 }
 
+export class PublicBookingInvalidPhoneError extends Error {
+  constructor() {
+    super("The server rejected the phone number.");
+    this.name = "PublicBookingInvalidPhoneError";
+  }
+}
+
+export class PublicBookingContactSalonError extends Error {
+  constructor() {
+    super("The booking must be completed with the salon.");
+    this.name = "PublicBookingContactSalonError";
+  }
+}
+
 function isPublicAvailabilitySlot(
   value: unknown
 ): value is PublicAvailabilitySlot {
@@ -97,6 +111,16 @@ export async function createPublicBooking(
   }
 
   if (response.status === 403) throw new PublicBookingUnavailableError();
+
+  if (response.status === 422) {
+    const errorBody = await response.json().catch(() => null) as { code?: string } | null;
+    if (errorBody?.code === "CONTACT_SALON") throw new PublicBookingContactSalonError();
+  }
+
+  if (response.status === 400) {
+    const errorBody = await response.json().catch(() => null) as { code?: string } | null;
+    if (errorBody?.code === "INVALID_PHONE" || errorBody?.code === "PHONE_REQUIRED") throw new PublicBookingInvalidPhoneError();
+  }
 
   if (!response.ok) {
     throw new Error("Public booking request failed.");

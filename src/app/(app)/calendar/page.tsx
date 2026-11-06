@@ -26,6 +26,7 @@ import { Service } from "@/types/service";
 import { getSalonServices } from "@/services/serviceService";
 
 // DODATO: Uvoz servisa za kreiranje novog termina i tipa forme
+import { APPOINTMENT_NOT_ENDED_MESSAGE } from "@/features/appointments/appointmentOutcomeTiming";
 import { createOwnerAppointment as createAppointment, rescheduleOwnerAppointment as rescheduleAppointment, updateOwnerAppointmentDetails as updateAppointmentDetails, updateOwnerAppointmentStatus as updateAppointmentStatus } from "@/features/appointments/services/ownerAppointmentMutationService";
 import { CreateAppointmentFormInput } from "@/types/appointment";
 import {
@@ -316,6 +317,11 @@ function CalendarPageContent() {
     } catch (err) {
       console.error("Greška prilikom operativne promene statusa:", err);
       if (
+        (err instanceof EmployeeAppointmentError && err.code === "APPOINTMENT_NOT_ENDED") ||
+        (err instanceof Error && err.message === APPOINTMENT_NOT_ENDED_MESSAGE)
+      ) {
+        alert(APPOINTMENT_NOT_ENDED_MESSAGE);
+      } else if (
         err instanceof EmployeeAppointmentError &&
         (err.code === "INVALID_STATUS_TRANSITION" ||
           err.code === "APPOINTMENT_ALREADY_UPDATED")

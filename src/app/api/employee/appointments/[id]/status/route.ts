@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { APPOINTMENT_NOT_ENDED_MESSAGE } from "@/features/appointments/appointmentOutcomeTiming";
 import { getAuthenticatedRequestUser } from "@/lib/server/requestAuth";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
@@ -40,6 +41,9 @@ function mapRpcError(error: { code?: string; message?: string }) {
   }
   if (code === "APPOINTMENT_NOT_FOUND") {
     return errorResponse("APPOINTMENT_NOT_FOUND", "Termin nije pronađen.", 404);
+  }
+  if (code === "APPOINTMENT_NOT_ENDED") {
+    return errorResponse(code, APPOINTMENT_NOT_ENDED_MESSAGE, 409);
   }
   if (
     code === "INVALID_STATUS_TRANSITION" ||

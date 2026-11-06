@@ -13,6 +13,7 @@ export type EmployeeAppointmentErrorCode =
   | "APPOINTMENT_NOT_FOUND"
   | "INVALID_STATUS_TRANSITION"
   | "APPOINTMENT_ALREADY_UPDATED"
+  | "APPOINTMENT_NOT_ENDED"
   | "UPDATE_FAILED";
 
 export class EmployeeAppointmentError extends Error {

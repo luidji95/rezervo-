@@ -22,6 +22,11 @@ import {
   getEmployeeAppointmentStatusLabel,
   type EmployeeAppointmentStatusAction,
 } from "@/features/appointments/employeeAppointmentStatusTransitions";
+import {
+  getAppointmentNotEndedHint,
+  isOutcomeStatus,
+} from "@/features/appointments/appointmentOutcomeTiming";
+import { useAppointmentEnded } from "@/features/appointments/useAppointmentEnded";
 
 import type {
   CalendarAppointment,
@@ -104,6 +109,7 @@ export default function AppointmentDetailsPanel({
   const loadingRef = useRef(localLoading);
   const onCloseRef = useRef(onClose);
   const selectedAppointmentId = selectedAppointment?.id;
+  const appointmentEnded = useAppointmentEnded(selectedAppointment?.end_time);
 
   useEffect(() => {
     loadingRef.current = localLoading;
@@ -174,6 +180,9 @@ export default function AppointmentDetailsPanel({
   const employeeFinalMessage = getEmployeeAppointmentFinalMessage(
     selectedAppointment.status,
   );
+  const outcomeLocked = !appointmentEnded &&
+    (selectedAppointment.status === "pending" || selectedAppointment.status === "confirmed");
+  const outcomeHint = outcomeLocked ? getAppointmentNotEndedHint(selectedAppointment.end_time) : null;
 
   const handleEmployeeAction = (action: EmployeeAppointmentStatusAction) => {
     if (action.requiresConfirmation) {
@@ -356,12 +365,16 @@ export default function AppointmentDetailsPanel({
                   key={action.nextStatus}
                   type="button"
                   className={`employee-status-action employee-status-action--${action.tone}`}
-                  disabled={localLoading}
+                  disabled={localLoading || (outcomeLocked && isOutcomeStatus(action.nextStatus))}
+                  title={outcomeLocked && isOutcomeStatus(action.nextStatus) ? outcomeHint ?? undefined : undefined}
                   onClick={() => handleEmployeeAction(action)}
                 >
                   {localLoading ? action.loadingLabel : action.label}
                 </button>
               ))}
+              {outcomeHint && employeeActions.some((action) => isOutcomeStatus(action.nextStatus)) && (
+                <p className="calendar-readonly-notice" role="note">{outcomeHint}</p>
+              )}
               {employeeActions.length === 0 && (
                 <p className="employee-appointments__final-state">
                   {employeeFinalMessage || "Nema dostupnih akcija za ovaj status."}
@@ -418,8 +431,8 @@ export default function AppointmentDetailsPanel({
                 cursor: localLoading ? "not-allowed" : "pointer",
                 transition: "all 0.2s"
               }}
-              title="Onači kao Završeno"
-              disabled={localLoading || selectedAppointment.status === "completed"}
+              title={outcomeHint ?? "Onači kao Završeno"}
+              disabled={localLoading || selectedAppointment.status === "completed" || outcomeLocked}
               onClick={() => handleAction("completed")}
             >
               <CheckCircle2 size={18} />
@@ -442,13 +455,14 @@ export default function AppointmentDetailsPanel({
                 cursor: localLoading ? "not-allowed" : "pointer",
                 transition: "all 0.2s"
               }}
-              title="Onači kao Nije došao"
-              disabled={localLoading || selectedAppointment.status === "no_show"}
+              title={outcomeHint ?? "Onači kao Nije došao"}
+              disabled={localLoading || selectedAppointment.status === "no_show" || outcomeLocked}
               onClick={() => handleAction("no_show")}
             >
               <AlertCircle size={18} />
             </button>
           </div>
+          {outcomeHint && <p className="calendar-readonly-notice" role="note" style={{ marginTop: "10px" }}>{outcomeHint}</p>}
         </div>
 
         {/* GLAVNE STRUKTURALNE AKCIJE */}

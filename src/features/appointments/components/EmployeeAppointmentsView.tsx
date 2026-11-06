@@ -39,6 +39,8 @@ import {
   getEmployeeAppointmentStatusLabel,
   type EmployeeAppointmentStatusAction,
 } from "../employeeAppointmentStatusTransitions";
+import { APPOINTMENT_NOT_ENDED_MESSAGE, getAppointmentNotEndedHint, isOutcomeStatus } from "../appointmentOutcomeTiming";
+import { useAppointmentEnded } from "../useAppointmentEnded";
 import { EmployeeStatusConfirmationModal } from "./EmployeeStatusConfirmationModal";
 
 const INITIAL_KPIS = { today: 0, upcoming: 0, completedThisWeek: 0, noShowThisWeek: 0 };
@@ -130,7 +132,9 @@ export function EmployeeAppointmentsView() {
       await updateOwnAppointmentStatus(appointmentId, action.nextStatus);
       setPendingAction(null);
     } catch (statusError) {
-      setError(statusError instanceof EmployeeAppointmentError && ["INVALID_STATUS_TRANSITION", "APPOINTMENT_ALREADY_UPDATED"].includes(statusError.code)
+      setError(statusError instanceof EmployeeAppointmentError && statusError.code === "APPOINTMENT_NOT_ENDED"
+        ? APPOINTMENT_NOT_ENDED_MESSAGE
+        : statusError instanceof EmployeeAppointmentError && ["INVALID_STATUS_TRANSITION", "APPOINTMENT_ALREADY_UPDATED"].includes(statusError.code)
         ? "Status je već promenjen. Lista je osvežena."
         : "Status termina trenutno nije moguće promeniti.");
       setPendingAction(null);
@@ -170,8 +174,8 @@ export function EmployeeAppointmentsView() {
         {error && <div className="employee-appointments__error" role="alert"><span>{error}</span><button type="button" onClick={() => void loadData()}><RefreshCw size={16} /> Pokušaj ponovo</button></div>}
 
         {loading ? <div className="employee-appointments__skeleton" aria-label="Učitavanje termina">{Array.from({ length: 5 }, (_, index) => <div key={index} />)}</div> : appointments.length === 0 ? <div className="employee-appointments__empty"><CalendarDays size={34} /><h2>{filters.period === "today" ? "Danas nemate zakazanih termina." : filters.period === "history" ? "Još nemate istoriju termina." : "Nema termina za izabrane filtere."}</h2><p>Promenite filtere ili zakažite novi termin.</p></div> : <>
-          <div className="employee-appointments__table-wrap"><table><thead><tr><th>Datum</th><th>Vreme</th><th>Klijent</th><th>Usluga</th><th>Trajanje</th><th>Status</th><th>Akcije</th></tr></thead><tbody>{appointments.map((appointment) => <tr key={appointment.id}><td>{formatDate(appointment.start_time, timeZone)}</td><td><strong>{formatTime(appointment.start_time, timeZone)}</strong><span>{formatTime(appointment.end_time, timeZone)}</span></td><td><strong>{appointment.clients?.full_name || "Klijent nije dostupan"}</strong><span>{appointment.clients?.phone || appointment.clients?.email || "Kontakt nije dostupan"}</span></td><td>{appointment.services?.name || "Usluga nije dostupna"}</td><td>{durationMinutes(appointment)} min</td><td><span className={`employee-status-badge employee-status-badge--${appointment.status}`}>{getEmployeeAppointmentStatusLabel(appointment.status)}</span></td><td><StatusActions appointment={appointment} updating={updating} onAction={runAction} /></td></tr>)}</tbody></table></div>
-          <div className="employee-appointments__cards">{appointments.map((appointment) => <article key={appointment.id}><div><span>{formatDate(appointment.start_time, timeZone)}</span><span className={`employee-status-badge employee-status-badge--${appointment.status}`}>{getEmployeeAppointmentStatusLabel(appointment.status)}</span></div><h2>{appointment.clients?.full_name || "Klijent nije dostupan"}</h2><p><Clock3 size={15} /> {formatTime(appointment.start_time, timeZone)}–{formatTime(appointment.end_time, timeZone)} · {durationMinutes(appointment)} min</p><p><UserRound size={15} /> {appointment.services?.name || "Usluga nije dostupna"}</p><StatusActions appointment={appointment} updating={updating} onAction={runAction} /></article>)}</div>
+          <div className="employee-appointments__table-wrap"><table><thead><tr><th>Datum</th><th>Vreme</th><th>Klijent</th><th>Usluga</th><th>Trajanje</th><th>Status</th><th>Akcije</th></tr></thead><tbody>{appointments.map((appointment) => <tr key={appointment.id}><td>{formatDate(appointment.start_time, timeZone)}</td><td><strong>{formatTime(appointment.start_time, timeZone)}</strong><span>{formatTime(appointment.end_time, timeZone)}</span></td><td><strong>{appointment.clients?.full_name || "Klijent nije dostupan"}</strong><span>{appointment.clients?.phone || appointment.clients?.email || "Kontakt nije dostupan"}</span></td><td>{appointment.services?.name || "Usluga nije dostupna"}</td><td>{durationMinutes(appointment)} min</td><td><span className={`employee-status-badge employee-status-badge--${appointment.status}`}>{getEmployeeAppointmentStatusLabel(appointment.status)}</span></td><td><StatusActions appointment={appointment} timeZone={timeZone} updating={updating} onAction={runAction} /></td></tr>)}</tbody></table></div>
+          <div className="employee-appointments__cards">{appointments.map((appointment) => <article key={appointment.id}><div><span>{formatDate(appointment.start_time, timeZone)}</span><span className={`employee-status-badge employee-status-badge--${appointment.status}`}>{getEmployeeAppointmentStatusLabel(appointment.status)}</span></div><h2>{appointment.clients?.full_name || "Klijent nije dostupan"}</h2><p><Clock3 size={15} /> {formatTime(appointment.start_time, timeZone)}–{formatTime(appointment.end_time, timeZone)} · {durationMinutes(appointment)} min</p><p><UserRound size={15} /> {appointment.services?.name || "Usluga nije dostupna"}</p><StatusActions appointment={appointment} timeZone={timeZone} updating={updating} onAction={runAction} /></article>)}</div>
         </>}
 
         {!loading && total > 0 && <footer className="employee-appointments__pagination"><span>{total} termina · Strana {filters.page + 1} od {pageCount}</span><div><button type="button" disabled={filters.page === 0} onClick={() => patchFilters({ page: filters.page - 1 })}><ChevronLeft size={17} /> Prethodna</button><button type="button" disabled={filters.page + 1 >= pageCount} onClick={() => patchFilters({ page: filters.page + 1 })}>Sledeća <ChevronRight size={17} /></button></div></footer>}
@@ -183,9 +187,11 @@ export function EmployeeAppointmentsView() {
   );
 }
 
-function StatusActions({ appointment, updating, onAction }: { appointment: AppointmentListItem; updating: { appointmentId: string; status: string } | null; onAction: (id: string, action: EmployeeAppointmentStatusAction) => Promise<void> }) {
+function StatusActions({ appointment, timeZone, updating, onAction }: { appointment: AppointmentListItem; timeZone: string; updating: { appointmentId: string; status: string } | null; onAction: (id: string, action: EmployeeAppointmentStatusAction) => Promise<void> }) {
+  const ended = useAppointmentEnded(appointment.end_time);
   const actions = getEmployeeAppointmentStatusActions(appointment.status);
   const finalMessage = getEmployeeAppointmentFinalMessage(appointment.status);
   if (actions.length === 0) return <p className="employee-appointments__final-state">{finalMessage || "Nema dostupnih akcija."}</p>;
-  return <div className="employee-appointments__actions">{actions.map((action) => <button key={action.nextStatus} type="button" className={`employee-status-action employee-status-action--${action.tone}`} disabled={Boolean(updating)} onClick={() => void onAction(appointment.id, action)}>{updating?.appointmentId === appointment.id && updating.status === action.nextStatus ? action.loadingLabel : action.label}</button>)}</div>;
+  const hint = !ended && actions.some((action) => isOutcomeStatus(action.nextStatus)) ? getAppointmentNotEndedHint(appointment.end_time, timeZone) : null;
+  return <div className="employee-appointments__actions">{actions.map((action) => { const locked = Boolean(hint) && isOutcomeStatus(action.nextStatus); return <button key={action.nextStatus} type="button" className={`employee-status-action employee-status-action--${action.tone}`} disabled={Boolean(updating) || locked} title={locked ? hint ?? undefined : undefined} onClick={() => void onAction(appointment.id, action)}>{updating?.appointmentId === appointment.id && updating.status === action.nextStatus ? action.loadingLabel : action.label}</button>; })}{hint && <p className="employee-appointments__final-state" role="note">{hint}</p>}</div>;
 }

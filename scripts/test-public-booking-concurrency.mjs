@@ -35,7 +35,8 @@ try {
   const tally = {};
   for (const mode of ["samePhone", "differentPhone"]) for (let i = 0; i < PAIRS; i += 1) {
     const index = (mode === "samePhone" ? 0 : PAIRS) + i;
-    const phones = mode === "samePhone" ? ["+381641234567", "+381641234567"] : [`+38164${String(i).padStart(7, "0")}`, `+38165${String(i).padStart(7, "0")}`];
+    // One number per pair (both requests share it), so the online limit of 3 future bookings per number (055) never applies.
+    const phones = mode === "samePhone" ? [`+38163${String(i).padStart(7, "0")}`, `+38163${String(i).padStart(7, "0")}`] : [`+38164${String(i).padStart(7, "0")}`, `+38165${String(i).padStart(7, "0")}`];
     const results = await Promise.allSettled([
       postgres.sql(book(randomUUID(), EMPLOYEES[0], index, "Prvi Klijent", phones[0]), `race-a-${index}`),
       postgres.sql(book(randomUUID(), EMPLOYEES[0], index, "Drugi Klijent", phones[1]), `race-b-${index}`),
@@ -48,7 +49,7 @@ try {
   // 2. Same key sent concurrently: exactly one appointment, every caller gets its id, exactly one was_created=true.
   for (let i = 0; i < 10; i += 1) {
     const key = randomUUID();
-    const rows = (await Promise.all([1, 2, 3, 4].map((n) => postgres.sql(book(key, EMPLOYEES[0], 200 + i, "Isti Kljuc", "+381649999999"), `same-key-${i}-${n}`)))).map((r) => r.split("|"));
+    const rows = (await Promise.all([1, 2, 3, 4].map((n) => postgres.sql(book(key, EMPLOYEES[0], 200 + i, "Isti Kljuc", `+38169${String(i).padStart(7, "0")}`), `same-key-${i}-${n}`)))).map((r) => r.split("|"));
     assert(new Set(rows.map(([id]) => id)).size === 1 && rows.filter(([, created]) => created === "true").length === 1, `same-key burst ${i}: ${rows.join(" ")}`);
     assert(await postgres.sql(`select count(*) from public.appointments where idempotency_key='${key}'`, `same-key-count-${i}`) === "1", `same-key burst ${i} duplicated`);
   }

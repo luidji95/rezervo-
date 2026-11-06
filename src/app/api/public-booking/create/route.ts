@@ -239,6 +239,11 @@ export async function POST(req: Request) {
       // Several salon clients share this number; nothing was written and no client is chosen.
       return NextResponse.json({ error: "Online booking could not be completed. Please contact the salon.", code: "CONTACT_SALON" }, { status: 422 });
     }
+    if (postgresMessage.includes("PUBLIC_BOOKING_LIMIT_REACHED")) {
+      // The number already has the maximum of future active bookings in this salon; nothing was written. The answer
+      // is the same for every number and says nothing about the existing bookings.
+      return NextResponse.json({ error: "Online booking limit reached. Please contact the salon.", code: "PUBLIC_BOOKING_LIMIT_REACHED" }, { status: 429 });
+    }
     if (postgresMessage.includes("IDEMPOTENCY_CONFLICT")) {
       return NextResponse.json({ error: "Booking request cannot be repeated.", code: "IDEMPOTENCY_CONFLICT" }, { status: 409 });
     }

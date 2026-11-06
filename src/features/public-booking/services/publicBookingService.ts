@@ -34,6 +34,13 @@ export class PublicBookingContactSalonError extends Error {
   }
 }
 
+export class PublicBookingLimitReachedError extends Error {
+  constructor() {
+    super("The online booking limit for this phone number was reached.");
+    this.name = "PublicBookingLimitReachedError";
+  }
+}
+
 function isPublicAvailabilitySlot(
   value: unknown
 ): value is PublicAvailabilitySlot {
@@ -111,6 +118,11 @@ export async function createPublicBooking(
   }
 
   if (response.status === 403) throw new PublicBookingUnavailableError();
+
+  if (response.status === 429) {
+    const errorBody = await response.json().catch(() => null) as { code?: string } | null;
+    if (errorBody?.code === "PUBLIC_BOOKING_LIMIT_REACHED") throw new PublicBookingLimitReachedError();
+  }
 
   if (response.status === 422) {
     const errorBody = await response.json().catch(() => null) as { code?: string } | null;

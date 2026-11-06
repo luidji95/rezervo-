@@ -37,6 +37,7 @@
     "test:employee-hardening": "node --experimental-strip-types --test src/features/employees/services/employeeMutationPresentation.test.ts",
     "test:employee-capacity-parity": "node --experimental-strip-types --test src/features/employees/services/employeeCapacityParity.test.ts",
     "test:public-booking-access": "docker exec -i supabase_db_rezervo psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/tests/public_booking_subscription_access.sql",
+    "test:public-booking-confirmed-db": "node scripts/test-public-booking-confirmed.mjs",
     "test:appointment-mutations": "docker exec -i supabase_db_rezervo psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/tests/appointment_mutation_contract.sql",
     "test:appointment-mutation-ui": "node --experimental-strip-types --test src/features/appointments/services/appointmentMutationError.test.ts",
     "test:business-data": "docker exec -i supabase_db_rezervo psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/tests/business_data_mutation_contract.sql",

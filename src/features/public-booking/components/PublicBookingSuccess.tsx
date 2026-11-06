@@ -46,7 +46,7 @@ export function PublicBookingSuccess({
     <section className="public-booking-success" role="status">
       <div className="public-booking-success-mark" aria-hidden="true">✓</div>
       <p className="public-booking-eyebrow">Rezervacija potvrđena</p>
-      <h2>Vaš termin je uspešno rezervisan.</h2>
+      <h2>Termin je zakazan.</h2>
       <dl>
         <div><dt>Salon</dt><dd>{salonName}</dd></div>
         <div><dt>Usluga</dt><dd>{service.name}</dd></div>

@@ -40,6 +40,7 @@ export function PublicBookingSelection({ salonId, salonName, salonSlug, salonTim
       {currentStep === 1 && <PublicServiceList services={services} disabled={selection.isCreatingBooking} selectedServiceId={selection.selectedServiceId} onSelectService={(id) => void selection.selectService(id)} />}
       {currentStep === 2 && <PublicEmployeeList employees={selection.employees} disabled={selection.isCreatingBooking} error={selection.employeesError} loading={selection.employeesLoading} selectedEmployeeId={selection.selectedEmployeeId} onSelectEmployee={selection.selectEmployee} />}
       {currentStep === 3 && <PublicDatePicker minDate={getTodayDateKey(salonTimeZone)} disabled={selection.isCreatingBooking} selectedDate={selection.selectedDate} onSelectDate={(date) => void selection.selectDate(date)} />}
+      {currentStep === 4 && selection.bookingError && <div className="public-inline-state public-inline-state-error" role="alert">{selection.bookingError}</div>}
       {currentStep === 4 && <PublicSlotList error={selection.slotsError} disabled={selection.isCreatingBooking} loading={selection.isLoadingSlots} selectedSlot={selection.selectedSlot} slots={selection.slots} timeZone={salonTimeZone} onSelectSlot={selection.selectSlot} />}
       {currentStep === 5 && <PublicCustomerForm defaultValues={customer} disabled={selection.isCreatingBooking} onContinue={(value) => { setCustomer(value); setReviewing(true); }} />}
       {currentStep === 6 && service && employee && selection.selectedSlot && (

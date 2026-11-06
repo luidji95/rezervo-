@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { createPublicBookingAtomic } from "@/services/appointmentService";
@@ -9,6 +9,7 @@ import { normalizePhoneToE164 } from "@/lib/phone/phoneNumber";
 import { hasPublicBookingAccess } from "@/features/public-booking/services/publicBookingAccessService";
 import { MANAGE_TOKEN_PATTERN } from "@/lib/publicBookingManage/manageToken";
 import { hashManageToken } from "@/lib/publicBookingManage/manageTokenHash.server";
+import { sendPublicBookingConfirmationSms } from "@/features/public-booking/sms/bookingConfirmationSms.server";
 
 const publicCreateBookingSchema = z.object({
   salonSlug: z.string().trim().min(1),
@@ -69,7 +70,7 @@ export async function POST(req: Request) {
 
     const { data: salon, error: salonError } = await supabaseServer
       .from("salons")
-      .select("id, booking_enabled, online_booking_enabled, status, timezone")
+      .select("id, name, booking_enabled, online_booking_enabled, status, timezone")
       .eq("slug", salonSlug)
       .single();
 
@@ -242,6 +243,21 @@ export async function POST(req: Request) {
           appointmentIdPresent: Boolean(appointment.id),
         });
       }
+    }
+
+    // SMS confirmation (pilot, off by default): only for a booking created by this request with its private link.
+    // It runs after the response, so a failure can never change the booking or the confirmation screen. Replays and
+    // concurrent requests for the same key get wasCreated=false and never send.
+    if (appointment.wasCreated && appointment.manageAccess && manageToken) {
+      const confirmation = {
+        appointmentId: appointment.id,
+        salonName: salon.name,
+        salonTimezone: salon.timezone || "Europe/Belgrade",
+        appointmentStart: appointmentStart.toISOString(),
+        recipientE164: phone.e164,
+        manageToken,
+      };
+      after(() => sendPublicBookingConfirmationSms(confirmation));
     }
 
     return NextResponse.json(

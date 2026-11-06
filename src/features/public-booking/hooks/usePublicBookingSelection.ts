@@ -24,27 +24,30 @@ const EMPTY_CUSTOMER: PublicCustomerData = {
   note: "",
 };
 
-export function usePublicBookingSelection(salonId: string, salonSlug: string) {
-  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(
-    null
-  );
-  const [selectedEmployeeId, setSelectedEmployeeId] =
-    useState<PublicEmployeeSelection>(null);
+export type PublicBookingOutcome = "created" | "conflict" | "unavailable" | "error" | "ignored";
+
+export const SLOT_CONFLICT_MESSAGE = "Izabrani termin više nije dostupan. Izaberite drugi termin.";
+
+// The date stays selected while the service or employee changes; only the time slot, which belongs to one
+// service/employee/date combination, is cleared and availability is loaded again from the server.
+export function usePublicBookingSelection(salonId: string, salonSlug: string, initialDate = "") {
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<PublicEmployeeSelection>(null);
   const [employees, setEmployees] = useState<PublicEmployee[]>([]);
   const [employeesLoading, setEmployeesLoading] = useState(false);
   const [employeesError, setEmployeesError] = useState(false);
-  const [selectedDate, setSelectedDate] = useState("");
+  const [selectedDate, setSelectedDate] = useState(initialDate);
   const [slots, setSlots] = useState<PublicAvailabilitySlot[]>([]);
-  const [selectedSlot, setSelectedSlot] =
-    useState<PublicAvailabilitySlot | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<PublicAvailabilitySlot | null>(null);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [slotsError, setSlotsError] = useState(false);
-  const [customerForm, setCustomerForm] =
-    useState<PublicCustomerData>(EMPTY_CUSTOMER);
+  const [customerForm, setCustomerForm] = useState<PublicCustomerData>(EMPTY_CUSTOMER);
   const [isCreatingBooking, setIsCreatingBooking] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
-  const [bookingResult, setBookingResult] =
-    useState<PublicBookingResult | null>(null);
+  const [bookingResult, setBookingResult] = useState<PublicBookingResult | null>(null);
+  const serviceRef = useRef<string | null>(null);
+  const employeeRef = useRef<PublicEmployeeSelection>(null);
+  const dateRef = useRef(initialDate);
   const employeeRequestIdRef = useRef(0);
   const slotRequestIdRef = useRef(0);
   const slotAbortControllerRef = useRef<AbortController | null>(null);
@@ -52,231 +55,158 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string) {
   const creatingBookingRef = useRef(false);
   const idempotencyKeyRef = useRef<string | null>(null);
 
-  const resetAvailability = useCallback(() => {
-    slotRequestIdRef.current += 1;
-    slotAbortControllerRef.current?.abort();
-    slotAbortControllerRef.current = null;
-    lastSlotRequestKeyRef.current = null;
-    setSelectedDate("");
-    setSlots([]);
+  useEffect(() => () => slotAbortControllerRef.current?.abort(), []);
+
+  const clearSlotSelection = useCallback(() => {
     setSelectedSlot(null);
-    setIsLoadingSlots(false);
-    setSlotsError(false);
     setBookingError(null);
     idempotencyKeyRef.current = null;
   }, []);
 
-  useEffect(() => {
-    return () => {
-      slotAbortControllerRef.current?.abort();
-    };
-  }, []);
+  const loadSlots = useCallback(async ({ force = false } = {}) => {
+    const serviceId = serviceRef.current;
+    const employeeId = employeeRef.current;
+    const date = dateRef.current;
+    const canLoad = Boolean(date && serviceId && employeeId) && employeeId !== "any";
+    const requestKey = canLoad ? [salonId, serviceId, employeeId, date].join(":") : null;
+    if (!force && requestKey && lastSlotRequestKeyRef.current === requestKey) return;
 
-  const selectService = useCallback(
-    async (serviceId: string | null) => {
-      const requestId = employeeRequestIdRef.current + 1;
-      employeeRequestIdRef.current = requestId;
+    slotRequestIdRef.current += 1;
+    const requestId = slotRequestIdRef.current;
+    slotAbortControllerRef.current?.abort();
+    slotAbortControllerRef.current = null;
+    setSlots([]);
+    setSlotsError(false);
 
-      setSelectedServiceId(serviceId);
-      setSelectedEmployeeId(null);
-      setEmployees([]);
-      setEmployeesError(false);
-      setBookingError(null);
-      idempotencyKeyRef.current = null;
-      resetAvailability();
+    if (!canLoad || !requestKey || !serviceId || !employeeId || employeeId === "any") {
+      lastSlotRequestKeyRef.current = null;
+      setIsLoadingSlots(false);
+      return;
+    }
 
-      if (!serviceId) {
-        setEmployeesLoading(false);
-        return;
-      }
-
-      setEmployeesLoading(true);
-
-      try {
-        const nextEmployees = await getPublicEmployeesForService(
-          salonId,
-          serviceId
-        );
-
-        if (employeeRequestIdRef.current === requestId) {
-          setEmployees(nextEmployees);
-          if (nextEmployees.length === 1) {
-            setSelectedEmployeeId(nextEmployees[0].id);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to load employees for public booking:", error);
-
-        if (employeeRequestIdRef.current === requestId) {
-          setEmployeesError(true);
-        }
-      } finally {
-        if (employeeRequestIdRef.current === requestId) {
-          setEmployeesLoading(false);
-        }
-      }
-    },
-    [resetAvailability, salonId]
-  );
-
-  const selectEmployee = useCallback(
-    (employeeId: PublicEmployeeSelection) => {
-      setSelectedEmployeeId(employeeId);
-      setBookingError(null);
-      idempotencyKeyRef.current = null;
-      resetAvailability();
-    },
-    [resetAvailability]
-  );
-
-  const selectDate = useCallback(
-    async (date: string) => {
-      const serviceId = selectedServiceId;
-      const employeeId = selectedEmployeeId;
-      const canLoadAvailability =
-        Boolean(date && serviceId && employeeId) && employeeId !== "any";
-      const requestKey = canLoadAvailability
-        ? [salonId, serviceId, employeeId, date].join(":")
-        : null;
-
-      if (
-        requestKey &&
-        date === selectedDate &&
-        lastSlotRequestKeyRef.current === requestKey
-      ) {
-        return;
-      }
-
-      setSelectedDate(date);
-      setSlots([]);
-      setSelectedSlot(null);
-      setSlotsError(false);
-      setBookingError(null);
-      idempotencyKeyRef.current = null;
-
-      slotRequestIdRef.current += 1;
-      const requestId = slotRequestIdRef.current;
-      slotAbortControllerRef.current?.abort();
-      slotAbortControllerRef.current = null;
-
-      if (
-        !canLoadAvailability ||
-        !requestKey ||
-        !serviceId ||
-        !employeeId ||
-        employeeId === "any"
-      ) {
+    lastSlotRequestKeyRef.current = requestKey;
+    const controller = new AbortController();
+    slotAbortControllerRef.current = controller;
+    setIsLoadingSlots(true);
+    try {
+      const nextSlots = await getPublicAvailability({ salonId, serviceId, employeeId, date }, controller.signal);
+      if (slotRequestIdRef.current === requestId) setSlots(nextSlots);
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") return;
+      console.error("Failed to load public availability:", error);
+      if (slotRequestIdRef.current === requestId) {
         lastSlotRequestKeyRef.current = null;
+        setSlotsError(true);
+      }
+    } finally {
+      if (slotRequestIdRef.current === requestId) {
+        slotAbortControllerRef.current = null;
         setIsLoadingSlots(false);
-        return;
       }
+    }
+  }, [salonId]);
 
-      lastSlotRequestKeyRef.current = requestKey;
-      const controller = new AbortController();
-      slotAbortControllerRef.current = controller;
-      setIsLoadingSlots(true);
+  const selectService = useCallback(async (serviceId: string | null) => {
+    const requestId = employeeRequestIdRef.current + 1;
+    employeeRequestIdRef.current = requestId;
+    serviceRef.current = serviceId;
+    employeeRef.current = null;
+    setSelectedServiceId(serviceId);
+    setSelectedEmployeeId(null);
+    setEmployees([]);
+    setEmployeesError(false);
+    clearSlotSelection();
+    void loadSlots();
 
-      try {
-        const nextSlots = await getPublicAvailability(
-          {
-            salonId,
-            serviceId,
-            employeeId,
-            date,
-          },
-          controller.signal
-        );
-
-        if (slotRequestIdRef.current === requestId) {
-          setSlots(nextSlots);
-        }
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-
-        console.error("Failed to load public availability:", error);
-
-        if (slotRequestIdRef.current === requestId) {
-          lastSlotRequestKeyRef.current = null;
-          setSlotsError(true);
-        }
-      } finally {
-        if (slotRequestIdRef.current === requestId) {
-          slotAbortControllerRef.current = null;
-          setIsLoadingSlots(false);
-        }
+    if (!serviceId) {
+      setEmployeesLoading(false);
+      return;
+    }
+    setEmployeesLoading(true);
+    try {
+      const nextEmployees = await getPublicEmployeesForService(salonId, serviceId);
+      if (employeeRequestIdRef.current !== requestId) return;
+      setEmployees(nextEmployees);
+      if (nextEmployees.length === 1) {
+        // Only one employee performs this service: select automatically and load the kept date.
+        employeeRef.current = nextEmployees[0].id;
+        setSelectedEmployeeId(nextEmployees[0].id);
+        void loadSlots();
       }
-    },
-    [salonId, selectedDate, selectedEmployeeId, selectedServiceId]
-  );
+    } catch (error) {
+      console.error("Failed to load employees for public booking:", error);
+      if (employeeRequestIdRef.current === requestId) setEmployeesError(true);
+    } finally {
+      if (employeeRequestIdRef.current === requestId) setEmployeesLoading(false);
+    }
+  }, [clearSlotSelection, loadSlots, salonId]);
 
-  const createBooking = useCallback(
-    async (customer: PublicCustomerData) => {
-      if (
-        creatingBookingRef.current ||
-        !selectedServiceId ||
-        !selectedEmployeeId ||
-        selectedEmployeeId === "any" ||
-        !selectedSlot ||
-        !selectedDate
-      ) {
-        return;
+  const retryEmployees = useCallback(() => {
+    if (serviceRef.current) void selectService(serviceRef.current);
+  }, [selectService]);
+
+  const selectEmployee = useCallback((employeeId: PublicEmployeeSelection) => {
+    employeeRef.current = employeeId;
+    setSelectedEmployeeId(employeeId);
+    clearSlotSelection();
+    void loadSlots();
+  }, [clearSlotSelection, loadSlots]);
+
+  const selectDate = useCallback(async (date: string) => {
+    if (date === dateRef.current && lastSlotRequestKeyRef.current) return;
+    dateRef.current = date;
+    setSelectedDate(date);
+    clearSlotSelection();
+    await loadSlots();
+  }, [clearSlotSelection, loadSlots]);
+
+  const retrySlots = useCallback(() => loadSlots({ force: true }), [loadSlots]);
+
+  const createBooking = useCallback(async (customer: PublicCustomerData): Promise<PublicBookingOutcome> => {
+    if (creatingBookingRef.current || !selectedServiceId || !selectedEmployeeId || selectedEmployeeId === "any" || !selectedSlot || !selectedDate) {
+      return "ignored";
+    }
+    creatingBookingRef.current = true;
+    setCustomerForm(customer);
+    setIsCreatingBooking(true);
+    setBookingError(null);
+
+    try {
+      // The same key is reused until the selection changes or the slot is reported taken, so a retry after a
+      // network failure or 503 BOOKING_RETRY can never create a second appointment.
+      const idempotencyKey = idempotencyKeyRef.current ?? crypto.randomUUID();
+      idempotencyKeyRef.current = idempotencyKey;
+      const result = await createPublicBooking({
+        salonSlug,
+        serviceId: selectedServiceId,
+        employeeId: selectedEmployeeId,
+        idempotencyKey,
+        startTime: selectedSlot.startTime,
+        customer,
+      });
+      setBookingResult({ ...result, customer });
+      return "created";
+    } catch (error) {
+      if (error instanceof PublicBookingConflictError) {
+        setSelectedSlot(null);
+        idempotencyKeyRef.current = null;
+        await loadSlots({ force: true });
+        setBookingError(SLOT_CONFLICT_MESSAGE);
+        return "conflict";
       }
-
-      creatingBookingRef.current = true;
-      setCustomerForm(customer);
-      setIsCreatingBooking(true);
-      setBookingError(null);
-
-      try {
-        const idempotencyKey =
-          idempotencyKeyRef.current ?? crypto.randomUUID();
-        idempotencyKeyRef.current = idempotencyKey;
-
-        const result = await createPublicBooking({
-          salonSlug,
-          serviceId: selectedServiceId,
-          employeeId: selectedEmployeeId,
-          idempotencyKey,
-          startTime: selectedSlot.startTime,
-          customer,
-        });
-
-        setBookingResult({ ...result, customer });
-      } catch (error) {
-        if (error instanceof PublicBookingConflictError) {
-          const conflictMessage =
-            "Izabrani termin više nije dostupan. Izaberite drugi termin.";
-          setBookingError(conflictMessage);
-          setSelectedSlot(null);
-          idempotencyKeyRef.current = null;
-          lastSlotRequestKeyRef.current = null;
-          await selectDate(selectedDate);
-          setBookingError(conflictMessage);
-        } else if (error instanceof PublicBookingUnavailableError) {
-          setBookingError("Online zakazivanje trenutno nije dostupno.");
-          setSelectedSlot(null);
-        } else {
-          console.error("Failed to create public booking:", error);
-          setBookingError(
-            "Rezervaciju trenutno nije moguće kreirati. Pokušajte ponovo."
-          );
-        }
-      } finally {
-        creatingBookingRef.current = false;
-        setIsCreatingBooking(false);
+      if (error instanceof PublicBookingUnavailableError) {
+        setBookingError("Online zakazivanje trenutno nije dostupno.");
+        setSelectedSlot(null);
+        return "unavailable";
       }
-    },
-    [
-      salonSlug,
-      selectDate,
-      selectedDate,
-      selectedEmployeeId,
-      selectedServiceId,
-      selectedSlot,
-    ]
-  );
+      console.error("Failed to create public booking:", error);
+      setBookingError("Termin trenutno nije moguće zakazati. Pokušajte ponovo.");
+      return "error";
+    } finally {
+      creatingBookingRef.current = false;
+      setIsCreatingBooking(false);
+    }
+  }, [loadSlots, salonSlug, selectedDate, selectedEmployeeId, selectedServiceId, selectedSlot]);
 
   const resetBookingFlow = useCallback(() => {
     creatingBookingRef.current = false;
@@ -305,6 +235,8 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string) {
     isLoadingSlots,
     isCreatingBooking,
     resetBookingFlow,
+    retryEmployees,
+    retrySlots,
     selectedDate,
     selectedEmployeeId,
     selectedServiceId,

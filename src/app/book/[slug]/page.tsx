@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
-import { PublicSalonHeader } from "@/features/public-booking/components/PublicSalonHeader";
 import { PublicBookingSelection } from "@/features/public-booking/components/PublicBookingSelection";
+import { PublicSalonIdentity } from "@/features/public-booking/components/PublicServiceStep";
 import { getPublicSalonPageData } from "@/features/public-booking/services/publicBookingServerService";
 import "./public-booking.css";
 
@@ -43,12 +43,16 @@ export default async function PublicSalonPage({ params }: Props) {
   if (!data) notFound();
 
   return (
-    <main className="public-booking-page">
-      <div className="public-booking-container">
-        <PublicSalonHeader salon={data.salon} />
-        {data.bookingAvailable ? <PublicBookingSelection salonId={data.salon.id} salonName={data.salon.name} salonSlug={data.salon.slug} salonTimeZone={data.salon.timezone} services={data.services} /> : <section className="public-booking-state" role="status"><h1>Online zakazivanje trenutno nije dostupno.</h1><p>Za informacije o terminima kontaktirajte salon.</p></section>}
-        <footer className="public-booking-footer"><span>Rezervacije omogućava</span><strong>Rezervo</strong></footer>
-      </div>
+    <main className="public-booking-page pb-page">
+      {data.bookingAvailable ? <PublicBookingSelection salon={data.salon} services={data.services} /> : (
+        <div className="pb-shell">
+          <section className="pb-step" role="status">
+            <PublicSalonIdentity salon={data.salon} />
+            <h1 className="pb-title">Online zakazivanje trenutno nije dostupno</h1>
+            <p className="pb-lead">Za informacije o terminima kontaktirajte salon{data.salon.phone ? <> na <a className="pb-link" href={`tel:${data.salon.phone}`}>{data.salon.phone}</a></> : null}.</p>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

@@ -1,58 +1,96 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { getTodayDateKey } from "@/lib/salonDateTime";
 import { usePublicBookingSelection } from "../hooks/usePublicBookingSelection";
-import type { PublicCustomerData, PublicService } from "../types";
+import { formatDateLong, formatTimeRange } from "../publicBookingFormat";
+import type { PublicCustomerData, PublicSalon, PublicService } from "../types";
+import { PublicBookingBar, PublicBookingFooter, PublicBookingProgress } from "./PublicBookingChrome";
+import { PUBLIC_DETAILS_FORM_ID, PublicDetailsStep } from "./PublicDetailsStep";
 import { PublicBookingSuccess } from "./PublicBookingSuccess";
-import { PublicBookingSummary } from "./PublicBookingSummary";
-import { PublicCustomerForm } from "./PublicCustomerForm";
-import { PublicDatePicker } from "./PublicDatePicker";
-import { PublicEmployeeList } from "./PublicEmployeeList";
-import { PublicServiceList } from "./PublicServiceList";
-import { PublicSlotList } from "./PublicSlotList";
+import { PublicServiceStep } from "./PublicServiceStep";
+import { PublicTimeStep } from "./PublicTimeStep";
 
-type Props = { salonId: string; salonName: string; salonSlug: string; salonTimeZone: string; services: PublicService[] };
-const steps = ["Usluga", "Zaposleni", "Datum", "Vreme", "Kontakt", "Potvrda"];
+type Props = { salon: PublicSalon; services: PublicService[] };
+type Step = 1 | 2 | 3;
 
-export function PublicBookingSelection({ salonId, salonName, salonSlug, salonTimeZone, services }: Props) {
-  const selection = usePublicBookingSelection(salonId, salonSlug);
+export function PublicBookingSelection({ salon, services }: Props) {
+  const timeZone = salon.timezone;
+  const [today] = useState(() => getTodayDateKey(timeZone));
+  const selection = usePublicBookingSelection(salon.id, salon.slug, today);
+  const [requestedStep, setRequestedStep] = useState<Step>(1);
   const [customer, setCustomer] = useState<PublicCustomerData>(selection.customerForm);
-  const [reviewing, setReviewing] = useState(false);
   const service = services.find((item) => item.id === selection.selectedServiceId);
   const employee = selection.employees.find((item) => item.id === selection.selectedEmployeeId);
-  const currentStep = reviewing && selection.selectedSlot ? 6 : selection.selectedSlot ? 5 : selection.selectedDate ? 4 : selection.selectedEmployeeId ? 3 : selection.selectedServiceId ? 2 : 1;
+  const slot = selection.selectedSlot;
+  // A step is only shown while its inputs are valid: e.g. a 409 clears the slot and returns to the time step.
+  const step: Step = !service ? 1 : requestedStep === 3 && (!slot || !employee) ? 2 : requestedStep;
 
-  const progress = useMemo(() => Math.min(currentStep, 6) / 6 * 100, [currentStep]);
+  const goTo = useCallback((next: Step) => {
+    setRequestedStep(next);
+    window.scrollTo({ top: 0 });
+  }, []);
 
-  if (selection.bookingResult && service && employee && selection.selectedSlot) {
-    return <PublicBookingSuccess date={selection.selectedDate} employee={employee} result={selection.bookingResult} salonName={salonName} service={service} slot={selection.selectedSlot} timeZone={salonTimeZone} onBookAnother={selection.resetBookingFlow} />;
+  if (selection.bookingResult && service && employee && slot) {
+    return (
+      <div className="pb-shell">
+        <PublicBookingProgress step={4} />
+        <PublicBookingSuccess date={selection.selectedDate} employee={employee} salonName={salon.name} service={service} slot={slot} timeZone={timeZone}
+          onBookAnother={() => { selection.resetBookingFlow(); setCustomer({ fullName: "", phone: "", email: "", note: "" }); goTo(1); }} />
+        <PublicBookingFooter />
+      </div>
+    );
   }
 
   return (
-    <section className="public-booking-wizard" aria-label="Koraci rezervacije">
-      <div className="public-wizard-progress">
-        <div className="public-wizard-progress-copy"><span>Korak {currentStep} od 6</span><strong>{steps[currentStep - 1]}</strong></div>
-        <div className="public-wizard-track" aria-hidden="true"><i style={{ width: `${progress}%` }} /></div>
-        <ol>{steps.map((label, index) => <li className={index + 1 <= currentStep ? "is-active" : ""} key={label}><span>{index + 1}</span><small>{label}</small></li>)}</ol>
-      </div>
-
-      {currentStep === 1 && <PublicServiceList services={services} disabled={selection.isCreatingBooking} selectedServiceId={selection.selectedServiceId} onSelectService={(id) => void selection.selectService(id)} />}
-      {currentStep === 2 && <PublicEmployeeList employees={selection.employees} disabled={selection.isCreatingBooking} error={selection.employeesError} loading={selection.employeesLoading} selectedEmployeeId={selection.selectedEmployeeId} onSelectEmployee={selection.selectEmployee} />}
-      {currentStep === 3 && <PublicDatePicker minDate={getTodayDateKey(salonTimeZone)} disabled={selection.isCreatingBooking} selectedDate={selection.selectedDate} onSelectDate={(date) => void selection.selectDate(date)} />}
-      {currentStep === 4 && selection.bookingError && <div className="public-inline-state public-inline-state-error" role="alert">{selection.bookingError}</div>}
-      {currentStep === 4 && <PublicSlotList error={selection.slotsError} disabled={selection.isCreatingBooking} loading={selection.isLoadingSlots} selectedSlot={selection.selectedSlot} slots={selection.slots} timeZone={salonTimeZone} onSelectSlot={selection.selectSlot} />}
-      {currentStep === 5 && <PublicCustomerForm defaultValues={customer} disabled={selection.isCreatingBooking} onContinue={(value) => { setCustomer(value); setReviewing(true); }} />}
-      {currentStep === 6 && service && employee && selection.selectedSlot && (
-        <section className="public-review-section">
-          <div className="public-section-heading"><p className="public-booking-eyebrow">Potvrda</p><h2>Proverite detalje rezervacije</h2></div>
-          <PublicBookingSummary customer={customer} date={selection.selectedDate} employee={employee} salonName={salonName} service={service} slot={selection.selectedSlot} timeZone={salonTimeZone} />
-          {selection.bookingError && <div className="public-inline-state public-inline-state-error" role="alert">{selection.bookingError}</div>}
-          <div className="public-wizard-actions"><button type="button" className="public-booking-secondary-action" disabled={selection.isCreatingBooking} onClick={() => setReviewing(false)}>Izmeni podatke</button><button type="button" className="public-booking-submit" disabled={selection.isCreatingBooking} onClick={() => void selection.createBooking(customer)}>{selection.isCreatingBooking ? "Zakazujem…" : "Potvrdi rezervaciju"}</button></div>
-        </section>
+    <div className="pb-shell">
+      {step === 1 && (
+        <>
+          <PublicBookingProgress step={1} />
+          <PublicServiceStep salon={salon} services={services} selectedServiceId={selection.selectedServiceId} onSelectService={(id) => void selection.selectService(id)} />
+          <PublicBookingBar summary={service && <><span>Izabrano: {service.name}</span><strong>{service.durationMinutes} min</strong></>}>
+            <button type="button" className="pb-button" disabled={!service} onClick={() => goTo(2)}>Dalje</button>
+          </PublicBookingBar>
+        </>
       )}
 
-      {currentStep > 1 && currentStep < 6 && <button type="button" className="public-wizard-back" onClick={() => { if (currentStep === 2) void selection.selectService(null); else if (currentStep === 3) selection.selectEmployee(null); else if (currentStep === 4) void selection.selectDate(""); else selection.selectSlot(null); }}>← Nazad</button>}
-    </section>
+      {step === 2 && service && (
+        <>
+          <PublicBookingProgress step={2} onBack={() => goTo(1)} backLabel="Nazad na izbor usluge" />
+          <PublicTimeStep
+            service={service} today={today} timeZone={timeZone}
+            employees={selection.employees} employeesLoading={selection.employeesLoading} employeesError={selection.employeesError}
+            selectedEmployeeId={selection.selectedEmployeeId} selectedDate={selection.selectedDate}
+            slots={selection.slots} slotsLoading={selection.isLoadingSlots} slotsError={selection.slotsError} selectedSlot={slot}
+            bookingError={selection.bookingError}
+            onChangeService={() => goTo(1)} onSelectEmployee={selection.selectEmployee}
+            onSelectDate={(date) => void selection.selectDate(date)} onSelectSlot={selection.selectSlot}
+            onRetryEmployees={selection.retryEmployees} onRetrySlots={() => void selection.retrySlots()}
+          />
+          <PublicBookingBar summary={slot ? <><span>{formatDateLong(selection.selectedDate)}</span><strong>{formatTimeRange(slot, timeZone)}</strong></> : <span>Izaberite vreme</span>}>
+            <button type="button" className="pb-button" disabled={!slot || !employee} onClick={() => goTo(3)}>Dalje</button>
+          </PublicBookingBar>
+        </>
+      )}
+
+      {step === 3 && service && employee && slot && (
+        <>
+          <PublicBookingProgress step={3} onBack={() => goTo(2)} backLabel="Nazad na izbor termina" />
+          <PublicDetailsStep service={service} employee={employee} date={selection.selectedDate} slot={slot} timeZone={timeZone}
+            defaultValues={customer} disabled={selection.isCreatingBooking} onDraftChange={setCustomer} onEditTime={() => goTo(2)}
+            onSubmit={async (value) => {
+              setCustomer(value);
+              // The slot was taken meanwhile: return to the time step; picking a new time does not skip ahead.
+              if (await selection.createBooking(value) === "conflict") goTo(2);
+            }} />
+          <PublicBookingBar message={selection.bookingError && <div className="pb-alert" role="alert">{selection.bookingError}</div>}>
+            <button type="submit" form={PUBLIC_DETAILS_FORM_ID} className="pb-button" disabled={selection.isCreatingBooking} aria-busy={selection.isCreatingBooking}>
+              {selection.isCreatingBooking ? "Zakazujem…" : "Zakaži termin"}
+            </button>
+          </PublicBookingBar>
+        </>
+      )}
+      <PublicBookingFooter />
+    </div>
   );
 }

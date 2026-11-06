@@ -1,14 +1,10 @@
-import type {
-  PublicAvailabilitySlot,
-  PublicBookingResult,
-  PublicEmployee,
-  PublicService,
-} from "../types";
+import { Check } from "lucide-react";
+import { formatDateLong, formatTimeRange } from "../publicBookingFormat";
+import type { PublicAvailabilitySlot, PublicEmployee, PublicService } from "../types";
 
 type PublicBookingSuccessProps = {
   date: string;
   employee: PublicEmployee;
-  result: PublicBookingResult;
   salonName: string;
   service: PublicService;
   slot: PublicAvailabilitySlot;
@@ -16,57 +12,21 @@ type PublicBookingSuccessProps = {
   onBookAnother: () => void;
 };
 
-function formatDateTime(date: string, startTime: string, timeZone: string) {
-  const formattedDate = new Intl.DateTimeFormat("sr-RS", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    timeZone,
-  }).format(new Date(`${date}T12:00:00Z`));
-  const formattedTime = new Intl.DateTimeFormat("sr-RS", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/Belgrade",
-  }).format(new Date(startTime));
-
-  return `${formattedDate} u ${formattedTime}`;
-}
-
-export function PublicBookingSuccess({
-  date,
-  employee,
-  result,
-  salonName,
-  service,
-  slot,
-  timeZone,
-  onBookAnother,
-}: PublicBookingSuccessProps) {
+// Rendered only after the server confirmed the booking (201 or an idempotent 200 replay).
+export function PublicBookingSuccess({ date, employee, salonName, service, slot, timeZone, onBookAnother }: PublicBookingSuccessProps) {
   return (
-    <section className="public-booking-success" role="status">
-      <div className="public-booking-success-mark" aria-hidden="true">✓</div>
-      <p className="public-booking-eyebrow">Rezervacija potvrđena</p>
-      <h2>Termin je zakazan.</h2>
-      <dl>
+    <section className="pb-step pb-success" role="status" aria-labelledby="pb-success-title">
+      <div className="pb-success-mark" aria-hidden="true"><span><Check size={30} strokeWidth={3} /></span></div>
+      <h1 className="pb-title" id="pb-success-title">Termin je zakazan</h1>
+      <p className="pb-lead">Salon je primio vaš termin.</p>
+      <dl className="pb-details">
         <div><dt>Salon</dt><dd>{salonName}</dd></div>
         <div><dt>Usluga</dt><dd>{service.name}</dd></div>
         <div><dt>Zaposleni</dt><dd>{employee.name}</dd></div>
-        <div><dt>Termin</dt><dd>{formatDateTime(date, slot.startTime, timeZone)}</dd></div>
-        <div><dt>Trajanje</dt><dd>{service.durationMinutes} min</dd></div>
-        <div><dt>Klijent</dt><dd>{result.customer.fullName}</dd></div>
+        <div><dt>Datum</dt><dd>{formatDateLong(date)}</dd></div>
+        <div><dt>Vreme</dt><dd>{formatTimeRange(slot, timeZone)}</dd></div>
       </dl>
-      <div className="public-booking-success-actions">
-        <a href="#public-salon-profile" className="public-booking-secondary-action">
-          Nazad na profil salona
-        </a>
-        <button
-          type="button"
-          className="public-booking-submit"
-          onClick={onBookAnother}
-        >
-          Zakaži još jedan termin
-        </button>
-      </div>
+      <button type="button" className="pb-button-secondary" onClick={onBookAnother}>Zakaži još jedan termin</button>
     </section>
   );
 }

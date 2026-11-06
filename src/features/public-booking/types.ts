@@ -22,6 +22,8 @@ export type PublicService = {
   durationMinutes: number;
   price: number;
   currency: string;
+  categoryId: string | null;
+  categoryName: string | null;
 };
 
 export type PublicEmployee = {

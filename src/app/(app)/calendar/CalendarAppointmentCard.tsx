@@ -1,12 +1,15 @@
 "use client";
 
 import type { CalendarAppointment } from "@/services/calendarQueryService";
+import { isInactiveCalendarStatus, type CalendarLane } from "@/features/calendar/calendarAppointmentLayout";
 
 type CalendarAppointmentCardProps = {
   appointment: CalendarAppointment;
   top: number;
   height: number;
   isSelected: boolean;
+  // Lane among overlapping cards of the same employee (e.g. a cancelled appointment and the new booking of its slot).
+  lane?: CalendarLane;
   onSelect: (appointment: CalendarAppointment) => void;
 };
 
@@ -55,17 +58,22 @@ export default function CalendarAppointmentCard({
   top,
   height,
   isSelected,
+  lane,
   onSelect,
 }: CalendarAppointmentCardProps) {
   
   const statusClass = getAppointmentStatusClass(appointment.status);
   const isSelectedClass = isSelected ? "calendar-appointment-card--selected" : "";
+  const layerClass = isInactiveCalendarStatus(appointment.status) ? "calendar-appointment-card--inactive" : "calendar-appointment-card--active";
+  const laneStyle = lane && lane.lanes > 1
+    ? { left: `calc(10px + (100% - 20px) * ${lane.lane} / ${lane.lanes})`, right: "auto", width: `calc((100% - 20px) / ${lane.lanes} - 4px)` }
+    : {};
   
   return (
     <button
       type="button"
-      className={`calendar-appointment-card ${statusClass} ${isSelectedClass}`}
-      style={{ top: `${top}px`, height: `${height}px` }}
+      className={`calendar-appointment-card ${statusClass} ${layerClass} ${isSelectedClass}`}
+      style={{ top: `${top}px`, height: `${height}px`, ...laneStyle }}
       onClick={() => onSelect(appointment)}
       aria-label={`${getAppointmentStatusLabel(appointment.status)} termin za ${appointment.clients?.full_name ?? "klijenta"}`}
     >

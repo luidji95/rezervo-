@@ -171,10 +171,12 @@ export async function markAllNotificationsAsRead(salonId: string) {
 
 export function subscribeToNotifications(
   salonId: string,
-  onInsert: () => void
+  onInsert: () => void,
+  // Separate channel per consumer (e.g. the bell and the calendar), so removing one never closes the other.
+  consumer?: string
 ) {
   const channel = supabase
-    .channel(`notifications:${salonId}`)
+    .channel(consumer ? `notifications:${salonId}:${consumer}` : `notifications:${salonId}`)
     .on(
       "postgres_changes",
       {

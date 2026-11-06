@@ -61,6 +61,8 @@ import EditAppointmentModal from "./EditAppointmentModal";
 import { CreateAppointmentModal } from "./CreateAppointmentModal";
 import EmployeeCreateAppointmentModal from "./EmployeeCreateAppointmentModal";
 
+import { layoutCalendarColumn, sortCalendarAppointments } from "@/features/calendar/calendarAppointmentLayout";
+import { subscribeToNotifications } from "@/services/notificationService";
 import "./calendar.css";
 import "../appointmets/appointments.css";
 
@@ -257,6 +259,48 @@ function CalendarPageContent() {
 
     return () => {
       isMounted = false;
+    };
+  }, [currentSalon, salonTimeZone, selectedDate]);
+
+  // Keeps an open calendar current: public bookings and cancellations happen outside this page. Reloads quietly when the
+  // salon receives a notification, when the tab regains focus or becomes visible, and every 30 s (like the bell).
+  useEffect(() => {
+    if (!currentSalon) return;
+    let active = true;
+    let requestId = 0;
+    let debounce: number | undefined;
+    const reload = () => {
+      const current = ++requestId;
+      getCalendarAppointments(currentSalon.id, selectedDate, salonTimeZone)
+        .then((fresh) => {
+          if (!active || current !== requestId) return;
+          setAppointments(fresh);
+          setSelectedAppointment((selected) => (selected ? fresh.find((item) => item.id === selected.id) ?? selected : selected));
+        })
+        .catch((refreshError) => console.error("CALENDAR_REFRESH_FAILED", refreshError instanceof Error ? refreshError.message : refreshError));
+    };
+    const schedule = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(reload, 400);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") schedule();
+    };
+    const unsubscribe = subscribeToNotifications(currentSalon.id, schedule, "calendar");
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") reload();
+    }, 30_000);
+    window.addEventListener("focus", schedule);
+    window.addEventListener("rezervo:notification", schedule);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      active = false;
+      unsubscribe();
+      window.clearTimeout(debounce);
+      window.clearInterval(interval);
+      window.removeEventListener("focus", schedule);
+      window.removeEventListener("rezervo:notification", schedule);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [currentSalon, salonTimeZone, selectedDate]);
 
@@ -497,17 +541,15 @@ function CalendarPageContent() {
     setSelectedDate(getTodayDateKey(salonTimeZone));
   };
 
-  const mobileAppointments = appointments
-    .filter(
+  // Same order as the grid: by start time, active before cancelled / no-show at the same time.
+  const mobileAppointments = sortCalendarAppointments(
+    appointments.filter(
       (appointment) =>
         isEmployeeReadOnly ||
         mobileEmployeeId === "all" ||
         appointment.employees?.id === mobileEmployeeId,
-    )
-    .sort(
-      (first, second) =>
-        new Date(first.start_time).getTime() - new Date(second.start_time).getTime(),
-    );
+    ),
+  );
 
   const statusLabels: Record<string, string> = {
     pending: "Na čekanju",
@@ -678,10 +720,12 @@ function CalendarPageContent() {
                   </div>
                 )}
                 
-                {employees.map((employee) => (
+                {employees.map((employee) => {
+                  // Overlapping cards (e.g. a cancelled appointment and the new booking of the same time) get their own lane.
+                  const column = layoutCalendarColumn(appointments.filter((appointment) => appointment.employees?.id === employee.id));
+                  return (
                   <div key={employee.id} className="calendar-employee-column">
-                    {appointments
-                      .filter((appointment) => appointment.employees?.id === employee.id)
+                    {column.sorted
                       .map((appointment) => {
                         const top = calculateCalendarItemTop(
                           appointment.start_time,
@@ -699,12 +743,14 @@ function CalendarPageContent() {
                             top={top}
                             height={height}
                             isSelected={isSelected}
+                            lane={column.layout.get(appointment.id)}
                             onSelect={setSelectedAppointment}
                           />
                         );
                       })}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </section>

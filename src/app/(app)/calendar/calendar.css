@@ -366,6 +366,15 @@
   color: #1e293b;
 }
 
+/* Active cards are drawn above cancelled / no-show cards that share their time; the selected card stays on top. */
+.calendar-appointment-card--active {
+  z-index: 2;
+}
+
+.calendar-appointment-card--inactive {
+  z-index: 1;
+}
+
 /* Hover i Selektovano stanje kartice */
 .calendar-appointment-card:hover {
   transform: translateY(-1px);

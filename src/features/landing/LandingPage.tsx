@@ -8,15 +8,19 @@ import {
   ArrowRight,
   BarChart3,
   Bell,
+  Bot,
+  CalendarCheck,
   CalendarDays,
+  CalendarX2,
   Check,
   ChevronDown,
-  Clock3,
-  CreditCard,
+  Contact,
+  Lightbulb,
+  Link2,
+  Mail,
   Menu,
-  MonitorSmartphone,
+  MessageSquareText,
   Play,
-  Rocket,
   Sparkles,
   UserRound,
   UsersRound,
@@ -26,6 +30,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useAuthorization } from "@/context/AuthorizationContext";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 import type { PublicPlan } from "@/features/pricing/types";
+import { SUPPORT_MAILTO } from "@/features/billing/services/supportContact";
 
 type FeatureId = "appointments" | "clients" | "team" | "statistics";
 
@@ -81,7 +86,22 @@ const features: Array<{
   },
 ];
 
-const benefits = ["Owner i Employee dozvole", "Public Booking", "CRM klijenata", "Notifikacije", "Statistika", "Responsive interfejs", "Više zaposlenih", "Bez instalacije"];
+// Kartice "Zašto Rezervo" opisuju samo ono što proizvod danas radi; AI recepcionista je jasno označen kao buduća funkcija.
+const whyCards: Array<{ icon: typeof CalendarDays; title: string; text: string; soon?: true }> = [
+  { icon: CalendarCheck, title: "Online zakazivanje", text: "Klijent preko vašeg linka bira uslugu, zaposlenog i slobodan termin." },
+  { icon: CalendarDays, title: "Pregledan kalendar", text: "Raspored celog tima, detalji termina i pomeranje rezervacija na jednom mestu." },
+  { icon: Contact, title: "Kartoni klijenata", text: "Kontakt, istorija poseta i napomene uz termine, pregledno za ceo tim." },
+  { icon: MessageSquareText, title: "SMS obaveštenja", text: "Podsetnici pred dolazak su deo Pro paketa: salon ih uključuje, bira vreme slanja i ima mesečni limit poruka. SMS potvrde rezervacije uvodimo postepeno." },
+  { icon: CalendarX2, title: "Jednostavno otkazivanje", text: "Posle rezervacije klijent dobija privatni link i može sam da otkaže termin najkasnije dva sata pre početka." },
+  { icon: Bot, title: "AI recepcionista", text: "Radimo na pomoćniku koji će odgovarati na česta pitanja klijenata i pomagati pri zakazivanju. Još nije dostupan.", soon: true },
+];
+
+const flowSteps = [
+  { title: "Napravite nalog", text: "Unesite naziv salona, kontakt i adresu." },
+  { title: "Podesite ponudu", text: "Dodajte usluge sa cenom i trajanjem, zaposlene i radno vreme." },
+  { title: "Podelite link", text: "Link za zakazivanje stavite na Instagram, sajt ili pošaljite u poruci." },
+  { title: "Primite rezervaciju", text: "Klijent bira slobodan termin, a rezervacija se odmah pojavljuje u kalendaru." },
+];
 
 const productScreens = [
   { id: "dashboard", title: "Dashboard", subtitle: "Dnevni pregled salona", src: "/landing/dashboard.webp", videoSrc: "/landing/videos/dashboard-showcase.mp4" },
@@ -91,11 +111,35 @@ const productScreens = [
   { id: "statistics", title: "Statistika", subtitle: "Trendovi i poslovni pokazatelji", src: "/landing/statistics.webp", videoSrc: "/landing/videos/statistics-showcase.mp4" },
 ];
 
-const roadmapGroups = [
-  { label: "Dostupno", tone: "active", icon: Check, items: ["Subscription Billing", "Online Booking Website"] },
-  { label: "Uskoro", tone: "soon", icon: Rocket, items: ["Online plaćanja"] },
-  { label: "U planu", tone: "planned", icon: Clock3, items: ["AI Receptionist", "Marketing automatizacija", "WhatsApp integracija", "Instagram rezervacije"] },
-] as const;
+const availableToday = [
+  { title: "Kalendar i tim", text: "Termini, zaposleni, radno vreme i dozvole." },
+  { title: "Usluge i klijenti", text: "Ponuda salona i kartoni klijenata." },
+  { title: "Javno zakazivanje i otkazivanje", text: "Link za klijente i otkazivanje preko privatnog linka." },
+];
+
+const SUGGESTION_MAILTO = `${SUPPORT_MAILTO}?subject=${encodeURIComponent("Predlog za Rezervo")}`;
+
+// Mali ilustrativni prikazi koraka; sadrže samo primer podataka, bez rezultata ili statistike.
+function FlowMock({ index }: { index: number }) {
+  if (index === 0) return <div className="landing-mock" aria-hidden="true">
+    <div className="landing-mock__field"><small>Naziv salona</small><span>Vaš salon</span></div>
+    <div className="landing-mock__field"><small>Telefon</small><span className="landing-mock__line" /></div>
+    <div className="landing-mock__field"><small>Adresa</small><span className="landing-mock__line landing-mock__line--short" /></div>
+  </div>;
+  if (index === 1) return <div className="landing-mock" aria-hidden="true">
+    <div className="landing-mock__row"><strong>Šišanje</strong><small>30 min</small></div>
+    <div className="landing-mock__row"><strong>Feniranje</strong><small>45 min</small></div>
+    <div className="landing-mock__chips"><span><UsersRound /> Zaposleni</span><span><CalendarDays /> Pon–Sub</span></div>
+  </div>;
+  if (index === 2) return <div className="landing-mock" aria-hidden="true">
+    <div className="landing-mock__link"><Link2 /><span>/book/vas-salon</span></div>
+    <div className="landing-mock__chips"><span>Instagram</span><span>Sajt</span><span>Poruka</span></div>
+  </div>;
+  return <div className="landing-mock" aria-hidden="true">
+    <div className="landing-mock__steps"><span className="is-done">Usluga</span><span className="is-done">Termin</span><span className="is-done">Podaci</span><span>Potvrda</span></div>
+    <div className="landing-mock__event"><small>10:30</small><strong>Nova rezervacija</strong><span>Šišanje</span></div>
+  </div>;
+}
 
 function Brand() {
   return <span className="landing-brand"><span>R</span>Rezervo</span>;
@@ -189,13 +233,17 @@ export function LandingPage({ plans }: { plans: PublicPlan[] | null }) {
 
     <section className="landing-section landing-section--tinted" id="product"><div className="landing-shell"><div className="landing-section__heading" data-reveal><span>Jedan sistem, ceo salon</span><h2>Kako izgleda Rezervo.</h2><p>Čist interfejs koji je dovoljno jednostavan za svakodnevni rad.</p></div><div className="landing-preview-grid">{productScreens.map((item, index) => <button key={item.id} type="button" className={index === 0 ? "is-featured" : ""} onClick={() => setPreview(item)} aria-label={`Pusti video: ${item.title}`} data-reveal><ProductShot src={item.src} alt={`${item.title} ekran Rezervo aplikacije`} /><span className="landing-play" aria-hidden="true"><Play /></span><span><strong>{item.title}</strong><small>{item.subtitle}</small></span></button>)}</div></div></section>
 
-    <section className="landing-section"><div className="landing-shell landing-why"><div data-reveal><span className="landing-eyebrow">Zašto Rezervo</span><h2>Napravljen za stvaran radni dan.</h2><p>Od vlasnika do zaposlenog, svako dobija jasan pregled i samo one alate koji su mu potrebni.</p><div className="landing-device"><MonitorSmartphone /><span>Desktop, tablet i mobilni</span></div></div><div className="landing-benefits">{benefits.map((benefit) => <div key={benefit} data-reveal><Check />{benefit}</div>)}</div></div></section>
+    <section className="landing-section" id="why"><div className="landing-shell"><div className="landing-section__heading" data-reveal><span>Zašto Rezervo</span><h2>Alati koje salon koristi svakog dana.</h2><p>Od prve rezervacije do dolaska klijenta, sve je povezano u jednoj aplikaciji.</p></div><div className="landing-why-grid">{whyCards.map(({ icon: Icon, title, text, soon }) => <article key={title} className={soon ? "is-soon" : ""} data-reveal><div className="landing-why-grid__icon"><Icon /></div><h3>{title}{soon && <span className="landing-badge-soon">Uskoro</span>}</h3><p>{text}</p></article>)}</div></div></section>
 
-    <section className="landing-section landing-section--dark"><div className="landing-shell"><div className="landing-section__heading" data-reveal><span>Počnite jednostavno</span><h2>Od naloga do prve rezervacije u tri koraka.</h2></div><div className="landing-steps">{["Napravite nalog", "Podesite salon, usluge i zaposlene", "Počnite da primate rezervacije"].map((step, index) => <article key={step} data-reveal><b>{index + 1}</b><h3>{step}.</h3>{index < 2 && <ArrowRight />}</article>)}</div></div></section>
+    <section className="landing-section landing-section--dark"><div className="landing-shell"><div className="landing-section__heading" data-reveal><span>Počnite jednostavno</span><h2>Od naloga do prve rezervacije.</h2><p>Četiri koraka, od podešavanja salona do termina u kalendaru.</p></div><ol className="landing-flow">{flowSteps.map((step, index) => <li key={step.title} data-reveal><div className="landing-flow__head"><b>{index + 1}</b><div><h3>{step.title}</h3><p>{step.text}</p></div></div><FlowMock index={index} /></li>)}</ol></div></section>
 
     <section className="landing-section" id="pricing"><div className="landing-shell"><div className="landing-section__heading" data-reveal><span>Paketi</span><h2>Pro funkcije 3 meseca besplatno.</h2><p>Novi saloni dobijaju 3 meseca besplatno, bez kartice. Paket birate nakon probnog perioda.</p></div>{plans ? <PricingCards plans={plans} compact /> : <div className="landing-pricing-unavailable" role="status"><h3>Paketi trenutno nisu dostupni</h3><p>Informacije o paketima trenutno nisu dostupne. Pokušajte ponovo uskoro.</p></div>}<div className="landing-pricing-link"><Link href="/pricing">Pogledajte kompletno poređenje paketa <ArrowRight size={17} /></Link></div></div></section>
 
-    <section className="landing-section" id="roadmap"><div className="landing-shell"><div className="landing-section__heading" data-reveal><span>Razvoj proizvoda</span><h2>Rezervo raste zajedno sa vašim salonom.</h2><p>Jasno odvajamo ono što već radi, ono što uskoro stiže i ideje koje istražujemo.</p></div><div className="landing-roadmap-groups">{roadmapGroups.map(({ label, tone, icon: Icon, items }) => <div className={`landing-roadmap-group landing-roadmap-group--${tone}`} key={label} data-reveal><header><Icon /><div><span>{label}</span><small>{items.length} {items.length === 1 ? "funkcionalnost" : "funkcionalnosti"}</small></div></header><div>{items.map((item) => <article key={item}><span>{item === "Online plaćanja" ? <CreditCard /> : <Check />}</span><strong>{item}</strong></article>)}</div></div>)}</div></div></section>
+    <section className="landing-section" id="roadmap"><div className="landing-shell"><div className="landing-section__heading" data-reveal><span>Razvoj proizvoda</span><h2>Rezervo raste zajedno sa vašim salonom.</h2><p>Jasno odvajamo ono što radi danas od onoga na čemu radimo, a pravac razvoja određuju potrebe salona.</p></div><div className="landing-growth">
+      <div className="landing-growth__card landing-growth__card--today" data-reveal><header><Check /><span>Dostupno danas</span></header><ul>{availableToday.map((item) => <li key={item.title}><strong>{item.title}</strong><small>{item.text}</small></li>)}</ul></div>
+      <div className="landing-growth__card landing-growth__card--next" data-reveal><header><Sparkles /><span>U pripremi</span></header><div className="landing-growth__next"><Bot /><div><strong>AI recepcionista</strong><p>Istražujemo kako da salonima pomogne u odgovaranju na pitanja i zakazivanju. Rok i uslove korišćenja objavićemo kada funkcija bude spremna.</p></div></div></div>
+      <div className="landing-growth__card landing-growth__card--voice" data-reveal><header><Lightbulb /><span>Vaše iskustvo usmerava razvoj</span></header><p>Šta bi vašem salonu najviše olakšalo posao? Pošaljite nam predlog, a mi ga razmatramo pri planiranju narednih funkcija.</p><a className="landing-button landing-button--secondary" href={SUGGESTION_MAILTO}><Mail size={17} /> Pošaljite predlog</a></div>
+    </div></div></section>
 
     <section className="landing-cta"><div className="landing-shell" data-reveal><div><span>Spremni za bolju organizaciju?</span><h2>Pokrenite svoj salon uz Rezervo.</h2></div><Link className="landing-button landing-button--light" href="/auth/register">Započni besplatno <ArrowRight /></Link></div></section>
 

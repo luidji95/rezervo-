@@ -18,4 +18,6 @@ export type InfobipDeliveryReportApplyOutcome =
   | "ignored_unknown_message"
   | "ignored_stale"
   | "ignored_duplicate"
-  | "ignored_monotone";
+  | "ignored_monotone"
+  // Booking-confirmation SMS: the messageId is not stored yet; the report is kept and applied when it is (058).
+  | "deferred_unknown_message";

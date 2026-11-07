@@ -43,6 +43,7 @@
     "test:public-booking-limit-db": "node scripts/test-public-booking-limit.mjs",
     "test:public-booking-manage-db": "node scripts/test-public-booking-manage-link.mjs",
     "test:public-booking-confirmation-sms-db": "node scripts/test-public-booking-confirmation-sms.mjs",
+    "test:confirmation-sms-dlr-db": "node scripts/test-confirmation-sms-delivery-reports.mjs",
     "test:appointment-mutations": "docker exec -i supabase_db_rezervo psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/tests/appointment_mutation_contract.sql",
     "test:appointment-mutation-ui": "node --experimental-strip-types --test src/features/appointments/services/appointmentMutationError.test.ts src/features/appointments/appointmentOutcomeTiming.test.ts",
     "test:appointment-final-outcome-db": "node scripts/test-appointment-final-outcome-timing.mjs",

@@ -8,16 +8,18 @@ import type { PublicCustomerData, PublicSalon, PublicService } from "../types";
 import { PublicBookingBar, PublicBookingFooter, PublicBookingProgress } from "./PublicBookingChrome";
 import { PUBLIC_DETAILS_FORM_ID, PublicDetailsStep } from "./PublicDetailsStep";
 import { PublicBookingSuccess } from "./PublicBookingSuccess";
+import { PublicBotCheck } from "./PublicBotCheck";
 import { PublicServiceStep } from "./PublicServiceStep";
 import { PublicTimeStep } from "./PublicTimeStep";
 
-type Props = { salon: PublicSalon; services: PublicService[] };
+// botCheckSiteKey: Turnstile site key when the bot check is enabled on the server, otherwise null.
+type Props = { salon: PublicSalon; services: PublicService[]; botCheckSiteKey?: string | null };
 type Step = 1 | 2 | 3;
 
-export function PublicBookingSelection({ salon, services }: Props) {
+export function PublicBookingSelection({ salon, services, botCheckSiteKey = null }: Props) {
   const timeZone = salon.timezone;
   const [today] = useState(() => getTodayDateKey(timeZone));
-  const selection = usePublicBookingSelection(salon.id, salon.slug, today);
+  const selection = usePublicBookingSelection(salon.id, salon.slug, today, Boolean(botCheckSiteKey));
   const [requestedStep, setRequestedStep] = useState<Step>(1);
   const [customer, setCustomer] = useState<PublicCustomerData>(selection.customerForm);
   const service = services.find((item) => item.id === selection.selectedServiceId);
@@ -83,6 +85,7 @@ export function PublicBookingSelection({ salon, services }: Props) {
               // The slot was taken meanwhile: return to the time step; picking a new time does not skip ahead.
               if (await selection.createBooking(value) === "conflict") goTo(2);
             }} />
+          {botCheckSiteKey && <PublicBotCheck siteKey={botCheckSiteKey} generation={selection.botCheckGeneration} onToken={selection.receiveBotCheckToken} />}
           <PublicBookingBar message={selection.bookingError && <div className="pb-alert" role="alert">{selection.bookingError}</div>}>
             <button type="submit" form={PUBLIC_DETAILS_FORM_ID} className="pb-button" disabled={selection.isCreatingBooking} aria-busy={selection.isCreatingBooking}>
               {selection.isCreatingBooking ? "Zakazujem…" : "Zakaži termin"}

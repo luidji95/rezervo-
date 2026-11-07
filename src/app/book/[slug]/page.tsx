@@ -4,6 +4,7 @@ import { cache } from "react";
 import { PublicBookingSelection } from "@/features/public-booking/components/PublicBookingSelection";
 import { PublicSalonIdentity } from "@/features/public-booking/components/PublicServiceStep";
 import { getPublicSalonPageData } from "@/features/public-booking/services/publicBookingServerService";
+import { getPublicBookingBotCheckSiteKey } from "@/features/public-booking/protection/publicBookingProtection.server";
 import "./public-booking.css";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -44,7 +45,7 @@ export default async function PublicSalonPage({ params }: Props) {
 
   return (
     <main className="public-booking-page pb-page">
-      {data.bookingAvailable ? <PublicBookingSelection salon={data.salon} services={data.services} /> : (
+      {data.bookingAvailable ? <PublicBookingSelection salon={data.salon} services={data.services} botCheckSiteKey={getPublicBookingBotCheckSiteKey()} /> : (
         <div className="pb-shell">
           <section className="pb-step" role="status">
             <PublicSalonIdentity salon={data.salon} />

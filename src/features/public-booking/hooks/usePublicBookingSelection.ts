@@ -6,10 +6,13 @@ import {
   createPublicBooking,
   getPublicAvailability,
   getPublicEmployeesForService,
+  PublicBookingBotCheckError,
   PublicBookingConflictError,
   PublicBookingContactSalonError,
   PublicBookingInvalidPhoneError,
   PublicBookingLimitReachedError,
+  PublicBookingProtectionUnavailableError,
+  PublicBookingRateLimitedError,
   PublicBookingUnavailableError,
 } from "../services/publicBookingService";
 import { PHONE_INVALID_MESSAGE } from "@/lib/phone/phoneNumber";
@@ -29,15 +32,22 @@ const EMPTY_CUSTOMER: PublicCustomerData = {
   note: "",
 };
 
-export type PublicBookingOutcome = "created" | "conflict" | "unavailable" | "invalid_phone" | "contact_salon" | "limit_reached" | "error" | "ignored";
+export type PublicBookingOutcome = "created" | "conflict" | "unavailable" | "invalid_phone" | "contact_salon" | "limit_reached"
+  | "rate_limited" | "bot_check_pending" | "bot_check_failed" | "protection_unavailable" | "error" | "ignored";
 
 export const SLOT_CONFLICT_MESSAGE = "Izabrani termin više nije dostupan. Izaberite drugi termin.";
 export const CONTACT_SALON_MESSAGE = "Termin trenutno ne možemo zakazati online. Molimo vas da kontaktirate salon.";
 export const BOOKING_LIMIT_MESSAGE = "Dostignut je limit za online zakazivanje. Za dodatni termin kontaktirajte salon.";
+export const BOT_CHECK_PENDING_MESSAGE = "Sačekajte da se provera završi, pa pokušajte ponovo.";
+export const BOT_CHECK_FAILED_MESSAGE = "Nismo uspeli da potvrdimo zahtev. Sačekajte da se provera završi i pokušajte ponovo.";
+export const PROTECTION_UNAVAILABLE_MESSAGE = "Zakazivanje trenutno ne možemo da potvrdimo. Pokušajte ponovo za nekoliko trenutaka.";
+export function rateLimitedMessage(retryAfterSeconds: number) {
+  return `Previše pokušaja zakazivanja. Pokušajte ponovo za ${Math.max(1, Math.ceil(retryAfterSeconds / 60))} min.`;
+}
 
 // The date stays selected while the service or employee changes; only the time slot, which belongs to one
 // service/employee/date combination, is cleared and availability is loaded again from the server.
-export function usePublicBookingSelection(salonId: string, salonSlug: string, initialDate = "") {
+export function usePublicBookingSelection(salonId: string, salonSlug: string, initialDate = "", botCheckRequired = false) {
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<PublicEmployeeSelection>(null);
   const [employees, setEmployees] = useState<PublicEmployee[]>([]);
@@ -64,6 +74,20 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string, in
   // Generated together with the idempotency key and reset with it: a retry of the same request sends the same token,
   // so a lost response still ends with the same private link.
   const manageTokenRef = useRef<string | null>(null);
+  // Turnstile token with its own verification id: a new token always gets a new id, a retry of the same token keeps it.
+  // A token is single-use, so after any answer from the server the widget is reset for a fresh one (generation + 1);
+  // after a network failure the same token and id are sent again with the same booking key.
+  const botCheckRef = useRef<{ token: string; verificationId: string } | null>(null);
+  const [botCheckGeneration, setBotCheckGeneration] = useState(0);
+
+  const receiveBotCheckToken = useCallback((token: string | null) => {
+    botCheckRef.current = token ? { token, verificationId: crypto.randomUUID() } : null;
+  }, []);
+
+  const consumeBotCheck = useCallback(() => {
+    botCheckRef.current = null;
+    setBotCheckGeneration((generation) => generation + 1);
+  }, []);
 
   useEffect(() => () => slotAbortControllerRef.current?.abort(), []);
 
@@ -177,6 +201,10 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string, in
     if (creatingBookingRef.current || !selectedServiceId || !selectedEmployeeId || selectedEmployeeId === "any" || !selectedSlot || !selectedDate) {
       return "ignored";
     }
+    if (botCheckRequired && !botCheckRef.current) {
+      setBookingError(BOT_CHECK_PENDING_MESSAGE);
+      return "bot_check_pending";
+    }
     creatingBookingRef.current = true;
     setCustomerForm(customer);
     setIsCreatingBooking(true);
@@ -195,12 +223,29 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string, in
         employeeId: selectedEmployeeId,
         idempotencyKey,
         manageToken,
+        botCheck: botCheckRequired && botCheckRef.current ? botCheckRef.current : undefined,
         startTime: selectedSlot.startTime,
         customer,
       });
+      if (botCheckRequired) consumeBotCheck();
       setBookingResult({ ...result, customer, manageToken: result.manageAccess ? manageToken : null });
       return "created";
     } catch (error) {
+      // A fetch TypeError means no answer: the same booking key, private token and bot-check token are retried as they
+      // are. Any answer means the bot-check token may be used up, so a fresh one is requested.
+      if (botCheckRequired && !(error instanceof TypeError)) consumeBotCheck();
+      if (error instanceof PublicBookingRateLimitedError) {
+        setBookingError(rateLimitedMessage(error.retryAfterSeconds));
+        return "rate_limited";
+      }
+      if (error instanceof PublicBookingBotCheckError) {
+        setBookingError(BOT_CHECK_FAILED_MESSAGE);
+        return "bot_check_failed";
+      }
+      if (error instanceof PublicBookingProtectionUnavailableError) {
+        setBookingError(PROTECTION_UNAVAILABLE_MESSAGE);
+        return "protection_unavailable";
+      }
       if (error instanceof PublicBookingConflictError) {
         setSelectedSlot(null);
         idempotencyKeyRef.current = null;
@@ -236,7 +281,7 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string, in
       creatingBookingRef.current = false;
       setIsCreatingBooking(false);
     }
-  }, [loadSlots, salonSlug, selectedDate, selectedEmployeeId, selectedServiceId, selectedSlot]);
+  }, [botCheckRequired, consumeBotCheck, loadSlots, salonSlug, selectedDate, selectedEmployeeId, selectedServiceId, selectedSlot]);
 
   const resetBookingFlow = useCallback(() => {
     creatingBookingRef.current = false;
@@ -246,8 +291,9 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string, in
     setBookingError(null);
     setCustomerForm(EMPTY_CUSTOMER);
     setIsCreatingBooking(false);
+    if (botCheckRequired) consumeBotCheck();
     void selectService(null);
-  }, [selectService]);
+  }, [botCheckRequired, consumeBotCheck, selectService]);
 
   const selectSlot = useCallback((slot: PublicAvailabilitySlot | null) => {
     idempotencyKeyRef.current = null;
@@ -257,6 +303,8 @@ export function usePublicBookingSelection(salonId: string, salonSlug: string, in
   }, []);
 
   return {
+    botCheckGeneration,
+    receiveBotCheckToken,
     bookingError,
     bookingResult,
     createBooking,

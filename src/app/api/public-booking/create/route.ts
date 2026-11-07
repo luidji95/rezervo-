@@ -10,6 +10,7 @@ import { hasPublicBookingAccess } from "@/features/public-booking/services/publi
 import { MANAGE_TOKEN_PATTERN } from "@/lib/publicBookingManage/manageToken";
 import { hashManageToken } from "@/lib/publicBookingManage/manageTokenHash.server";
 import { sendPublicBookingConfirmationSms } from "@/features/public-booking/sms/bookingConfirmationSms.server";
+import { enforcePublicBookingProtection } from "@/features/public-booking/protection/publicBookingProtection.server";
 
 const publicCreateBookingSchema = z.object({
   salonSlug: z.string().trim().min(1),
@@ -18,6 +19,8 @@ const publicCreateBookingSchema = z.object({
   idempotencyKey: z.string().uuid(),
   // Private manage-link token (optional: older clients do not send one and get no link). Never logged.
   manageToken: z.string().regex(MANAGE_TOKEN_PATTERN).optional(),
+  // Turnstile token with the client-generated verification id (new id per token). Required only when protection is on.
+  botCheck: z.object({ token: z.string().min(1).max(2048), verificationId: z.string().uuid() }).optional(),
   startTime: z.string().datetime(),
   customer: z
     .object({
@@ -120,6 +123,23 @@ export async function POST(req: Request) {
 
     const existingResponse = await replayResponse();
     if (existingResponse) return existingResponse;
+
+    // New booking attempt: bot check and per-IP limit (off unless enabled). A replay above never reaches this.
+    const protection = await enforcePublicBookingProtection(req.headers, parsed.data.botCheck);
+    if (!protection.ok) {
+      if (protection.status === 429) {
+        return NextResponse.json(
+          { error: "Too many booking attempts. Please try again later.", code: protection.code, retryAfterSeconds: protection.retryAfterSeconds },
+          { status: 429, headers: { "Retry-After": String(protection.retryAfterSeconds) } }
+        );
+      }
+      return NextResponse.json(
+        protection.status === 403
+          ? { error: "The request could not be verified. Please try again.", code: protection.code }
+          : { error: "Booking cannot be verified right now. Please try again.", code: protection.code },
+        { status: protection.status }
+      );
+    }
 
     if (salon.status !== "active" || !salon.booking_enabled ||
       !salon.online_booking_enabled || !(await hasPublicBookingAccess(salon.id))) {

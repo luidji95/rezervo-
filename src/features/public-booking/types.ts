@@ -62,6 +62,8 @@ export type CreatePublicBookingInput = {
   employeeId: string;
   idempotencyKey: string;
   manageToken: string;
+  // Turnstile token and its verification id; sent only when the bot check is enabled.
+  botCheck?: { token: string; verificationId: string };
   startTime: string;
   customer: PublicCustomerData;
 };

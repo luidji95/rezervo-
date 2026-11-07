@@ -42,6 +42,35 @@ export class PublicBookingLimitReachedError extends Error {
   }
 }
 
+// The server answered and refused the request (as opposed to a network failure, where it may not have been processed).
+export class PublicBookingHttpError extends Error {
+  constructor(readonly status: number) {
+    super("Public booking request failed.");
+    this.name = "PublicBookingHttpError";
+  }
+}
+
+export class PublicBookingRateLimitedError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super("Too many booking attempts.");
+    this.name = "PublicBookingRateLimitedError";
+  }
+}
+
+export class PublicBookingBotCheckError extends Error {
+  constructor() {
+    super("The bot check was not accepted.");
+    this.name = "PublicBookingBotCheckError";
+  }
+}
+
+export class PublicBookingProtectionUnavailableError extends Error {
+  constructor() {
+    super("The booking could not be verified right now.");
+    this.name = "PublicBookingProtectionUnavailableError";
+  }
+}
+
 function isPublicAvailabilitySlot(
   value: unknown
 ): value is PublicAvailabilitySlot {
@@ -118,25 +147,19 @@ export async function createPublicBooking(
     throw new PublicBookingConflictError();
   }
 
-  if (response.status === 403) throw new PublicBookingUnavailableError();
-
-  if (response.status === 429) {
-    const errorBody = await response.json().catch(() => null) as { code?: string } | null;
-    if (errorBody?.code === "PUBLIC_BOOKING_LIMIT_REACHED") throw new PublicBookingLimitReachedError();
-  }
-
-  if (response.status === 422) {
-    const errorBody = await response.json().catch(() => null) as { code?: string } | null;
-    if (errorBody?.code === "CONTACT_SALON") throw new PublicBookingContactSalonError();
-  }
-
-  if (response.status === 400) {
-    const errorBody = await response.json().catch(() => null) as { code?: string } | null;
-    if (errorBody?.code === "INVALID_PHONE" || errorBody?.code === "PHONE_REQUIRED") throw new PublicBookingInvalidPhoneError();
-  }
-
   if (!response.ok) {
-    throw new Error("Public booking request failed.");
+    const errorBody = await response.json().catch(() => null) as { code?: string; retryAfterSeconds?: number } | null;
+    const code = errorBody?.code;
+    if (response.status === 403) throw code === "BOT_CHECK_FAILED" ? new PublicBookingBotCheckError() : new PublicBookingUnavailableError();
+    if (response.status === 429 && code === "PUBLIC_BOOKING_LIMIT_REACHED") throw new PublicBookingLimitReachedError();
+    if (response.status === 429 && code === "RATE_LIMITED") {
+      const header = Number(response.headers.get("Retry-After"));
+      throw new PublicBookingRateLimitedError(Number.isFinite(header) && header > 0 ? header : Number(errorBody?.retryAfterSeconds) || 60);
+    }
+    if (response.status === 503 && code === "PROTECTION_UNAVAILABLE") throw new PublicBookingProtectionUnavailableError();
+    if (response.status === 422 && code === "CONTACT_SALON") throw new PublicBookingContactSalonError();
+    if (response.status === 400 && (code === "INVALID_PHONE" || code === "PHONE_REQUIRED")) throw new PublicBookingInvalidPhoneError();
+    throw new PublicBookingHttpError(response.status);
   }
 
   const body: unknown = await response.json();

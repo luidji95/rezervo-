@@ -365,3 +365,4 @@ html:has(.pb-page) body { overflow-x: clip; }
 .pb-notice { margin-top: 18px; padding: 14px 16px; background: var(--pb-surface); border: 1px solid var(--pb-border); border-radius: 14px; font-size: 15px; line-height: 1.45; }
 .pb-button.pb-button-danger { background: var(--pb-danger); }
 .pb-manage-link p + p { margin-top: 8px; }
+.pb-bot-check { margin-top: 16px; }

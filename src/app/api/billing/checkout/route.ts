@@ -76,6 +76,7 @@ export async function POST(request: Request) {
         appUrl: config.appUrl,
         storeId: config.storeId,
         environment: config.environment,
+        liveCheckoutAccessMode: config.liveCheckoutAccessMode,
         liveAllowedSalonIds: config.liveAllowedSalonIds,
         now: () => new Date(),
       },

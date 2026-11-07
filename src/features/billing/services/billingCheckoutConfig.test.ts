@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { BillingCheckoutError } from "../providers/billingCheckoutErrors.ts";
 import { resolveBillingCheckoutConfig } from "./billingCheckoutConfigCore.ts";
+import { isLiveCheckoutSalonAllowed, parseLiveCheckoutAccessMode } from "./liveCheckoutAccess.ts";
 
 const base = {
   BILLING_CHECKOUT_ENABLED: "true",
@@ -23,6 +24,7 @@ test("checkout config preserves the sandbox contract", () => {
       apiKey: "test-key",
       storeId: "123",
       appUrl: "https://sandbox.example.test",
+      liveCheckoutAccessMode: null,
       liveAllowedSalonIds: null,
       resubscribeEnabled: false,
     },
@@ -83,6 +85,75 @@ test("live config requires its capability, credentials and pilot allowlist", () 
     assert.throws(() =>
       resolveBillingCheckoutConfig(live, appUrl, "live"),
     );
+  }
+});
+
+test("live access mode defaults to the allowlist and public must be explicit", () => {
+  const live = {
+    BILLING_LIVE_CHECKOUT_ENABLED: "true",
+    BILLING_PROVIDER: "lemonsqueezy",
+    BILLING_ENVIRONMENT: "live",
+    LEMONSQUEEZY_LIVE_API_KEY: "live-key",
+    LEMONSQUEEZY_LIVE_STORE_ID: "456",
+  };
+  const url = "https://app.example.test";
+  const otherSalon = "20000000-0000-4000-8000-000000000099";
+
+  // Unset, empty or explicit allowlist: the mandatory list still applies.
+  for (const mode of [undefined, "", "  ", "allowlist", " allowlist "]) {
+    const config = resolveBillingCheckoutConfig(
+      { ...live, BILLING_LIVE_CHECKOUT_ACCESS_MODE: mode, BILLING_LIVE_CHECKOUT_ALLOWED_SALON_IDS: liveSalon },
+      url,
+      "live",
+    );
+    assert.equal(config.liveCheckoutAccessMode, "allowlist");
+    assert.equal(isLiveCheckoutSalonAllowed(config, liveSalon), true);
+    assert.equal(isLiveCheckoutSalonAllowed(config, otherSalon), false);
+    for (const ids of [undefined, "", "not-a-uuid"]) {
+      assert.throws(
+        () => resolveBillingCheckoutConfig({ ...live, BILLING_LIVE_CHECKOUT_ACCESS_MODE: mode, BILLING_LIVE_CHECKOUT_ALLOWED_SALON_IDS: ids }, url, "live"),
+        (error) => error instanceof BillingCheckoutError && error.code === "BILLING_NOT_CONFIGURED",
+      );
+    }
+  }
+
+  // Unknown or malformed modes never open checkout, even with a valid allowlist.
+  for (const mode of ["PUBLIC", "Public", "true", "all", "any", "open", "public,allowlist", "*"]) {
+    assert.equal(parseLiveCheckoutAccessMode(mode), null);
+    assert.throws(
+      () => resolveBillingCheckoutConfig({ ...live, BILLING_LIVE_CHECKOUT_ACCESS_MODE: mode, BILLING_LIVE_CHECKOUT_ALLOWED_SALON_IDS: liveSalon }, url, "live"),
+      (error) => error instanceof BillingCheckoutError && error.code === "BILLING_NOT_CONFIGURED",
+    );
+  }
+
+  // Public mode is explicit; the allowlist is not consulted.
+  for (const ids of [undefined, "", liveSalon]) {
+    const config = resolveBillingCheckoutConfig(
+      { ...live, BILLING_LIVE_CHECKOUT_ACCESS_MODE: "public", BILLING_LIVE_CHECKOUT_ALLOWED_SALON_IDS: ids },
+      url,
+      "live",
+    );
+    assert.equal(config.liveCheckoutAccessMode, "public");
+    assert.equal(config.liveAllowedSalonIds, null);
+    assert.equal(isLiveCheckoutSalonAllowed(config, otherSalon), true);
+  }
+
+  // Public mode does not replace the live capability, credentials or HTTPS app URL.
+  for (const patch of [
+    { BILLING_LIVE_CHECKOUT_ENABLED: undefined },
+    { LEMONSQUEEZY_LIVE_API_KEY: undefined },
+    { LEMONSQUEEZY_LIVE_STORE_ID: undefined },
+  ]) {
+    assert.throws(() => resolveBillingCheckoutConfig({ ...live, BILLING_LIVE_CHECKOUT_ACCESS_MODE: "public", ...patch }, url, "live"));
+  }
+  assert.throws(() => resolveBillingCheckoutConfig({ ...live, BILLING_LIVE_CHECKOUT_ACCESS_MODE: "public" }, "http://localhost:3000", "live"));
+});
+
+test("test checkout ignores the live access mode", () => {
+  for (const mode of ["public", "invalid"]) {
+    const config = resolveBillingCheckoutConfig({ ...base, BILLING_LIVE_CHECKOUT_ACCESS_MODE: mode }, "https://sandbox.example.test", "test");
+    assert.equal(config.liveCheckoutAccessMode, null);
+    assert.equal(isLiveCheckoutSalonAllowed(config, liveSalon), true);
   }
 });
 

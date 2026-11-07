@@ -182,7 +182,8 @@ Preduslovi: A1 kompletan, C prošao.
 3. Vercel Production (vrednosti unosi vlasnik): `BILLING_ENVIRONMENT=live`, `BILLING_PROVIDER=lemonsqueezy`,
    `LEMONSQUEEZY_LIVE_API_KEY`, `LEMONSQUEEZY_LIVE_STORE_ID`, `LEMONSQUEEZY_LIVE_WEBHOOK_SECRET`,
    `BILLING_LIVE_WEBHOOKS_ENABLED=true`, `NEXT_PUBLIC_APP_URL`, `BILLING_LIVE_CHECKOUT_ENABLED=true`,
-   `BILLING_LIVE_CHECKOUT_ALLOWED_SALON_IDS=<samo sintetički salon>` (postojeća live allowlista),
+   `BILLING_LIVE_CHECKOUT_ALLOWED_SALON_IDS=<samo sintetički salon>` (postojeća live allowlista;
+   `BILLING_LIVE_CHECKOUT_ACCESS_MODE` prazno ili `allowlist`; `public` tek posebnom odlukom o javnoj prodaji),
    `NEXT_PUBLIC_BILLING_CHECKOUT_ENABLED=true`; portal `BILLING_CUSTOMER_PORTAL_ENABLED=true` i
    `LEMONSQUEEZY_PORTAL_ALLOWED_HOSTS` samo ako je A1.4 potvrđeno.
    Neprisutni/isključeni: `BILLING_PLAN_CHANGE_ENABLED`, `BILLING_LIVE_RESUBSCRIBE_ENABLED`, override/pilot
@@ -195,6 +196,12 @@ Provera: `select billing_environment_matches_v1('live')` = true; acquisition sal
 van allowliste ne vidi checkout. Stani ako parity nije true ili checkout vidi salon van allowliste.
 
 ## E. Live acceptance (pravi novac — posebno eksplicitno odobrenje)
+
+**Stanje 2026-11-07:** neplaćeni pregled live Starter checkout-a za Srbiju (allowlistovani sintetički salon,
+bez kartice) prikazao je ukupno **2.990 RSD mesečno**. Konačan naplaćen iznos i prvi live tok (koraci 2–7)
+još nisu potvrđeni. Probna kupovina sopstvenom karticom **nije obavezan sledeći korak**: Lemon Squeezy je
+uputio da se tok kupovine testira u test modu. Dok se E ili prva stvarna kupovina ne izvrši, prvi live tok
+prati se nadzorom iz F (aktivacija, `manual_review`, naplaćen iznos u LS Orders).
 
 Sintetički salon i vlasnikov nalog; payment podatke unosi vlasnik. Refund se ne obećava.
 

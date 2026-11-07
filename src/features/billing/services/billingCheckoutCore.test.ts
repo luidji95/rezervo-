@@ -247,6 +247,48 @@ test("allowlisted live salon reaches environment-scoped mapping and provider", a
   assert.equal(provider.calls[0]?.environment, "live");
 });
 
+test("live checkout without a runtime mode keeps the allowlist", async () => {
+  const repo = new MemoryRepository();
+  repo.mapping = { ...repo.mapping!, environment: "live" };
+  const provider = new MockBillingProvider();
+  for (const liveCheckoutAccessMode of [undefined, null, "allowlist" as const]) {
+    await expectCode(
+      () => createBillingCheckout(request, repo, provider, { ...runtime, environment: "live", liveCheckoutAccessMode, liveAllowedSalonIds: null }),
+      "BILLING_CHECKOUT_DISABLED",
+    );
+  }
+  assert.equal(repo.ledgers.size, 0);
+  assert.equal(provider.calls.length, 0);
+});
+
+test("public live mode admits any salon but keeps owner, override and checkout guards", async () => {
+  const publicRuntime = { ...runtime, environment: "live" as const, liveCheckoutAccessMode: "public" as const, liveAllowedSalonIds: null };
+
+  const repo = new MemoryRepository();
+  repo.mapping = { ...repo.mapping!, environment: "live" };
+  repo.environment = "live";
+  const provider = new MockBillingProvider();
+  const result = await createBillingCheckout(request, repo, provider, publicRuntime);
+  assert.equal(result.environment, "live");
+  assert.equal(provider.calls.length, 1);
+
+  const notOwner = new MemoryRepository();
+  notOwner.mapping = { ...notOwner.mapping!, environment: "live" };
+  notOwner.environment = "live";
+  notOwner.isSalonOwner = async () => false;
+  const notOwnerProvider = new MockBillingProvider();
+  await expectCode(() => createBillingCheckout(request, notOwner, notOwnerProvider, publicRuntime), "BILLING_OWNER_REQUIRED");
+  assert.equal(notOwnerProvider.calls.length, 0);
+
+  const overridden = new MemoryRepository();
+  overridden.mapping = { ...overridden.mapping!, environment: "live" };
+  overridden.environment = "live";
+  overridden.hasActiveOverride = async () => true;
+  const overriddenProvider = new MockBillingProvider();
+  await expectCode(() => createBillingCheckout(request, overridden, overriddenProvider, publicRuntime), "BILLING_OVERRIDE_ACTIVE");
+  assert.equal(overriddenProvider.calls.length, 0);
+});
+
 test("checkout requires mapping Store ID to match canonical provider config", async () => {
   for (const providerStoreId of ["456", "", "   "]) {
     const repo = new MemoryRepository();

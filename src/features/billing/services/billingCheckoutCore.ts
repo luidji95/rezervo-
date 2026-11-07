@@ -14,6 +14,7 @@ import {
 } from "../providers/lemonSqueezyCheckoutRetrievalCore.ts";
 import { validateCheckoutForRecoveryFinalization } from "../checkoutRecovery/billingCheckoutRecoveryCore.ts";
 import { parseBillingCheckoutTimestampInstant } from "./billingCheckoutTimestamp.ts";
+import { isLiveCheckoutSalonAllowed, type LiveCheckoutAccessMode } from "./liveCheckoutAccess.ts";
 import type { BillingCheckoutDirectRecoveryResult } from "../checkoutRecovery/billingCheckoutRecoveryCore.ts";
 
 export type BillingPriceMapping = {
@@ -134,6 +135,8 @@ export type BillingCheckoutRuntime = {
   appUrl: string;
   storeId: string;
   environment: BillingEnvironment;
+  /** Omitted or null means the live allowlist applies. */
+  liveCheckoutAccessMode?: LiveCheckoutAccessMode | null;
   liveAllowedSalonIds: ReadonlySet<string> | null;
   now: () => Date;
 };
@@ -261,10 +264,7 @@ export async function createBillingCheckout(
   directRecovery?: BillingCheckoutDirectRecoveryRunner,
   boundedRecovery?: BillingCheckoutDirectRecoveryRunner,
 ) {
-  if (
-    runtime.environment === "live" &&
-    !runtime.liveAllowedSalonIds?.has(input.salonId)
-  ) {
+  if (!isLiveCheckoutSalonAllowed(runtime, input.salonId)) {
     throw new BillingCheckoutError("BILLING_CHECKOUT_DISABLED", 404);
   }
   if (!(await repository.isSalonOwner(input.salonId, input.actorProfileId))) {

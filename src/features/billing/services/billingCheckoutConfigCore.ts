@@ -1,6 +1,7 @@
 import { resolveLemonSqueezyProviderConfig } from "../config/lemonSqueezyProviderConfigCore.ts";
 import type { BillingEnvironment } from "../config/billingEnvironment.ts";
 import { BillingCheckoutError } from "../providers/billingCheckoutErrors.ts";
+import { parseLiveCheckoutAccessMode, type LiveCheckoutAccessMode } from "./liveCheckoutAccess.ts";
 
 export type BillingCheckoutConfig = {
   enabled: true;
@@ -9,6 +10,9 @@ export type BillingCheckoutConfig = {
   apiKey: string;
   storeId: string;
   appUrl: string;
+  /** Live only: `allowlist` (default) or explicit `public`; null in test. */
+  liveCheckoutAccessMode: LiveCheckoutAccessMode | null;
+  /** Live allowlist mode only; null in test and in public mode. */
   liveAllowedSalonIds: ReadonlySet<string> | null;
   /** E1: resubscribe after a verified terminal expiry; default-off, separate from the checkout capability. */
   resubscribeEnabled: boolean;
@@ -63,15 +67,21 @@ export function resolveBillingCheckoutConfig(
   } catch {
     throw new BillingCheckoutError("BILLING_NOT_CONFIGURED", 503);
   }
-  const liveAllowedSalonIds =
+  const liveCheckoutAccessMode =
     trustedEnvironment === "live"
+      ? parseLiveCheckoutAccessMode(environment.BILLING_LIVE_CHECKOUT_ACCESS_MODE)
+      : null;
+  const liveAllowedSalonIds =
+    liveCheckoutAccessMode === "allowlist"
       ? parseLiveAllowedSalonIds(
           environment.BILLING_LIVE_CHECKOUT_ALLOWED_SALON_IDS,
         )
       : null;
   if (
     !validAppUrl(appUrl, trustedEnvironment) ||
-    (trustedEnvironment === "live" && !liveAllowedSalonIds)
+    (trustedEnvironment === "live" &&
+      (!liveCheckoutAccessMode ||
+        (liveCheckoutAccessMode === "allowlist" && !liveAllowedSalonIds)))
   ) {
     throw new BillingCheckoutError("BILLING_NOT_CONFIGURED", 503);
   }
@@ -83,6 +93,7 @@ export function resolveBillingCheckoutConfig(
     enabled: true,
     ...providerConfig,
     appUrl,
+    liveCheckoutAccessMode,
     liveAllowedSalonIds,
     resubscribeEnabled,
   };

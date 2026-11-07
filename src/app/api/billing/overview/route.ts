@@ -10,6 +10,7 @@ import { getTrustedBillingEnvironment } from "@/features/billing/config/billingE
 import type { BillingEnvironment } from "@/features/billing/config/billingEnvironment";
 import { getBillingCheckoutConfig } from "@/features/billing/services/billingCheckoutConfig";
 import { canOfferNewCheckout } from "@/features/billing/services/billingCheckoutEligibility";
+import { isLiveCheckoutSalonAllowed } from "@/features/billing/services/liveCheckoutAccess";
 import { getBillingPlanChangeConfig } from "@/features/billing/planChange/billingPlanChangeConfig";
 import { resolvePlanChangeOverview } from "@/features/billing/planChange/billingPlanChangeAvailability";
 import { SupabaseBillingPlanChangeRepository } from "@/features/billing/planChange/supabaseBillingPlanChangeRepository";
@@ -58,8 +59,7 @@ export async function GET(request: Request) {
         .from("billing_checkout_sessions").select("id", { count: "exact", head: true })
         .eq("salon_id", salonId).eq("provider", "lemonsqueezy")
         .eq("environment", config.environment).eq("status", "completed");
-      checkoutConfigured = !completedError && (config.environment === "test" ||
-        config.liveAllowedSalonIds?.has(salonId) === true);
+      checkoutConfigured = !completedError && isLiveCheckoutSalonAllowed(config, salonId);
       hasCompletedCheckout = completed === null || completed > 0;
     } catch {
       // Checkout configuration does not prevent read-only billing overview.

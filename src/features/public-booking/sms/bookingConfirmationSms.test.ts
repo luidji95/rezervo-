@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { createHmac, randomBytes } from "node:crypto";
 import type { SmsSendInput, SmsSendResult } from "../../reminders/types/smsProvider.ts";
 import { buildBookingConfirmationSms, toSmsAscii } from "./bookingConfirmationSmsTemplate.ts";
-import { classifySmsResult, sendBookingConfirmationSmsCore, type BookingConfirmationSmsDependencies } from "./bookingConfirmationSmsCore.ts";
+import { classifySmsResult, parseRecipientMode, sendBookingConfirmationSmsCore, type BookingConfirmationSmsDependencies } from "./bookingConfirmationSmsCore.ts";
 
 const token = randomBytes(32).toString("base64url");
 const input = { appointmentId: "a1", salonName: "Studio Šarm Đurđa", salonTimezone: "Europe/Belgrade", appointmentStart: "2026-11-09T08:00:00.000Z", recipientE164: "+381641112222", manageToken: token };
@@ -11,7 +11,7 @@ const input = { appointmentId: "a1", salonName: "Studio Šarm Đurđa", salonTim
 function deps(overrides: Partial<BookingConfirmationSmsDependencies> = {}, result: SmsSendResult = { outcome: "accepted", provider: "infobip", providerMessageId: "m1", httpStatus: 200 }) {
   const calls = { reserve: [] as string[][], finish: [] as unknown[], sent: [] as SmsSendInput[] };
   const base: BookingConfirmationSmsDependencies = {
-    config: { enabled: true, allowedRecipients: new Set(["+381641112222"]), hashKey: "k".repeat(40), appUrl: "https://app.example.test" },
+    config: { enabled: true, recipientMode: "allowlist", allowedRecipients: new Set(["+381641112222"]), hashKey: "k".repeat(40), appUrl: "https://app.example.test" },
     hmac: (key, value) => createHmac("sha256", key).update(value).digest("hex"),
     reserve: async (...args) => { calls.reserve.push(args); return "reserved"; },
     finish: async (value) => { calls.finish.push(value); return true; },
@@ -53,6 +53,44 @@ test("switches, allow list and configuration stop before reserving", async () =>
   const { calls, dependencies } = deps();
   assert.equal((await sendBookingConfirmationSmsCore({ ...input, manageToken: "short" }, dependencies)).outcome, "invalid_input");
   assert.equal(calls.reserve.length, 0);
+});
+
+test("recipient mode: unset, empty and allowlist keep the list; only the exact value any opens it; anything else is invalid", () => {
+  for (const raw of [undefined, "", "  ", "allowlist", " allowlist "]) assert.equal(parseRecipientMode(raw), "allowlist", String(raw));
+  assert.equal(parseRecipientMode("any"), "any");
+  assert.equal(parseRecipientMode(" any "), "any");
+  for (const raw of ["ANY", "Any", "all", "true", "1", "*", "any,allowlist", "allow_list", "anyone", "\"any\""]) assert.equal(parseRecipientMode(raw), "invalid", raw);
+});
+
+test("recipient mode any: a number not on the list is sent (empty list too), still through the reservation", async () => {
+  for (const allowedRecipients of [new Set<string>(), new Set(["+381649999999"])]) {
+    const base = deps();
+    const { calls, dependencies } = deps({ config: { ...base.dependencies.config, recipientMode: "any", allowedRecipients } });
+    assert.deepEqual(await sendBookingConfirmationSmsCore(input, dependencies), { outcome: "accepted", errorCode: null });
+    assert.equal(calls.reserve.length, 1);
+    assert.equal(calls.sent.length, 1);
+  }
+  // The salon switch and the limits are enforced by the reservation in any mode.
+  for (const outcome of ["salon_disabled", "recipient_limit", "salon_limit"]) {
+    const base = deps();
+    const { calls, dependencies } = deps({ config: { ...base.dependencies.config, recipientMode: "any" }, reserve: async () => outcome });
+    assert.equal((await sendBookingConfirmationSmsCore(input, dependencies)).outcome, outcome);
+    assert.equal(calls.sent.length, 0);
+  }
+  // Global switch and configuration checks still apply.
+  for (const [config, outcome] of [[{ enabled: false }, "disabled"], [{ hashKey: null }, "misconfigured"], [{ appUrl: null }, "misconfigured"]] as const) {
+    const base = deps();
+    const { calls, dependencies } = deps({ config: { ...base.dependencies.config, recipientMode: "any", ...config } });
+    assert.equal((await sendBookingConfirmationSmsCore(input, dependencies)).outcome, outcome);
+    assert.equal(calls.reserve.length + calls.sent.length, 0);
+  }
+});
+
+test("recipient mode invalid: nothing is sent even to a listed number", async () => {
+  const base = deps();
+  const { calls, dependencies } = deps({ config: { ...base.dependencies.config, recipientMode: "invalid" } });
+  assert.equal((await sendBookingConfirmationSmsCore(input, dependencies)).outcome, "misconfigured");
+  assert.equal(calls.reserve.length + calls.sent.length, 0);
 });
 
 test("reservation refusals never send", async () => {

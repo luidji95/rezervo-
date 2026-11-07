@@ -4,7 +4,7 @@ import { getAppUrl } from "@/lib/appUrl";
 import { normalizePhoneToE164 } from "@/lib/phone/phoneNumber";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getSmsProvider } from "@/features/reminders/providers/smsProviderFactory";
-import { sendBookingConfirmationSmsCore, type BookingConfirmationSmsConfig, type BookingConfirmationSmsInput } from "./bookingConfirmationSmsCore";
+import { parseRecipientMode, sendBookingConfirmationSmsCore, type BookingConfirmationSmsConfig, type BookingConfirmationSmsInput } from "./bookingConfirmationSmsCore";
 
 // Off unless BOOKING_CONFIRMATION_SMS_ENABLED=true. Independent of SMS_REMINDERS_RUNTIME_ENABLED (reminders unchanged).
 export function getBookingConfirmationSmsConfig(): BookingConfirmationSmsConfig {
@@ -14,6 +14,7 @@ export function getBookingConfirmationSmsConfig(): BookingConfirmationSmsConfig 
     .flatMap((result) => (result.ok ? [result.e164] : []));
   return {
     enabled: process.env.BOOKING_CONFIRMATION_SMS_ENABLED === "true",
+    recipientMode: parseRecipientMode(process.env.BOOKING_CONFIRMATION_SMS_RECIPIENT_MODE),
     allowedRecipients: new Set(allowed),
     hashKey: process.env.BOOKING_CONFIRMATION_SMS_HASH_KEY?.trim() || null,
     appUrl: getAppUrl(),

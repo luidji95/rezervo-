@@ -6,8 +6,19 @@ import { buildBookingConfirmationSms } from "./bookingConfirmationSmsTemplate.ts
 // booking: every failure ends in an outcome code. The phone number, message text, link and token are never returned,
 // logged or stored; the database only receives the appointment id, an HMAC digest of the number and the outcome.
 
+// allowlist: only the exact numbers on the list (default, also when unset or empty); any: every valid number, still
+// only for salons with their own switch on and within the database limits; invalid: anything else, nothing is sent.
+export type BookingConfirmationSmsRecipientMode = "allowlist" | "any" | "invalid";
+
+export function parseRecipientMode(raw: string | undefined): BookingConfirmationSmsRecipientMode {
+  const value = (raw ?? "").trim();
+  if (value === "" || value === "allowlist") return "allowlist";
+  return value === "any" ? "any" : "invalid";
+}
+
 export type BookingConfirmationSmsConfig = {
   enabled: boolean;
+  recipientMode: BookingConfirmationSmsRecipientMode;
   allowedRecipients: ReadonlySet<string>;
   hashKey: string | null;
   appUrl: string | null;
@@ -52,8 +63,9 @@ export async function sendBookingConfirmationSmsCore(
 ): Promise<{ outcome: BookingConfirmationSmsOutcome; errorCode?: string | null }> {
   const { config } = dependencies;
   if (!config.enabled) return { outcome: "disabled" };
-  // Pilot: only the exact numbers on the team list ever receive a confirmation.
-  if (!config.allowedRecipients.has(input.recipientE164)) return { outcome: "not_allowed" };
+  if (config.recipientMode === "invalid") return { outcome: "misconfigured" };
+  // Default: only the exact numbers on the team list ever receive a confirmation.
+  if (config.recipientMode !== "any" && !config.allowedRecipients.has(input.recipientE164)) return { outcome: "not_allowed" };
   if (!config.hashKey || config.hashKey.length < MIN_HASH_KEY_LENGTH || !config.appUrl || !/^https?:\/\/[^/]+$/.test(config.appUrl)) {
     return { outcome: "misconfigured" };
   }

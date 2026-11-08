@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ArrowRight,
   BarChart3,
@@ -172,6 +172,15 @@ function ProductVideo({ src, poster, label, controls = false }: { src: string; p
   </div>;
 }
 
+// Na sirini gde su kartice u jednoj koloni (isti breakpoint kao u landing.css), detalji se otvaraju odmah ispod
+// izabrane kartice. Detalji se uvek renderuju samo na jednom mestu: bez duplih ID-jeva i bez dva ista videa.
+const SINGLE_COLUMN_QUERY = "(max-width: 720px)";
+function subscribeToSingleColumn(onChange: () => void) {
+  const query = window.matchMedia(SINGLE_COLUMN_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
 function FeatureShowcase({ feature }: { feature: (typeof features)[number] }) {
   return <div className="landing-showcase" id={`feature-${feature.id}`} role="region" aria-label={`${feature.title} detalji`}>
     <div className="landing-showcase__media">
@@ -195,6 +204,8 @@ export function LandingPage({ plans }: { plans: PublicPlan[] | null }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeFeature, setActiveFeature] = useState<FeatureId | null>(null);
   const [preview, setPreview] = useState<(typeof productScreens)[number] | null>(null);
+  // Na serveru se sirina ne zna, pa se prvo renderuje desktop raspored.
+  const singleColumn = useSyncExternalStore(subscribeToSingleColumn, () => window.matchMedia(SINGLE_COLUMN_QUERY).matches, () => false);
 
   useEffect(() => {
     if (!loading && user && resolution !== "loading") {
@@ -229,7 +240,7 @@ export function LandingPage({ plans }: { plans: PublicPlan[] | null }) {
 
     <section className="landing-hero" id="top"><div className="landing-shell landing-hero__grid"><div className="landing-hero__copy"><span className="landing-eyebrow"><Sparkles size={15} /> Napravljeno za moderan salon</span><h1>Upravljajte svojim salonom <em>iz jednog mesta.</em></h1><p>Rezervo pomaže frizerskim, barber i beauty salonima da upravljaju terminima, zaposlenima, klijentima i svakodnevnim poslovanjem.</p><div className="landing-hero__actions"><Link className="landing-button" href="/auth/register">Započni besplatno <ArrowRight size={18} /></Link><Link className="landing-button landing-button--secondary" href="/auth/login">Prijavi se</Link></div><div className="landing-hero__trust"><span><Check /> Bez instalacije</span><span><Check /> Radi na svim uređajima</span></div></div><div className="landing-hero__visual"><div className="landing-orbit landing-orbit--one" /><div className="landing-orbit landing-orbit--two" /><ProductShot src="/landing/dashboard.webp" alt="Rezervo dashboard sa dnevnim pregledom salona" priority /><span className="landing-float landing-float--one"><CalendarDays /> 8 termina danas</span><span className="landing-float landing-float--two"><Bell /> Nova rezervacija</span></div></div></section>
 
-    <section className="landing-section" id="features"><div className="landing-shell"><div className="landing-section__heading" data-reveal><span>Jednostavnije poslovanje</span><h2>Sve što vam je potrebno za organizovan salon.</h2><p>Manje administracije, bolji pregled i više vremena za klijente.</p></div><div className="landing-feature-grid">{features.map(({ id, icon: Icon, title, description }) => { const open = id === activeFeature; return <article key={id} className={open ? "is-active" : ""} data-reveal><div><Icon /></div><h3>{title}</h3><p>{description}</p><button type="button" aria-expanded={open} aria-controls={`feature-${id}`} onClick={() => setActiveFeature(open ? null : id)}>Saznajte više <ChevronDown size={15} /></button></article>; })}</div><div className={`landing-showcase-wrap ${selectedFeature ? "is-open" : ""}`}>{selectedFeature && <FeatureShowcase feature={selectedFeature} />}</div></div></section>
+    <section className="landing-section" id="features"><div className="landing-shell"><div className="landing-section__heading" data-reveal><span>Jednostavnije poslovanje</span><h2>Sve što vam je potrebno za organizovan salon.</h2><p>Manje administracije, bolji pregled i više vremena za klijente.</p></div><div className="landing-feature-grid">{features.map(({ id, icon: Icon, title, description }) => { const open = id === activeFeature; return <Fragment key={id}><article className={open ? "is-active" : ""} data-reveal><div><Icon /></div><h3>{title}</h3><p>{description}</p><button type="button" aria-expanded={open} aria-controls={`feature-${id}`} onClick={() => setActiveFeature(open ? null : id)}>{open && singleColumn ? "Prikaži manje" : "Saznajte više"} <ChevronDown size={15} /></button></article>{singleColumn && open && selectedFeature && <div className="landing-showcase-wrap landing-showcase-wrap--inline is-open"><FeatureShowcase feature={selectedFeature} /></div>}</Fragment>; })}</div>{!singleColumn && <div className={`landing-showcase-wrap ${selectedFeature ? "is-open" : ""}`}>{selectedFeature && <FeatureShowcase feature={selectedFeature} />}</div>}</div></section>
 
     <section className="landing-section landing-section--tinted" id="product"><div className="landing-shell"><div className="landing-section__heading" data-reveal><span>Jedan sistem, ceo salon</span><h2>Kako izgleda Rezervo.</h2><p>Čist interfejs koji je dovoljno jednostavan za svakodnevni rad.</p></div><div className="landing-preview-grid">{productScreens.map((item, index) => <button key={item.id} type="button" className={index === 0 ? "is-featured" : ""} onClick={() => setPreview(item)} aria-label={`Pusti video: ${item.title}`} data-reveal><ProductShot src={item.src} alt={`${item.title} ekran Rezervo aplikacije`} /><span className="landing-play" aria-hidden="true"><Play /></span><span><strong>{item.title}</strong><small>{item.subtitle}</small></span></button>)}</div></div></section>
 

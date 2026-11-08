@@ -144,3 +144,7 @@
 @media (max-width:720px){.landing-why-grid{grid-template-columns:1fr;gap:12px}.landing-why-grid article{display:grid;grid-template-columns:43px 1fr;column-gap:14px;padding:20px}.landing-why-grid h3{margin:0 0 6px;align-self:center}.landing-why-grid p,.landing-why-grid__note{grid-column:2}.landing-flow{grid-template-columns:1fr;row-gap:30px}.landing-flow::before{display:block;top:18px;bottom:18px;left:17px;right:auto;width:2px;height:auto;background:linear-gradient(#7c3aed,rgba(167,139,250,.3))}.landing-flow>li{display:flex;flex-direction:column;grid-row:auto;padding-left:54px}.landing-flow__head b{position:absolute;top:0;left:0}}
 @media (max-width:480px){.landing-growth__card--voice .landing-button{width:100%}}
 @media (prefers-reduced-motion:reduce){.landing-why-grid article{transition:none}}
+
+/* Detalji odmah ispod izabrane kartice (jedna kolona) */
+.landing-showcase-wrap--inline .landing-showcase{margin-top:0;animation:landing-reveal-in .35s ease both}
+@media (prefers-reduced-motion:reduce){.landing-showcase-wrap--inline .landing-showcase{animation:none}}

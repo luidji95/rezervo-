@@ -91,7 +91,7 @@ const whyCards: Array<{ icon: typeof CalendarDays; title: string; text: string; 
   { icon: CalendarCheck, title: "Online zakazivanje", text: "Klijent preko vašeg linka bira uslugu, zaposlenog i slobodan termin." },
   { icon: CalendarDays, title: "Pregledan kalendar", text: "Raspored celog tima, detalji termina i pomeranje rezervacija na jednom mestu." },
   { icon: Contact, title: "Kartoni klijenata", text: "Kontakt, istorija poseta i napomene uz termine, pregledno za ceo tim." },
-  { icon: MessageSquareText, title: "SMS obaveštenja", text: "Podsetnici pred dolazak pomažu klijentima da se sete termina.", note: "Pro paket, uključivanje u podešavanjima i mesečni limit poruka. SMS potvrde rezervacije uvodimo postepeno." },
+  { icon: MessageSquareText, title: "SMS obaveštenja", text: "Podsetnici pred dolazak pomažu klijentima da se sete termina.", note: "SMS podsetnici su deo Pro paketa i uključuju se u podešavanjima salona. SMS potvrde rezervacije uvodimo postepeno." },
   { icon: CalendarX2, title: "Jednostavno otkazivanje", text: "Posle rezervacije klijent dobija privatni link i može sam da otkaže termin najkasnije dva sata pre početka." },
   { icon: Bot, title: "AI recepcionista", text: "Radimo na pomoćniku koji će odgovarati na česta pitanja klijenata i pomagati pri zakazivanju.", soon: true },
 ];

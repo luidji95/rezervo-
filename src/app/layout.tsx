@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { Providers } from "@/providers/Providers";
-import { getAppUrl } from "@/lib/appUrl";
+import { SITE_URL } from "@/lib/siteUrl";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(getAppUrl()),
+  // Javne stranice (canonical, og:image) uvek pokazuju na glavni domen, ne na preview/vercel.app adresu.
+  metadataBase: new URL(SITE_URL),
   title: "Rezervo",
-  description: "Salon booking management platform",
+  description: "Online zakazivanje termina za frizerske, barber i beauty salone.",
 };
 
 export default function RootLayout({

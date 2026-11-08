@@ -4,12 +4,22 @@ import "@/features/landing/landing.css";
 import { getPublicPlanCatalog } from "@/features/pricing/services/publicPlanCatalog";
 
 export const metadata: Metadata = {
-  title: "Rezervo | Salon Management Software",
-  description: "Modern SaaS platform for appointment scheduling, employees, CRM and salon management.",
+  title: "Rezervo – online zakazivanje termina za salone | SMS podsetnici",
+  description:
+    "Online zakazivanje za frizerske, barber i beauty salone. Klijenti sami biraju termin, a vi šaljete SMS potvrdu i podsetnik. 3 meseca besplatno.",
+  alternates: { canonical: "/" },
   openGraph: {
-    title: "Rezervo | Salon Management Software",
-    description: "Modern SaaS platform for appointment scheduling, employees, CRM and salon management.",
+    title: "Rezervo – online zakazivanje za salone",
+    description: "Klijenti sami zakazuju termin, a vi šaljete SMS potvrdu i podsetnik. 3 meseca besplatno.",
+    url: "/",
+    siteName: "Rezervo",
+    locale: "sr_RS",
     type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Rezervo – online zakazivanje za salone",
+    description: "Klijenti sami zakazuju termin, a vi šaljete SMS potvrdu i podsetnik.",
   },
 };
 

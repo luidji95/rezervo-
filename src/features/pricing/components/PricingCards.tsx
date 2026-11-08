@@ -11,6 +11,16 @@ import { getPricingCtaHref } from "../services/acquisitionRouting";
 import type { PublicPlan } from "../types";
 import styles from "./PricingCards.module.css";
 
+// "Do 3 aktivna zaposlena", "Do 10 aktivnih zaposlenih", "Do 21 aktivnog zaposlenog".
+export function formatEmployeeLimit(count: number | null) {
+  if (count === null) return "Neograničen broj zaposlenih";
+  const lastDigit = count % 10;
+  const lastTwo = count % 100;
+  if (lastDigit === 1 && lastTwo !== 11) return `Do ${count} aktivnog zaposlenog`;
+  if (lastDigit >= 2 && lastDigit <= 4 && (lastTwo < 12 || lastTwo > 14)) return `Do ${count} aktivna zaposlena`;
+  return `Do ${count} aktivnih zaposlenih`;
+}
+
 export function PricingCards({ plans, compact = false }: { plans: PublicPlan[]; compact?: boolean }) {
   const { user } = useAuth();
   const { resolution } = useAuthorization();
@@ -27,7 +37,7 @@ export function PricingCards({ plans, compact = false }: { plans: PublicPlan[]; 
         <div className={styles.top}><h3>{plan.name}</h3>{plan.code === "pro" && <span>Preporučeno</span>}{premium && <span>Uskoro</span>}</div>
         <div className={styles.price}><strong>{premium ? "od " : ""}{formatPlanPrice(plan.monthlyPrice, plan.currency)}</strong><small>/ mesečno</small></div>
         <p>{presentation.description}</p>
-        <strong className={styles.limit}>Do {plan.maxEmployees} aktivnih zaposlenih</strong>
+        <strong className={styles.limit}>{formatEmployeeLimit(plan.maxEmployees)}</strong>
         <ul>{presentation.features.slice(0, compact ? 4 : undefined).map((feature) => {
           const planned = feature.availability === "coming_soon" || (premium && feature.label.toLowerCase().match(/ai|whatsapp|instagram|automat/));
           const included = feature.availability === "included" && !planned;

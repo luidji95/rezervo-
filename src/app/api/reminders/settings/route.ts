@@ -1,31 +1,41 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveSalonEntitlements, EntitlementError } from "@/features/billing/services/entitlementService";
+import { isBookingConfirmationSmsRuntimeLive } from "@/features/public-booking/sms/bookingConfirmationSms.server";
 import { getReminderRuntimeConfig } from "@/features/reminders/config/reminderRuntimeConfig";
 import { canManageSalonReminders } from "@/features/reminders/services/reminderAuthorizationService";
-import { getReminderSettings, saveReminderSettings } from "@/features/reminders/services/reminderSettingsService";
-import { getReminderSettingsPolicyError } from "@/features/reminders/services/reminderSettingsPolicy";
+import { getSalonSmsSettings, saveSalonSmsSettings } from "@/features/reminders/services/reminderSettingsService";
+import { getSmsSettingsPolicyError } from "@/features/reminders/services/reminderSettingsPolicy";
 import { getSalonReminderUsage } from "@/features/reminders/services/reminderUsageService";
 import type { ReminderSettingsOverview } from "@/features/reminders/types/reminderSettingsOverview";
 import { getAuthenticatedRequestUser } from "@/lib/server/requestAuth";
 
 export const dynamic = "force-dynamic";
-const updateSchema = z.object({ enabled: z.boolean(), hoursBefore: z.number().int().min(1).max(168) }).strict();
+// smsEnabled: main "SMS obaveštenja" switch (confirmation right after an online booking). reminderEnabled: reminder
+// before the appointment, sent only while smsEnabled is also on.
+const updateSchema = z.object({
+  smsEnabled: z.boolean(),
+  reminderEnabled: z.boolean(),
+  hoursBefore: z.number().int().min(1).max(168),
+}).strict();
 function response(code: string, status: number) { return NextResponse.json({ success: false, code }, { status }); }
 
 async function loadOverview(userId: string, salonId: string): Promise<ReminderSettingsOverview> {
   const [settings, entitlements, usage] = await Promise.all([
-    getReminderSettings(salonId),
+    getSalonSmsSettings(salonId),
     resolveSalonEntitlements({ authenticatedUserId: userId, salonId }),
     getSalonReminderUsage(salonId).catch(() => null),
   ]);
   return {
-    settings: { enabled: settings.enabled, channel: "sms", hoursBefore: settings.hoursBefore },
+    settings: { smsEnabled: settings.smsEnabled, reminderEnabled: settings.reminderEnabled, channel: "sms", hoursBefore: settings.hoursBefore },
     entitlement: {
       canUseSmsReminders: entitlements.effectiveCapabilities.canUseSmsReminders,
       maxMonthlyReminders: entitlements.planCapabilities.maxMonthlyReminders,
     },
-    runtime: { ready: getReminderRuntimeConfig().smsRuntimeEnabled },
+    runtime: {
+      confirmationsReady: isBookingConfirmationSmsRuntimeLive(),
+      remindersReady: getReminderRuntimeConfig().smsRuntimeEnabled,
+    },
     usage: usage ? {
       used: usage.acceptedCount,
       limit: usage.maxMonthlyReminders,
@@ -62,13 +72,13 @@ export async function PATCH(request: Request) {
     if (!entitlements.effectiveCapabilities.canManageBusinessData) {
       return response("SALON_WRITE_ACCESS_REQUIRED", 403);
     }
-    const policyError = getReminderSettingsPolicyError({
-      enabled: parsed.data.enabled,
-      canUseSmsReminders: entitlements.effectiveCapabilities.canUseSmsReminders,
-      runtimeReady: getReminderRuntimeConfig().smsRuntimeEnabled,
+    const policyError = getSmsSettingsPolicyError({
+      smsEnabled: parsed.data.smsEnabled,
+      reminderEnabled: parsed.data.reminderEnabled,
+      canUseSms: entitlements.effectiveCapabilities.canUseSmsReminders,
     });
     if (policyError) return response(policyError, 403);
-    await saveReminderSettings({ salonId, channel: "sms", ...parsed.data });
+    await saveSalonSmsSettings({ salonId, channel: "sms", ...parsed.data });
     return NextResponse.json({ success: true, overview: await loadOverview(auth.user.id, salonId) });
   } catch (error) {
     if (error instanceof EntitlementError && error.code === "FORBIDDEN") return response("FORBIDDEN", 403);

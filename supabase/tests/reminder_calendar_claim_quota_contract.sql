@@ -20,8 +20,8 @@ begin
     current_period_starts_at='2026-08-21T10:00:00Z',current_period_ends_at='2026-10-21T10:00:00Z'
     where public.subscriptions.salon_id=v_salon;
   insert into public.clients(salon_id,full_name,phone) values(v_salon,'Quota test','+381641234567');
-  insert into public.salon_reminder_settings(salon_id,enabled,channel,hours_before)
-    values(v_salon,true,'sms',24);
+  insert into public.salon_reminder_settings(salon_id,sms_notifications_enabled,enabled,channel,hours_before)
+    values(v_salon,true,true,'sms',24);
   return v_salon;
 end $$;
 

@@ -38,7 +38,7 @@ const SETTINGS_TABS = [
   { id: "services", label: "Usluge i cene", icon: Scissors },
   { id: "team", label: "Tim i dozvole", icon: Users },
   { id: "ai", label: "AI Receptionist", icon: Sparkles },
-  { id: "reminders", label: "Podsetnici", icon: BellRing },
+  { id: "reminders", label: "SMS obaveštenja", icon: BellRing },
   { id: "billing", label: "Plaćanje i plan", icon: CreditCard },
 ] satisfies {
   id: SettingsTabId;

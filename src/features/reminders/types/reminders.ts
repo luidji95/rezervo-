@@ -1,9 +1,11 @@
 export type ReminderChannel = "sms" | "viber";
 export type ReminderDeliveryStatus = "pending" | "processing" | "sent" | "delivered" | "retry_scheduled" | "failed" | "skipped" | "cancelled";
 
-export type ReminderSettings = {
+// smsEnabled: main switch (confirmations, and reminders together with reminderEnabled).
+export type SalonSmsSettings = {
   salonId: string;
-  enabled: boolean;
+  smsEnabled: boolean;
+  reminderEnabled: boolean;
   channel: ReminderChannel;
   hoursBefore: number;
 };

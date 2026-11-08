@@ -1,6 +1,7 @@
 export type ReminderSettingsOverview = {
   settings: {
-    enabled: boolean;
+    smsEnabled: boolean;
+    reminderEnabled: boolean;
     channel: "sms";
     hoursBefore: number;
   };
@@ -8,8 +9,11 @@ export type ReminderSettingsOverview = {
     canUseSmsReminders: boolean;
     maxMonthlyReminders: number | null;
   };
+  // Global administrator switches (emergency stop). When one is off, the salon's choice is kept but nothing of
+  // that kind is sent.
   runtime: {
-    ready: boolean;
+    confirmationsReady: boolean;
+    remindersReady: boolean;
   };
   usage: {
     used: number;
@@ -24,6 +28,6 @@ export type ReminderSettingsErrorCode =
   | "FORBIDDEN"
   | "INVALID_INPUT"
   | "ENTITLEMENT_REQUIRED"
-  | "REMINDER_RUNTIME_NOT_READY"
+  | "SALON_WRITE_ACCESS_REQUIRED"
   | "REMINDER_SETTINGS_LOAD_FAILED"
   | "REMINDER_SETTINGS_SAVE_FAILED";

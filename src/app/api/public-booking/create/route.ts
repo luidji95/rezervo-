@@ -265,7 +265,8 @@ export async function POST(req: Request) {
       }
     }
 
-    // SMS confirmation (pilot, off by default): only for a booking created by this request with its private link.
+    // SMS confirmation: only for a booking created by this request with its private link, and only when the salon's
+    // owner switched SMS on and the plan has the SMS right (checked by the database when the attempt is reserved).
     // It runs after the response, so a failure can never change the booking or the confirmation screen. Replays and
     // concurrent requests for the same key get wasCreated=false and never send.
     if (appointment.wasCreated && appointment.manageAccess && manageToken) {

@@ -2332,6 +2332,7 @@ export type Database = {
           hours_before: number
           id: string
           salon_id: string
+          sms_notifications_enabled: boolean
           updated_at: string
         }
         Insert: {
@@ -2341,6 +2342,7 @@ export type Database = {
           hours_before?: number
           id?: string
           salon_id: string
+          sms_notifications_enabled?: boolean
           updated_at?: string
         }
         Update: {
@@ -2350,6 +2352,7 @@ export type Database = {
           hours_before?: number
           id?: string
           salon_id?: string
+          sms_notifications_enabled?: boolean
           updated_at?: string
         }
         Relationships: [

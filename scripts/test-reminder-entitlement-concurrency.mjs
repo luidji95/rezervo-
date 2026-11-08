@@ -39,8 +39,8 @@ try {
     where salon_id='${salonId}';
     insert into public.clients(id,salon_id,full_name,phone)
       values ('${clientId}','${salonId}','Reminder Client','+381641234567');
-    insert into public.salon_reminder_settings(salon_id,enabled,channel,hours_before)
-      values ('${salonId}',true,'sms',24);
+    insert into public.salon_reminder_settings(salon_id,sms_notifications_enabled,enabled,channel,hours_before)
+      values ('${salonId}',true,true,'sms',24);
     insert into public.appointments(id,salon_id,client_id,start_time,end_time,duration_minutes,price,status,idempotency_key)
       values ('${appointmentId}','${salonId}','${clientId}','2026-08-02T12:00:00Z','2026-08-02T12:30:00Z',30,1000,'pending','95000000-0000-4000-8000-000000000099');
   `);

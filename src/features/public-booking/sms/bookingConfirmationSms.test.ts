@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { createHmac, randomBytes } from "node:crypto";
 import type { SmsSendInput, SmsSendResult } from "../../reminders/types/smsProvider.ts";
 import { buildBookingConfirmationSms, toSmsAscii } from "./bookingConfirmationSmsTemplate.ts";
-import { classifySmsResult, parseRecipientMode, sendBookingConfirmationSmsCore, type BookingConfirmationSmsDependencies } from "./bookingConfirmationSmsCore.ts";
+import { classifySmsResult, isBookingConfirmationSmsLive, parseRecipientMode, sendBookingConfirmationSmsCore, type BookingConfirmationSmsDependencies } from "./bookingConfirmationSmsCore.ts";
 
 const token = randomBytes(32).toString("base64url");
 const input = { appointmentId: "a1", salonName: "Studio Šarm Đurđa", salonTimezone: "Europe/Belgrade", appointmentStart: "2026-11-09T08:00:00.000Z", recipientE164: "+381641112222", manageToken: token };
@@ -94,7 +94,7 @@ test("recipient mode invalid: nothing is sent even to a listed number", async ()
 });
 
 test("reservation refusals never send", async () => {
-  for (const outcome of ["already_reserved", "not_eligible", "salon_disabled", "recipient_limit", "salon_limit"]) {
+  for (const outcome of ["already_reserved", "not_eligible", "salon_disabled", "not_entitled", "recipient_limit", "salon_limit"]) {
     const { calls, dependencies } = deps({ reserve: async () => outcome });
     assert.equal((await sendBookingConfirmationSmsCore(input, dependencies)).outcome, outcome);
     assert.equal(calls.sent.length, 0);
@@ -120,4 +120,15 @@ test("provider outcomes: rejected vs unknown, one attempt only", async () => {
   assert.deepEqual(await sendBookingConfirmationSmsCore(input, dependencies), { outcome: "unknown", errorCode: "SEND_EXCEPTION" });
   assert.equal((calls.finish[0] as { status: string }).status, "unknown");
   assert.equal(classifySmsResult({ outcome: "permanent_error", provider: "infobip", acceptanceCertainty: "not_accepted", errorCode: "bad code with spaces", safeMessage: "x" }).errorCode, null);
+});
+
+test("global switch is live for owners only when enabled, open to every number and fully configured", () => {
+  const config = { enabled: true, recipientMode: "any" as const, allowedRecipients: new Set<string>(), hashKey: "k".repeat(40), appUrl: "https://rezervo.example" };
+  assert.equal(isBookingConfirmationSmsLive(config), true);
+  assert.equal(isBookingConfirmationSmsLive({ ...config, enabled: false }), false);
+  assert.equal(isBookingConfirmationSmsLive({ ...config, recipientMode: "allowlist" }), false);
+  assert.equal(isBookingConfirmationSmsLive({ ...config, recipientMode: "invalid" }), false);
+  assert.equal(isBookingConfirmationSmsLive({ ...config, hashKey: "short" }), false);
+  assert.equal(isBookingConfirmationSmsLive({ ...config, appUrl: null }), false);
+  assert.equal(isBookingConfirmationSmsLive({ ...config, appUrl: "https://rezervo.example/path" }), false);
 });

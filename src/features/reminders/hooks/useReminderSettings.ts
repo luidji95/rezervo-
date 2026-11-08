@@ -56,7 +56,7 @@ export function useReminderSettings() {
     return () => window.clearTimeout(timeout);
   }, [authorizationLoading, load]);
 
-  const save = useCallback(async (input: { enabled: boolean; hoursBefore: number }) => {
+  const save = useCallback(async (input: { smsEnabled: boolean; reminderEnabled: boolean; hoursBefore: number }) => {
     if (!currentSalon) return { ok: false as const, code: "FORBIDDEN" as ReminderSettingsErrorCode };
     setSaving(true);
     setError(null);

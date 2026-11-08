@@ -4,9 +4,10 @@ import { getAppUrl } from "@/lib/appUrl";
 import { normalizePhoneToE164 } from "@/lib/phone/phoneNumber";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getSmsProvider } from "@/features/reminders/providers/smsProviderFactory";
-import { parseRecipientMode, sendBookingConfirmationSmsCore, type BookingConfirmationSmsConfig, type BookingConfirmationSmsInput } from "./bookingConfirmationSmsCore";
+import { isBookingConfirmationSmsLive, parseRecipientMode, sendBookingConfirmationSmsCore, type BookingConfirmationSmsConfig, type BookingConfirmationSmsInput } from "./bookingConfirmationSmsCore";
 
-// Off unless BOOKING_CONFIRMATION_SMS_ENABLED=true. Independent of SMS_REMINDERS_RUNTIME_ENABLED (reminders unchanged).
+// Global switch (administrator emergency stop): off unless BOOKING_CONFIRMATION_SMS_ENABLED=true. Independent of
+// SMS_REMINDERS_RUNTIME_ENABLED. Per salon, the owner's main SMS switch decides (salon_reminder_settings).
 export function getBookingConfirmationSmsConfig(): BookingConfirmationSmsConfig {
   const allowed = (process.env.BOOKING_CONFIRMATION_SMS_ALLOWED_RECIPIENTS ?? "")
     .split(",")
@@ -21,6 +22,10 @@ export function getBookingConfirmationSmsConfig(): BookingConfirmationSmsConfig 
   };
 }
 
+export function isBookingConfirmationSmsRuntimeLive() {
+  return isBookingConfirmationSmsLive(getBookingConfirmationSmsConfig());
+}
+
 // Runs after the booking response was sent (next/server `after`). Never throws; logs only the outcome code.
 export async function sendPublicBookingConfirmationSms(input: BookingConfirmationSmsInput) {
   try {
@@ -30,7 +35,7 @@ export async function sendPublicBookingConfirmationSms(input: BookingConfirmatio
       config,
       hmac: (key, value) => createHmac("sha256", key).update(value, "utf8").digest("hex"),
       reserve: async (appointmentId, recipientHash) => {
-        const { data, error } = await supabaseServer.rpc("reserve_public_booking_confirmation_sms_v1", { p_appointment_id: appointmentId, p_recipient_hash: recipientHash });
+        const { data, error } = await supabaseServer.rpc("reserve_public_booking_confirmation_sms_v2", { p_appointment_id: appointmentId, p_recipient_hash: recipientHash });
         if (error) throw new Error(error.code ?? "RPC_ERROR");
         return String(data);
       },

@@ -19,8 +19,8 @@ begin
     values (('93000000-0000-4000-8000-'||lpad(g::text,12,'0'))::uuid,
       ('92000000-0000-4000-8000-'||lpad(g::text,12,'0'))::uuid,
       'Reminder Client '||g,'+38164123'||lpad(g::text,3,'0'));
-    insert into public.salon_reminder_settings(salon_id,enabled,channel,hours_before)
-    values (('92000000-0000-4000-8000-'||lpad(g::text,12,'0'))::uuid,true,'sms',24);
+    insert into public.salon_reminder_settings(salon_id,sms_notifications_enabled,enabled,channel,hours_before)
+    values (('92000000-0000-4000-8000-'||lpad(g::text,12,'0'))::uuid,true,true,'sms',24);
     insert into public.appointments(
       id,salon_id,client_id,start_time,end_time,duration_minutes,price,status,idempotency_key
     ) values (

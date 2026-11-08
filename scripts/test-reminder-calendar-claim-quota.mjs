@@ -13,7 +13,7 @@ const setup = `
   insert into public.salons(id,owner_id,name,slug,timezone) values('${salon}','${owner}','Claim quota','claim-quota-concurrency','Europe/Belgrade');
   update public.subscriptions set plan_id=(select id from public.plans where slug='pro'),status='trialing',trial_ends_at='2027-01-01T00:00:00Z' where salon_id='${salon}';
   insert into public.clients(id,salon_id,full_name,phone) values('${client}','${salon}','Quota fixture','+381641234567');
-  insert into public.salon_reminder_settings(salon_id,enabled,channel,hours_before) values('${salon}',true,'sms',24);
+  insert into public.salon_reminder_settings(salon_id,sms_notifications_enabled,enabled,channel,hours_before) values('${salon}',true,true,'sms',24);
   insert into public.appointments(id,salon_id,client_id,start_time,end_time,duration_minutes,price,status,idempotency_key)
     select ('43000000-0000-4000-8001-'||lpad(n::text,12,'0'))::uuid,'${salon}','${client}',
       '2026-02-01T22:50:00Z'::timestamptz+n*interval '1 minute','2026-02-01T23:20:00Z'::timestamptz+n*interval '1 minute',30,1000,'pending',extensions.gen_random_uuid()

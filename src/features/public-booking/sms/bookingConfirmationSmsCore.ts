@@ -7,7 +7,8 @@ import { buildBookingConfirmationSms } from "./bookingConfirmationSmsTemplate.ts
 // logged or stored; the database only receives the appointment id, an HMAC digest of the number and the outcome.
 
 // allowlist: only the exact numbers on the list (default, also when unset or empty); any: every valid number, still
-// only for salons with their own switch on and within the database limits; invalid: anything else, nothing is sent.
+// only for salons whose owner switched SMS on, with the plan's SMS right, and within the database limits; invalid:
+// anything else, nothing is sent.
 export type BookingConfirmationSmsRecipientMode = "allowlist" | "any" | "invalid";
 
 export function parseRecipientMode(raw: string | undefined): BookingConfirmationSmsRecipientMode {
@@ -33,7 +34,7 @@ export type BookingConfirmationSmsInput = {
   manageToken: string;
 };
 
-export type ReserveOutcome = "reserved" | "already_reserved" | "not_eligible" | "salon_disabled" | "recipient_limit" | "salon_limit";
+export type ReserveOutcome = "reserved" | "already_reserved" | "not_eligible" | "salon_disabled" | "not_entitled" | "recipient_limit" | "salon_limit";
 export type SendStatus = "accepted" | "rejected" | "unknown";
 export type BookingConfirmationSmsOutcome =
   | "disabled" | "not_allowed" | "misconfigured" | "invalid_input" | "error"
@@ -49,6 +50,15 @@ export type BookingConfirmationSmsDependencies = {
 
 const MIN_HASH_KEY_LENGTH = 32;
 const SAFE_ERROR_CODE = /^[A-Za-z0-9_.-]{1,64}$/;
+
+function isConfigComplete(config: BookingConfirmationSmsConfig): config is BookingConfirmationSmsConfig & { hashKey: string; appUrl: string } {
+  return Boolean(config.hashKey && config.hashKey.length >= MIN_HASH_KEY_LENGTH && config.appUrl && /^https?:\/\/[^/]+$/.test(config.appUrl));
+}
+
+// True when the global switch lets confirmations reach real clients (every valid number). Shown to salon owners.
+export function isBookingConfirmationSmsLive(config: BookingConfirmationSmsConfig) {
+  return config.enabled && config.recipientMode === "any" && isConfigComplete(config);
+}
 
 // accepted: the provider took the message; rejected: it certainly did not; unknown: timeout, network, ambiguous answer.
 export function classifySmsResult(result: SmsSendResult): { status: SendStatus; providerMessageId: string | null; errorCode: string | null } {
@@ -66,9 +76,7 @@ export async function sendBookingConfirmationSmsCore(
   if (config.recipientMode === "invalid") return { outcome: "misconfigured" };
   // Default: only the exact numbers on the team list ever receive a confirmation.
   if (config.recipientMode !== "any" && !config.allowedRecipients.has(input.recipientE164)) return { outcome: "not_allowed" };
-  if (!config.hashKey || config.hashKey.length < MIN_HASH_KEY_LENGTH || !config.appUrl || !/^https?:\/\/[^/]+$/.test(config.appUrl)) {
-    return { outcome: "misconfigured" };
-  }
+  if (!isConfigComplete(config)) return { outcome: "misconfigured" };
   if (!isManageToken(input.manageToken) || !/^\+[1-9]\d{7,14}$/.test(input.recipientE164)) return { outcome: "invalid_input" };
 
   let reserved: string;
@@ -78,7 +86,7 @@ export async function sendBookingConfirmationSmsCore(
     return { outcome: "error", errorCode: "RESERVE_FAILED" };
   }
   if (reserved !== "reserved") {
-    const known: ReserveOutcome[] = ["already_reserved", "not_eligible", "salon_disabled", "recipient_limit", "salon_limit"];
+    const known: ReserveOutcome[] = ["already_reserved", "not_eligible", "salon_disabled", "not_entitled", "recipient_limit", "salon_limit"];
     return known.includes(reserved as ReserveOutcome) ? { outcome: reserved as Exclude<ReserveOutcome, "reserved"> } : { outcome: "error", errorCode: "RESERVE_UNEXPECTED" };
   }
 

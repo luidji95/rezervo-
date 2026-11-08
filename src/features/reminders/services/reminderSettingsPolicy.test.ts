@@ -1,18 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getReminderSettingsPolicyError } from "./reminderSettingsPolicy.ts";
+import { getSmsSettingsPolicyError } from "./reminderSettingsPolicy.ts";
 
-test("Starter-like entitlement cannot update reminder settings", () => {
-  assert.equal(getReminderSettingsPolicyError({ enabled: true, canUseSmsReminders: false, runtimeReady: true }), "ENTITLEMENT_REQUIRED");
-  assert.equal(getReminderSettingsPolicyError({ enabled: false, canUseSmsReminders: false, runtimeReady: false }), "ENTITLEMENT_REQUIRED");
+test("switching SMS on needs the plan's SMS right", () => {
+  assert.equal(getSmsSettingsPolicyError({ smsEnabled: true, reminderEnabled: false, canUseSms: false }), "ENTITLEMENT_REQUIRED");
+  assert.equal(getSmsSettingsPolicyError({ smsEnabled: true, reminderEnabled: true, canUseSms: false }), "ENTITLEMENT_REQUIRED");
+  assert.equal(getSmsSettingsPolicyError({ smsEnabled: false, reminderEnabled: true, canUseSms: false }), "ENTITLEMENT_REQUIRED");
 });
 
-test("runtime blocks enabling but permits disabling for entitled salons", () => {
-  assert.equal(getReminderSettingsPolicyError({ enabled: true, canUseSmsReminders: true, runtimeReady: false }), "REMINDER_RUNTIME_NOT_READY");
-  assert.equal(getReminderSettingsPolicyError({ enabled: false, canUseSmsReminders: true, runtimeReady: false }), null);
+test("switching everything off is allowed with or without the right", () => {
+  assert.equal(getSmsSettingsPolicyError({ smsEnabled: false, reminderEnabled: false, canUseSms: false }), null);
+  assert.equal(getSmsSettingsPolicyError({ smsEnabled: false, reminderEnabled: false, canUseSms: true }), null);
 });
 
-test("entitled salon can enable or disable when runtime is ready", () => {
-  assert.equal(getReminderSettingsPolicyError({ enabled: true, canUseSmsReminders: true, runtimeReady: true }), null);
-  assert.equal(getReminderSettingsPolicyError({ enabled: false, canUseSmsReminders: true, runtimeReady: true }), null);
+test("an entitled salon can use any combination", () => {
+  for (const smsEnabled of [true, false]) {
+    for (const reminderEnabled of [true, false]) {
+      assert.equal(getSmsSettingsPolicyError({ smsEnabled, reminderEnabled, canUseSms: true }), null);
+    }
+  }
 });

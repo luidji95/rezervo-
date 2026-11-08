@@ -85,6 +85,7 @@
 .landing-why-grid__icon{display:grid;place-items:center;width:43px;height:43px;border-radius:12px;color:var(--violet);background:#f0eafd}
 .landing-why-grid h3{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:20px 0 8px;font-size:17px}
 .landing-why-grid p{margin:0;color:var(--muted);font-size:14px;line-height:1.65}
+.landing-why-grid__note{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:#5f5970;font-size:12px;line-height:1.55}
 .landing-why-grid article.is-soon{border-color:transparent;color:#fff;background:linear-gradient(140deg,#6d28d9,#4c1d95 75%);box-shadow:0 20px 45px rgba(76,29,149,.22)}
 .landing-why-grid article.is-soon::after{content:"";position:absolute;right:-60px;bottom:-70px;width:190px;height:190px;border:1px solid rgba(255,255,255,.18);border-radius:50%;box-shadow:0 0 0 28px rgba(255,255,255,.05);pointer-events:none}
 .landing-why-grid article.is-soon p{color:#ece4ff}
@@ -94,12 +95,12 @@
 /* Od naloga do prve rezervacije: povezani koraci sa malim prikazima */
 .landing-flow{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin:0;padding:0;list-style:none}
 .landing-flow::before{content:"";position:absolute;top:17px;left:18px;right:calc((100% - 60px) / 4 - 18px);height:2px;background:linear-gradient(90deg,#7c3aed,rgba(167,139,250,.3))}
-.landing-flow>li{position:relative;display:flex;flex-direction:column;gap:18px;min-width:0}
+.landing-flow>li{position:relative;display:grid;grid-row:span 2;grid-template-rows:subgrid;align-content:start;gap:18px;min-width:0}
 .landing-flow__head{display:flex;flex-direction:column;gap:18px}
 .landing-flow__head b{position:relative;z-index:1;display:grid;place-items:center;width:36px;height:36px;border-radius:50%;color:#fff;background:#6d28d9;box-shadow:0 0 0 6px #1c142d}
 .landing-flow h3{margin:0 0 6px;font-size:18px}
 .landing-flow p{margin:0;color:#cfc6de;font-size:14px;line-height:1.6}
-.landing-mock{display:grid;gap:8px;padding:14px;border:1px solid rgba(255,255,255,.12);border-radius:14px;color:var(--ink);background:#fff;box-shadow:0 18px 40px rgba(0,0,0,.28);font-size:12px}
+.landing-mock{display:grid;align-self:start;gap:8px;padding:14px;border:1px solid rgba(255,255,255,.12);border-radius:14px;color:var(--ink);background:#fff;box-shadow:0 18px 40px rgba(0,0,0,.28);font-size:12px}
 .landing-mock__field{display:grid;gap:4px}
 .landing-mock__field small{color:var(--muted);font-size:10px;font-weight:700}
 .landing-mock__field span{min-height:28px;padding:6px 9px;border:1px solid var(--line);border-radius:7px;font-weight:750}
@@ -140,6 +141,6 @@
 .landing-growth__card--voice .landing-button{width:max-content;margin-top:auto}
 
 @media (max-width:980px){.landing-why-grid{grid-template-columns:repeat(2,1fr)}.landing-flow{grid-template-columns:repeat(2,1fr);row-gap:36px}.landing-flow::before{display:none}.landing-growth{grid-template-columns:1fr}}
-@media (max-width:720px){.landing-why-grid{grid-template-columns:1fr;gap:12px}.landing-why-grid article{display:grid;grid-template-columns:43px 1fr;column-gap:14px;padding:20px}.landing-why-grid h3{margin:0 0 6px;align-self:center}.landing-why-grid p{grid-column:2}.landing-flow{grid-template-columns:1fr;row-gap:30px}.landing-flow::before{display:block;top:18px;bottom:18px;left:17px;right:auto;width:2px;height:auto;background:linear-gradient(#7c3aed,rgba(167,139,250,.3))}.landing-flow>li{padding-left:54px}.landing-flow__head b{position:absolute;top:0;left:0}}
+@media (max-width:720px){.landing-why-grid{grid-template-columns:1fr;gap:12px}.landing-why-grid article{display:grid;grid-template-columns:43px 1fr;column-gap:14px;padding:20px}.landing-why-grid h3{margin:0 0 6px;align-self:center}.landing-why-grid p,.landing-why-grid__note{grid-column:2}.landing-flow{grid-template-columns:1fr;row-gap:30px}.landing-flow::before{display:block;top:18px;bottom:18px;left:17px;right:auto;width:2px;height:auto;background:linear-gradient(#7c3aed,rgba(167,139,250,.3))}.landing-flow>li{display:flex;flex-direction:column;grid-row:auto;padding-left:54px}.landing-flow__head b{position:absolute;top:0;left:0}}
 @media (max-width:480px){.landing-growth__card--voice .landing-button{width:100%}}
 @media (prefers-reduced-motion:reduce){.landing-why-grid article{transition:none}}

@@ -137,6 +137,7 @@
 .landing-growth__next>svg{flex:0 0 auto;width:44px;height:44px;padding:10px;border-radius:12px;color:#fff;background:linear-gradient(145deg,#7c3aed,#4c1d95)}
 .landing-growth__next strong{display:block;font-size:16px}
 .landing-growth__next p{margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.65}
+.landing-growth__card--next .landing-growth__demo{width:max-content;margin-top:auto}
 .landing-growth__card--voice>header{color:var(--violet-dark)}
 .landing-growth__card--voice .landing-button{width:max-content;margin-top:auto}
 

@@ -9,6 +9,8 @@ const ACTIVE_COPY = [
   "src/features/landing/LandingPage.tsx",
   "src/features/onboarding/components/OnboardingLayout.tsx",
   "src/features/pricing/components/PricingCards.tsx",
+  "src/features/pricing/trialOffer.ts",
+  "src/features/landing/faqItems.ts",
 ];
 
 test("active trial copy promises 3 months free without a card and no other duration", () => {

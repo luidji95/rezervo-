@@ -31,6 +31,7 @@ import { useAuthorization } from "@/context/AuthorizationContext";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 import type { PublicPlan } from "@/features/pricing/types";
 import { SUPPORT_MAILTO } from "@/features/billing/services/supportContact";
+import { FAQ_ITEMS } from "./faqItems";
 
 type FeatureId = "appointments" | "clients" | "team" | "statistics";
 
@@ -141,6 +142,12 @@ function FlowMock({ index }: { index: number }) {
   </div>;
 }
 
+// Najvise jedno otvoreno pitanje; odgovor je odmah ispod svog pitanja.
+function FaqSection() {
+  const [openId, setOpenId] = useState<string | null>(null);
+  return <section className="landing-section landing-section--tinted" id="faq"><div className="landing-shell landing-faq"><div className="landing-section__heading" data-reveal><span>Česta pitanja</span><h2>Odgovori na najčešća pitanja.</h2></div><div className="landing-faq__list" data-reveal>{FAQ_ITEMS.map((item) => { const open = item.id === openId; return <div key={item.id} className={`landing-faq__item ${open ? "is-open" : ""}`}><h3><button type="button" id={`faq-question-${item.id}`} aria-expanded={open} aria-controls={`faq-answer-${item.id}`} onClick={() => setOpenId(open ? null : item.id)}><span>{item.question}</span><ChevronDown size={18} aria-hidden="true" /></button></h3><div id={`faq-answer-${item.id}`} role="region" aria-labelledby={`faq-question-${item.id}`} className="landing-faq__answer" hidden={!open}><p>{item.answer}</p>{item.link && <p className="landing-faq__link"><Link href={item.link.href}>{item.link.label} <ArrowRight size={15} aria-hidden="true" /></Link><small>{item.link.note}</small></p>}</div></div>; })}</div></div></section>;
+}
+
 function Brand() {
   return <span className="landing-brand"><span>R</span>Rezervo</span>;
 }
@@ -236,7 +243,7 @@ export function LandingPage({ plans }: { plans: PublicPlan[] | null }) {
   const selectedFeature = features.find((feature) => feature.id === activeFeature) ?? null;
 
   return <main className="landing-page" ref={landingRef}>
-    <nav className="landing-nav"><div className="landing-shell landing-nav__inner"><a href="#top" aria-label="Rezervo početna"><Brand /></a><button className="landing-nav__toggle" type="button" onClick={() => setMenuOpen((value) => !value)} aria-label="Otvori navigaciju">{menuOpen ? <X /> : <Menu />}</button><div className={`landing-nav__links ${menuOpen ? "is-open" : ""}`}><a href="#features" onClick={() => setMenuOpen(false)}>Funkcionalnosti</a><Link href="/pricing" onClick={() => setMenuOpen(false)}>Paketi</Link><a href="#roadmap" onClick={() => setMenuOpen(false)}>Šta pripremamo</a><Link href="/auth/login">Prijavi se</Link><Link className="landing-button landing-button--small" href="/auth/register?next=%2Fonboarding">Započni besplatno</Link></div></div></nav>
+    <nav className="landing-nav"><div className="landing-shell landing-nav__inner"><a href="#top" aria-label="Rezervo početna"><Brand /></a><button className="landing-nav__toggle" type="button" onClick={() => setMenuOpen((value) => !value)} aria-label="Otvori navigaciju">{menuOpen ? <X /> : <Menu />}</button><div className={`landing-nav__links ${menuOpen ? "is-open" : ""}`}><a href="#features" onClick={() => setMenuOpen(false)}>Funkcionalnosti</a><Link href="/pricing" onClick={() => setMenuOpen(false)}>Paketi</Link><a href="#roadmap" onClick={() => setMenuOpen(false)}>Šta pripremamo</a><a href="#faq" onClick={() => setMenuOpen(false)}>Česta pitanja</a><Link href="/auth/login">Prijavi se</Link><Link className="landing-button landing-button--small" href="/auth/register?next=%2Fonboarding">Započni besplatno</Link></div></div></nav>
 
     <section className="landing-hero" id="top"><div className="landing-shell landing-hero__grid"><div className="landing-hero__copy"><span className="landing-eyebrow"><Sparkles size={15} /> Napravljeno za moderan salon</span><h1>Upravljajte svojim salonom <em>iz jednog mesta.</em></h1><p>Rezervo pomaže frizerskim, barber i beauty salonima da upravljaju terminima, zaposlenima, klijentima i svakodnevnim poslovanjem.</p><div className="landing-hero__actions"><Link className="landing-button" href="/auth/register">Započni besplatno <ArrowRight size={18} /></Link><Link className="landing-button landing-button--secondary" href="/auth/login">Prijavi se</Link></div><div className="landing-hero__trust"><span><Check /> Bez instalacije</span><span><Check /> Radi na svim uređajima</span></div></div><div className="landing-hero__visual"><div className="landing-orbit landing-orbit--one" /><div className="landing-orbit landing-orbit--two" /><ProductShot src="/landing/dashboard.webp" alt="Rezervo dashboard sa dnevnim pregledom salona" priority /><span className="landing-float landing-float--one"><CalendarDays /> 8 termina danas</span><span className="landing-float landing-float--two"><Bell /> Nova rezervacija</span></div></div></section>
 
@@ -256,9 +263,11 @@ export function LandingPage({ plans }: { plans: PublicPlan[] | null }) {
       <div className="landing-growth__card landing-growth__card--voice" data-reveal><header><Lightbulb /><span>Vaše iskustvo usmerava razvoj</span></header><p>Šta bi vašem salonu najviše olakšalo posao? Pošaljite nam predlog, a mi ga razmatramo pri planiranju narednih funkcija.</p><a className="landing-button landing-button--secondary" href={SUGGESTION_MAILTO}><Mail size={17} /> Pošaljite predlog</a></div>
     </div></div></section>
 
+    <FaqSection />
+
     <section className="landing-cta"><div className="landing-shell" data-reveal><div><span>Spremni za bolju organizaciju?</span><h2>Pokrenite svoj salon uz Rezervo.</h2></div><Link className="landing-button landing-button--light" href="/auth/register">Započni besplatno <ArrowRight /></Link></div></section>
 
-    <footer className="landing-footer"><div className="landing-shell"><div><Brand /><p>Moderna platforma za upravljanje salonima.</p></div><div><Link href="/auth/login">Login</Link><Link href="/auth/register">Registracija</Link><a href="#features">Funkcionalnosti</a><a href="#roadmap">Razvoj proizvoda</a></div></div><div className="landing-shell landing-footer__bottom">© {new Date().getFullYear()} Rezervo. Sva prava zadržana.</div></footer>
+    <footer className="landing-footer"><div className="landing-shell"><div><Brand /><p>Moderna platforma za upravljanje salonima.</p></div><div><Link href="/auth/login">Login</Link><Link href="/auth/register">Registracija</Link><a href="#features">Funkcionalnosti</a><a href="#roadmap">Razvoj proizvoda</a><a href="#faq">Česta pitanja</a></div></div><div className="landing-shell landing-footer__bottom">© {new Date().getFullYear()} Rezervo. Sva prava zadržana.</div></footer>
 
     {preview && <div className="landing-modal" role="dialog" aria-modal="true" aria-label={`${preview.title} prikaz`} onMouseDown={(event) => { if (event.currentTarget === event.target) setPreview(null); }}><div><button type="button" onClick={() => setPreview(null)} aria-label="Zatvori prikaz"><X /></button><ProductVideo src={preview.videoSrc} poster={preview.src} label={`${preview.title}, video prikaz Rezervo aplikacije`} controls /><h3>{preview.title}</h3><p>{preview.subtitle}</p></div></div>}
   </main>;

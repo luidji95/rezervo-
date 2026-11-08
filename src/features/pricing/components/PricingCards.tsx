@@ -8,6 +8,7 @@ import { useEntitlements } from "@/features/billing/hooks/useEntitlements";
 import { formatPlanPrice } from "@/features/billing/services/planCatalog";
 import { PLAN_PRESENTATIONS } from "@/features/billing/data/planPresentation";
 import { getPricingCtaHref } from "../services/acquisitionRouting";
+import { TRIAL_OFFER_NOTICE } from "../trialOffer";
 import type { PublicPlan } from "../types";
 import styles from "./PricingCards.module.css";
 
@@ -28,7 +29,7 @@ export function PricingCards({ plans, compact = false }: { plans: PublicPlan[]; 
   const salonState = resolution === "loading" ? "loading" : resolution === "loaded_without_salon" ? "missing" : resolution === "loaded_with_incomplete_onboarding" ? "incomplete" : "complete";
 
   return <div className={`${styles.wrapper} ${compact ? styles.compact : ""}`}>
-    <p className={styles.trialNotice}>Novi saloni dobijaju Pro funkcije 3 meseca besplatno, bez kartice. Paket birate nakon probnog perioda.</p>
+    <p className={styles.trialNotice}>{TRIAL_OFFER_NOTICE}</p>
     <div className={styles.grid}>{plans.map((plan) => {
       const presentation = PLAN_PRESENTATIONS.find((item) => item.code === plan.code)!;
       const premium = plan.code === "premium";

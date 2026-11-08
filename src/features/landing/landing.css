@@ -149,3 +149,23 @@
 /* Detalji odmah ispod izabrane kartice (jedna kolona) */
 .landing-showcase-wrap--inline .landing-showcase{margin-top:0;animation:landing-reveal-in .35s ease both}
 @media (prefers-reduced-motion:reduce){.landing-showcase-wrap--inline .landing-showcase{animation:none}}
+
+/* Česta pitanja */
+#faq{scroll-margin-top:80px}
+.landing-faq{max-width:860px}
+.landing-faq__list{display:grid;gap:10px}
+.landing-faq__item{border:1px solid var(--line);border-radius:16px;background:#fff;transition:border-color .2s ease,box-shadow .2s ease}
+.landing-faq__item.is-open{border-color:#cfc1e9;box-shadow:0 14px 34px rgba(44,32,67,.07)}
+.landing-faq__item h3{margin:0;font-size:inherit}
+.landing-faq__item button{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;min-height:58px;padding:16px 20px;border:0;border-radius:16px;color:var(--ink);background:none;font:inherit;font-size:16px;font-weight:800;text-align:left;cursor:pointer}
+.landing-faq__item button svg{flex:0 0 auto;color:var(--violet);transition:transform .2s ease}
+.landing-faq__item.is-open button svg{transform:rotate(180deg)}
+.landing-faq__item button:focus-visible{outline:3px solid #a78bfa;outline-offset:2px}
+.landing-faq__answer{padding:0 20px 18px}
+.landing-faq__answer p{margin:0;color:var(--muted);font-size:15px;line-height:1.7}
+.landing-faq__link{display:grid;gap:4px;margin-top:10px!important}
+.landing-faq__link a{display:inline-flex;align-items:center;gap:6px;width:max-content;max-width:100%;color:var(--violet);font-weight:800;text-decoration:none}
+.landing-faq__link a:focus-visible{outline:3px solid #a78bfa;outline-offset:3px;border-radius:4px}
+.landing-faq__link small{color:var(--muted);font-size:13px}
+@media (max-width:720px){.landing-faq__item button{padding:14px 16px;font-size:15px}.landing-faq__answer{padding:0 16px 16px}}
+@media (prefers-reduced-motion:reduce){.landing-faq__item,.landing-faq__item button svg{transition:none}}

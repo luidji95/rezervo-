@@ -27,8 +27,7 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     id: "sms",
     question: "Kako rade SMS obaveštenja?",
-    // Reminders can already be switched on in the settings, but their sending is not activated yet.
-    answer: "U Pro paketu i tokom Pro probnog perioda možete uključiti SMS potvrdu online rezervacije sa privatnim linkom za otkazivanje. Slanjem upravljate u podešavanjima salona. Podsetnik pre termina se tamo posebno uključuje, a njegovo slanje aktiviramo uskoro.",
+    answer: "U Pro paketu i tokom Pro probnog perioda možete uključiti SMS potvrdu online rezervacije sa privatnim linkom za otkazivanje. Podsetnik pre termina uključujete posebno u podešavanjima salona, gde birate i koliko ranije se šalje.",
   },
   {
     id: "otkazivanje",

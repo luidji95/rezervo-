@@ -13,7 +13,7 @@ export function formatStatisticsNumber(value: number) {
 }
 
 export function formatStatisticsDate(dateKey: string) {
-  return new Intl.DateTimeFormat("sr-RS", {
+  return new Intl.DateTimeFormat("sr-Latn-RS", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -26,13 +26,13 @@ export function formatStatisticsBucket(
   granularity: StatisticsGranularity,
 ) {
   if (granularity === "month") {
-    return new Intl.DateTimeFormat("sr-RS", {
+    return new Intl.DateTimeFormat("sr-Latn-RS", {
       month: "short",
       year: "numeric",
       timeZone: "UTC",
     }).format(new Date(`${bucket}-01T12:00:00Z`));
   }
-  return new Intl.DateTimeFormat("sr-RS", {
+  return new Intl.DateTimeFormat("sr-Latn-RS", {
     day: "2-digit",
     month: "short",
     timeZone: "UTC",

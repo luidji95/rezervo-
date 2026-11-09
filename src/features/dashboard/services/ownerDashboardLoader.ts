@@ -1,5 +1,6 @@
 export type DashboardSectionName =
   | "stats"
+  | "occupancy"
   | "todaySchedule"
   | "upcomingAppointments"
   | "employees"

@@ -28,7 +28,7 @@ type SectionState<T> = { data: T; loading: boolean; error: string | null };
 const EMPTY_KPIS: EmployeeWeekKpis = { completed: 0, confirmed: 0, noShow: 0, total: 0 };
 
 function formatTime(value: string, timeZone: string) {
-  return new Intl.DateTimeFormat("sr-RS", {
+  return new Intl.DateTimeFormat("sr-Latn-RS", {
     hour: "2-digit",
     minute: "2-digit",
     timeZone,
@@ -132,7 +132,7 @@ export function EmployeeDashboard({ employee, salon }: Props) {
   const employeeName = employee.display_name || employee.full_name;
   const currentHour = getHourInTimeZone(new Date(), timeZone);
   const greeting = currentHour < 12 ? "Dobro jutro" : currentHour < 18 ? "Dobar dan" : "Dobro veče";
-  const todayLabel = new Intl.DateTimeFormat("sr-RS", {
+  const todayLabel = new Intl.DateTimeFormat("sr-Latn-RS", {
     weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone,
   }).format(new Date());
 

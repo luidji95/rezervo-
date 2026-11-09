@@ -45,6 +45,7 @@
     "test:public-booking-confirmation-sms-db": "node scripts/test-public-booking-confirmation-sms.mjs",
     "test:confirmation-sms-dlr-db": "node scripts/test-confirmation-sms-delivery-reports.mjs",
     "test:salon-sms-settings-db": "node scripts/test-salon-sms-settings.mjs",
+    "test:dashboard-metrics": "node --experimental-strip-types --test src/features/dashboard/services/dashboardMetricsCore.test.ts src/features/dashboard/services/ownerDashboardLoader.test.ts src/features/statistics/statisticsTrendFill.test.ts",
     "test:ai-demo": "node --experimental-strip-types --test src/features/ai-demo/aiReceptionistDemoCore.test.ts",
     "test:public-booking-rate-limit-db": "node scripts/test-public-booking-rate-limit.mjs",
     "test:appointment-mutations": "docker exec -i supabase_db_rezervo psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres < supabase/tests/appointment_mutation_contract.sql",

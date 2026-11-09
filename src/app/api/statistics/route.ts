@@ -9,6 +9,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { addDaysToDateKey } from "@/lib/salonDateTime";
 import { statisticsPeriodInputSchema, statisticsQuerySchema } from "@/features/statistics/schemas/statisticsSchema";
 import type { StatisticsResponse } from "@/features/statistics/types";
+import { fillStatisticsTrend } from "@/features/statistics/statisticsTrendFill";
 import { EntitlementError, requireSalonEntitlement } from "@/features/billing/services/entitlementService";
 
 export const dynamic = "force-dynamic";
@@ -132,6 +133,12 @@ export async function GET(request: Request) {
   const aggregate = data as Omit<StatisticsResponse, "period">;
   const statistics: StatisticsResponse = {
     ...aggregate,
+    // Every day or month of the period, with 0 where nothing was completed.
+    trend: fillStatisticsTrend(aggregate.trend ?? [], {
+      dateKeyStart: period.dateKeyStart,
+      dateKeyEndExclusive: period.dateKeyEndExclusive,
+      granularity: period.bucketGranularity,
+    }),
     period: {
       preset: period.preset,
       startDate: period.dateKeyStart,

@@ -1,4 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
+import { DEFAULT_SALON_TIME_ZONE, getTodayDateKey } from "@/lib/salonDateTime";
+import { getMonthRangeUtc } from "@/features/dashboard/services/dashboardMetricsCore";
 
 export type PopularService = {
   serviceId: string;
@@ -13,17 +15,18 @@ export type TopClient = {
   appointmentCount: number;
 };
 
-function getMonthBounds(date: Date) {
-  const start = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
-  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
-  return { start, end };
+// Current calendar month in the salon's time zone.
+function getMonthBounds(timeZone: string) {
+  const { startUtc, endUtc } = getMonthRangeUtc(getTodayDateKey(timeZone), timeZone);
+  return { start: startUtc, end: endUtc };
 }
 
 export async function getPopularServices(
   salonId: string,
+  timeZone = DEFAULT_SALON_TIME_ZONE,
   limit = 5
 ): Promise<PopularService[]> {
-  const { start, end } = getMonthBounds(new Date());
+  const { start, end } = getMonthBounds(timeZone);
   const { data, error } = await supabase
     .from("appointments")
     .select(
@@ -37,7 +40,7 @@ export async function getPopularServices(
     .eq("salon_id", salonId)
     .eq("status", "completed")
     .gte("start_time", start.toISOString())
-    .lte("start_time", end.toISOString());
+    .lt("start_time", end.toISOString());
 
   if (error) {
     throw new Error(error.message);
@@ -74,9 +77,10 @@ export async function getPopularServices(
 
 export async function getTopClients(
   salonId: string,
+  timeZone = DEFAULT_SALON_TIME_ZONE,
   limit = 5
 ): Promise<TopClient[]> {
-  const { start, end } = getMonthBounds(new Date());
+  const { start, end } = getMonthBounds(timeZone);
   const { data, error } = await supabase
     .from("appointments")
     .select(
@@ -91,7 +95,7 @@ export async function getTopClients(
     .eq("salon_id", salonId)
     .eq("status", "completed")
     .gte("start_time", start.toISOString())
-    .lte("start_time", end.toISOString());
+    .lt("start_time", end.toISOString());
 
   if (error) {
     throw new Error(error.message);
@@ -116,7 +120,7 @@ export async function getTopClients(
     } else {
       reducer.set(key, {
         clientId: client.id,
-        fullName: client.full_name || "Nepozvan klijent",
+        fullName: client.full_name || "Nepoznat klijent",
         totalPrice: appointment.price ?? 0,
         appointmentCount: 1,
       });

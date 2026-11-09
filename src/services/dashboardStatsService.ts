@@ -1,16 +1,19 @@
 import { supabase } from "@/lib/supabase/client";
-import { getAllWorkingHoursForSalon } from "@/services/workingService";
-import { getSalonEmployees } from "@/services/employeeService";
 import type { AppointmentListItem } from "@/services/appointmentQueryService";
 import {
   DEFAULT_SALON_TIME_ZONE,
   getDayRangeUtc,
   getTodayDateKey,
 } from "@/lib/salonDateTime";
+import {
+  computeTodayOccupancy,
+  DASHBOARD_COUNTED_STATUSES,
+  getMonthRangeUtc,
+  type TodayOccupancy,
+} from "@/features/dashboard/services/dashboardMetricsCore";
 
 export type DashboardStats = {
   todayAppointments: number;
-  occupancyToday: number;
   nextAppointment: AppointmentListItem | null;
   monthlyRevenue: number;
   monthlyNewClients: number;
@@ -53,41 +56,6 @@ type RawAppointment = {
   employees: RelationValue<AppointmentRelationEmployee>;
   services: RelationValue<AppointmentRelationService>;
 };
-
-function getMonthBounds(date: Date) {
-  const start = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
-  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
-
-  return { start, end };
-}
-
-function toMinutes(timestamp: string | null | undefined) {
-  if (!timestamp) return 0;
-
-  const [hours, minutes] = timestamp.slice(0, 5).split(":").map(Number);
-
-  return hours * 60 + minutes;
-}
-
-function getWorkingMinutes(hours: {
-  opens_at: string;
-  closes_at: string;
-  break_starts_at: string | null;
-  break_ends_at: string | null;
-  is_working_day: boolean;
-}) {
-  if (!hours.is_working_day) return 0;
-
-  const open = toMinutes(hours.opens_at);
-  const close = toMinutes(hours.closes_at);
-  const breakStart = toMinutes(hours.break_starts_at);
-  const breakEnd = toMinutes(hours.break_ends_at);
-
-  const total = Math.max(close - open, 0);
-  const breakTime = Math.max(breakEnd - breakStart, 0);
-
-  return Math.max(total - breakTime, 0);
-}
 
 function normalizeRelation<T>(value: RelationValue<T>): T | null {
   return Array.isArray(value) ? value[0] ?? null : value;
@@ -134,32 +102,23 @@ function normalizeAppointment(appointment: RawAppointment): AppointmentListItem 
   };
 }
 
+// Today's appointments (pending, confirmed, completed) and this month's figures, both in the salon's time zone.
+// Any failed query throws: the Dashboard shows the section as unavailable instead of zeros.
 export async function getDashboardStats(
   salonId: string,
   timeZone = DEFAULT_SALON_TIME_ZONE,
 ): Promise<DashboardStats> {
-  const today = new Date();
+  const now = new Date();
+  const todayDateKey = getTodayDateKey(timeZone, now);
+  const { startUtc: todayStart, endUtc: todayEnd } = getDayRangeUtc(todayDateKey, timeZone);
+  const { startUtc: monthStart, endUtc: monthEnd } = getMonthRangeUtc(todayDateKey, timeZone);
 
-  const todayDateKey = getTodayDateKey(timeZone, today);
-  const { startUtc: todayStart, endUtc: todayEnd } = getDayRangeUtc(
-    todayDateKey,
-    timeZone,
-  );
-  const { start: monthStart, end: monthEnd } = getMonthBounds(today);
-  const nowIso = new Date().toISOString();
-
-  const [
-    todayAppointmentsRes,
-    revenueRes,
-    nextAppointmentRes,
-    clientsRes,
-    employees,
-    workingHours,
-  ] = await Promise.all([
+  const [todayAppointmentsRes, revenueRes, nextAppointmentRes, clientsRes] = await Promise.all([
     supabase
       .from("appointments")
-      .select("duration_minutes, start_time, end_time", { count: "exact" })
+      .select("id", { count: "exact", head: true })
       .eq("salon_id", salonId)
+      .in("status", [...DASHBOARD_COUNTED_STATUSES])
       .gte("start_time", todayStart.toISOString())
       .lt("start_time", todayEnd.toISOString()),
 
@@ -169,7 +128,7 @@ export async function getDashboardStats(
       .eq("salon_id", salonId)
       .eq("status", "completed")
       .gte("start_time", monthStart.toISOString())
-      .lte("start_time", monthEnd.toISOString()),
+      .lt("start_time", monthEnd.toISOString()),
 
     supabase
       .from("appointments")
@@ -190,95 +149,69 @@ export async function getDashboardStats(
       `)
       .eq("salon_id", salonId)
       .in("status", ["pending", "confirmed"])
-      .gte("start_time", nowIso)
+      .gte("start_time", now.toISOString())
       .order("start_time", { ascending: true })
       .limit(1),
 
+    // Client records created this month (shown as "Novi kartoni klijenata ovog meseca").
     supabase
       .from("clients")
-      .select("id", { count: "exact" })
+      .select("id", { count: "exact", head: true })
       .eq("salon_id", salonId)
       .gte("created_at", monthStart.toISOString())
-      .lte("created_at", monthEnd.toISOString()),
-
-    getSalonEmployees(salonId),
-
-    getAllWorkingHoursForSalon(salonId),
+      .lt("created_at", monthEnd.toISOString()),
   ]);
 
-  if (todayAppointmentsRes.error) {
-    throw new Error(todayAppointmentsRes.error.message);
+  for (const result of [todayAppointmentsRes, revenueRes, nextAppointmentRes, clientsRes]) {
+    if (result.error) throw new Error(result.error.message);
   }
+  if (todayAppointmentsRes.count === null || clientsRes.count === null) throw new Error("DASHBOARD_COUNT_UNAVAILABLE");
 
-  if (revenueRes.error) {
-    throw new Error(revenueRes.error.message);
-  }
-
-  if (nextAppointmentRes.error) {
-    throw new Error(nextAppointmentRes.error.message);
-  }
-
-  if (clientsRes.error) {
-    throw new Error(clientsRes.error.message);
-  }
-
-  const appointmentRows = todayAppointmentsRes.data ?? [];
-  const todayAppointments = todayAppointmentsRes.count ?? appointmentRows.length;
-
-  const occupiedMinutes = appointmentRows.reduce((sum, appointment) => {
-    const minutes =
-      typeof appointment.duration_minutes === "number"
-        ? appointment.duration_minutes
-        : appointment.start_time && appointment.end_time
-          ? (new Date(appointment.end_time).getTime() -
-              new Date(appointment.start_time).getTime()) /
-            60000
-          : 0;
-
-    return sum + Math.max(minutes, 0);
-  }, 0);
-
-  const dayOfWeek = today.getDay();
-
-  const salonDefaultHours = workingHours.find(
-    (hour) => hour.employee_id === null && hour.day_of_week === dayOfWeek
-  );
-
-  const totalAvailableMinutes = employees.reduce((total, employee) => {
-    const employeeHours = workingHours.find(
-      (hour) => hour.employee_id === employee.id && hour.day_of_week === dayOfWeek
-    );
-
-    const effectiveHours = employeeHours ?? salonDefaultHours;
-
-    return total + (effectiveHours ? getWorkingMinutes(effectiveHours) : 0);
-  }, 0);
-
-  const occupancyToday =
-    totalAvailableMinutes > 0
-      ? Math.round((occupiedMinutes / totalAvailableMinutes) * 100)
-      : 0;
-
-  const monthlyRevenue = (revenueRes.data ?? []).reduce(
-    (sum, appointment) => sum + (appointment.price ?? 0),
-    0
-  );
-
-  const monthlyAppointments = (revenueRes.data ?? []).length;
-  const monthlyNewClients = clientsRes.count ?? 0;
-
-  const rawNextAppointment = (nextAppointmentRes.data ?? [])[0] as
-    | RawAppointment
-    | undefined;
+  const revenueRows = revenueRes.data ?? [];
+  const rawNextAppointment = (nextAppointmentRes.data ?? [])[0] as RawAppointment | undefined;
 
   return {
-    todayAppointments,
-    occupancyToday,
-    nextAppointment: rawNextAppointment
-      ? normalizeAppointment(rawNextAppointment)
-      : null,
-    monthlyRevenue,
-    monthlyNewClients,
-    monthlyAppointments,
+    todayAppointments: todayAppointmentsRes.count,
+    nextAppointment: rawNextAppointment ? normalizeAppointment(rawNextAppointment) : null,
+    monthlyRevenue: revenueRows.reduce((sum, appointment) => sum + Number(appointment.price ?? 0), 0),
+    monthlyNewClients: clientsRes.count,
+    monthlyAppointments: revenueRows.length,
   };
+}
+
+// Occupancy of active, bookable employees today; see computeTodayOccupancy for the formula.
+export async function getTodayOccupancy(
+  salonId: string,
+  timeZone = DEFAULT_SALON_TIME_ZONE,
+): Promise<TodayOccupancy> {
+  const dateKey = getTodayDateKey(timeZone);
+  const { startUtc, endUtc } = getDayRangeUtc(dateKey, timeZone);
+  const [employeesRes, hoursRes, closuresRes, appointmentsRes] = await Promise.all([
+    supabase.from("employees").select("id, is_active, is_bookable").eq("salon_id", salonId),
+    supabase.from("working_hours")
+      .select("employee_id, day_of_week, opens_at, closes_at, break_starts_at, break_ends_at, is_working_day")
+      .eq("salon_id", salonId),
+    supabase.from("closures")
+      .select("employee_id, starts_at, ends_at")
+      .eq("salon_id", salonId)
+      .lt("starts_at", endUtc.toISOString())
+      .gt("ends_at", startUtc.toISOString()),
+    supabase.from("appointments")
+      .select("employee_id, start_time, end_time, status")
+      .eq("salon_id", salonId)
+      .in("status", [...DASHBOARD_COUNTED_STATUSES])
+      .lt("start_time", endUtc.toISOString())
+      .gt("end_time", startUtc.toISOString()),
+  ]);
+  for (const result of [employeesRes, hoursRes, closuresRes, appointmentsRes]) {
+    if (result.error) throw new Error(result.error.message);
+  }
+  return computeTodayOccupancy({
+    dateKey,
+    timeZone,
+    employees: employeesRes.data ?? [],
+    workingHours: hoursRes.data ?? [],
+    closures: closuresRes.data ?? [],
+    appointments: appointmentsRes.data ?? [],
+  });
 }

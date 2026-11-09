@@ -6,7 +6,7 @@ import type { StatisticsResponse } from "../types";
 export function ClientStatisticsSection({ data }: { data: StatisticsResponse }) {
   const metrics = [
     { label: "Novi klijenti", value: data.overview.newClients, icon: UserPlus },
-    { label: "Povratni klijenti", value: data.overview.returningClients, icon: UsersRound },
+    { label: "Povratni klijenti do kraja perioda", value: data.overview.returningClients, icon: UsersRound },
     { label: "Povratne posete", value: data.overview.returningVisits, icon: RotateCcw },
   ];
   return (

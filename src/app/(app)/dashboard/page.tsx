@@ -1,13 +1,20 @@
 ﻿"use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 
 import { useSalon } from "@/context/SalonContext";
 import { useAuthorization } from "@/context/AuthorizationContext";
 import { EmployeeDashboard } from "@/features/dashboard/components/EmployeeDashboard";
-import { loadOwnerDashboardSections } from "@/features/dashboard/services/ownerDashboardLoader";
-import { getDashboardStats, type DashboardStats } from "@/services/dashboardStatsService";
+import { loadOwnerDashboardSections, type DashboardSectionName } from "@/features/dashboard/services/ownerDashboardLoader";
+import {
+  applyDashboardSectionResult,
+  formatAppointmentStatus,
+  initialDashboardSection,
+  type DashboardSection,
+  type TodayOccupancy,
+} from "@/features/dashboard/services/dashboardMetricsCore";
+import { getDashboardStats, getTodayOccupancy, type DashboardStats } from "@/services/dashboardStatsService";
 import { getTodaySchedule, getUpcomingAppointments } from "@/services/dashboardAppointmentsService";
 import { getPopularServices, getTopClients, type PopularService, type TopClient } from "@/services/dashboardAnalyticsService";
 import { getCalendarEmployees, type CalendarEmployee } from "@/services/employeeQueryService";
@@ -29,6 +36,26 @@ type EmployeeColumn = {
   name: string;
 };
 
+type OwnerSections = {
+  stats: DashboardSection<DashboardStats>;
+  occupancy: DashboardSection<TodayOccupancy>;
+  todaySchedule: DashboardSection<AppointmentListItem[]>;
+  upcomingAppointments: DashboardSection<AppointmentListItem[]>;
+  employees: DashboardSection<CalendarEmployee[]>;
+  popularServices: DashboardSection<PopularService[]>;
+  topClients: DashboardSection<TopClient[]>;
+};
+
+const initialSections = (): OwnerSections => ({
+  stats: initialDashboardSection(),
+  occupancy: initialDashboardSection(),
+  todaySchedule: initialDashboardSection(),
+  upcomingAppointments: initialDashboardSection(),
+  employees: initialDashboardSection(),
+  popularServices: initialDashboardSection(),
+  topClients: initialDashboardSection(),
+});
+
 function formatTime(value: string, timeZone = DEFAULT_SALON_TIME_ZONE) {
   return new Date(value).toLocaleTimeString("sr-RS", {
     hour: "2-digit",
@@ -44,16 +71,6 @@ function formatCurrency(value: number) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
-}
-
-function formatAppointmentStatus(status: string) {
-  return {
-    pending: "Na čekanju",
-    confirmed: "Potvrđeno",
-    completed: "Završeno",
-    cancelled: "Otkazano",
-    no_show: "Nije došao",
-  }[status] ?? status;
 }
 
 function getEmployeeLabel(employee: {
@@ -110,21 +127,47 @@ function getCalendarEvents(schedule: AppointmentListItem[], timeZone: string) {
   });
 }
 
+// A failed query is never shown as zero: without data the section says it is unavailable; after a failed refresh
+// the last successful data stays visible and is marked as previously loaded.
+function SectionNotice({ section, onRetry }: { section: DashboardSection<unknown>; onRetry: () => void }) {
+  if (section.status !== "error") return null;
+  return <div className={section.stale ? "dashboard-section-stale" : "dashboard-section-unavailable"} role="status">
+    <span>{section.stale ? "Prethodno učitani podaci — osvežavanje nije uspelo." : "Nije dostupno"}</span>
+    <button type="button" onClick={onRetry}>Pokušaj ponovo</button>
+  </div>;
+}
+
+function KpiCard({ label, section, onRetry, children }: {
+  label: string;
+  section: DashboardSection<unknown>;
+  onRetry: () => void;
+  children: ReactNode;
+}) {
+  return <article className="dashboard-card dashboard-kpi-card" aria-busy={section.status === "loading"}>
+    <span className="dashboard-kpi-label">{label}</span>
+    {section.data === null
+      ? section.status === "loading"
+        ? <strong className="dashboard-kpi-value dashboard-kpi-value--muted">…</strong>
+        : <strong className="dashboard-kpi-value dashboard-kpi-value--muted">Nije dostupno</strong>
+      : children}
+    {section.status === "error" && <div className={section.stale ? "dashboard-kpi-stale" : "dashboard-kpi-retry"}>
+      {section.stale && <small>Prethodno učitano</small>}
+      <button type="button" onClick={onRetry}>Pokušaj ponovo</button>
+    </div>}
+  </article>;
+}
+
 function OwnerDashboard() {
   const { currentSalon, salonLoading } = useSalon();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [todaySchedule, setTodaySchedule] = useState<AppointmentListItem[]>([]);
-  const [upcomingAppointments, setUpcomingAppointments] = useState<AppointmentListItem[]>([]);
-  const [employees, setEmployees] = useState<CalendarEmployee[]>([]);
-  const [popularServices, setPopularServices] = useState<PopularService[]>([]);
-  const [topClients, setTopClients] = useState<TopClient[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [sections, setSections] = useState<OwnerSections>(initialSections);
+  const [firstLoadDone, setFirstLoadDone] = useState(false);
   const inFlightRef = useRef<Promise<void> | null>(null);
-  const hasLoadedRef = useRef(false);
+  const loadedSalonRef = useRef<string | null>(null);
 
   const salonTimeZone = currentSalon?.timezone || DEFAULT_SALON_TIME_ZONE;
   const today = getTodayDateKey(salonTimeZone);
+  const todaySchedule = useMemo(() => sections.todaySchedule.data ?? [], [sections.todaySchedule.data]);
+  const employees = useMemo(() => sections.employees.data ?? [], [sections.employees.data]);
   const employeeColumns = useMemo(
     () => getEmployeeColumns(todaySchedule, employees),
     [todaySchedule, employees]
@@ -141,7 +184,7 @@ function OwnerDashboard() {
       ])].sort((first, second) => first - second),
     [calendarEvents],
   );
-  const todayLabel = new Intl.DateTimeFormat("sr-RS", {
+  const todayLabel = new Intl.DateTimeFormat("sr-Latn-RS", {
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -152,22 +195,33 @@ function OwnerDashboard() {
     if (!currentSalon) return Promise.resolve();
     if (inFlightRef.current) return inFlightRef.current;
 
-    if (!hasLoadedRef.current) setLoading(true);
-    setError(null);
+    // Another salon: do not show the previous salon's data as "previously loaded".
+    if (loadedSalonRef.current !== currentSalon.id) {
+      loadedSalonRef.current = currentSalon.id;
+      setSections(initialSections());
+      setFirstLoadDone(false);
+    }
     const request = loadOwnerDashboardSections({
       stats: () => getDashboardStats(currentSalon.id, salonTimeZone),
+      occupancy: () => getTodayOccupancy(currentSalon.id, salonTimeZone),
       todaySchedule: () => getTodaySchedule(currentSalon.id, today, salonTimeZone),
       upcomingAppointments: () => getUpcomingAppointments(currentSalon.id),
       employees: () => getCalendarEmployees(currentSalon.id),
-      popularServices: () => getPopularServices(currentSalon.id),
-      topClients: () => getTopClients(currentSalon.id),
+      popularServices: () => getPopularServices(currentSalon.id, salonTimeZone),
+      topClients: () => getTopClients(currentSalon.id, salonTimeZone),
     }).then((result) => {
-      if (result.stats.status === "fulfilled") setStats(result.stats.value);
-      if (result.todaySchedule.status === "fulfilled") setTodaySchedule(result.todaySchedule.value);
-      if (result.upcomingAppointments.status === "fulfilled") setUpcomingAppointments(result.upcomingAppointments.value);
-      if (result.employees.status === "fulfilled") setEmployees(result.employees.value);
-      if (result.popularServices.status === "fulfilled") setPopularServices(result.popularServices.value);
-      if (result.topClients.status === "fulfilled") setTopClients(result.topClients.value);
+      setSections((previous) => {
+        const next = { ...previous };
+        for (const name of Object.keys(result) as DashboardSectionName[]) {
+          const section = result[name];
+          // Each key keeps its own value type; the loop only rewraps the same section.
+          (next as Record<DashboardSectionName, DashboardSection<unknown>>)[name] = applyDashboardSectionResult(
+            previous[name] as DashboardSection<unknown>,
+            section.status === "fulfilled" ? { status: "fulfilled", value: section.value } : { status: "rejected" },
+          );
+        }
+        return next;
+      });
 
       const failed = Object.entries(result).filter(([, section]) => section.status === "rejected");
       if (failed.length > 0) {
@@ -178,11 +232,9 @@ function OwnerDashboard() {
               : [],
           ),
         });
-        setError("Deo podataka trenutno nije dostupan.");
       }
     }).finally(() => {
-      hasLoadedRef.current = true;
-      setLoading(false);
+      setFirstLoadDone(true);
       if (inFlightRef.current === request) inFlightRef.current = null;
     });
     inFlightRef.current = request;
@@ -205,13 +257,19 @@ function OwnerDashboard() {
     };
   }, [loadDashboardData]);
 
-  if (salonLoading || loading) {
-    return <p>Loading dashboard...</p>;
+  const retry = () => void loadDashboardData();
+
+  if (salonLoading || !firstLoadDone) {
+    return <p>Učitavanje kontrolne table…</p>;
   }
 
   if (!currentSalon) {
-    return <p>No salon selected.</p>;
+    return <p>Salon nije izabran.</p>;
   }
+
+  const stats = sections.stats.data;
+  const occupancy = sections.occupancy.data;
+  const scheduleUnavailable = sections.todaySchedule.status === "error" && sections.todaySchedule.data === null;
 
   return (
     <main className="dashboard-page">
@@ -219,51 +277,47 @@ function OwnerDashboard() {
         <h1>Rezervo Dashboard</h1>
         <p>Pregled ključnih metrika i narednih termina za {currentSalon.name}.</p>
       </header>
-      {error && (
-        <div className="dashboard-partial-error" role="status">
-          <span>{error}</span>
-          <button type="button" onClick={() => void loadDashboardData()}>
-            Pokušaj ponovo
-          </button>
-        </div>
-      )}
 
       <section className="dashboard-top-kpi">
-        <article className="dashboard-card dashboard-kpi-card">
-          <span className="dashboard-kpi-label">Današnji termini</span>
-          <strong className="dashboard-kpi-value">{stats?.todayAppointments ?? 0}</strong>
-          <small className="dashboard-kpi-meta">Realni termini za danas</small>
-        </article>
+        <KpiCard label="Današnji termini" section={sections.stats} onRetry={retry}>
+          <strong className="dashboard-kpi-value">{stats?.todayAppointments}</strong>
+          <small className="dashboard-kpi-meta">Na čekanju, potvrđeni i završeni</small>
+        </KpiCard>
 
-        <article className="dashboard-card dashboard-kpi-card">
-          <span className="dashboard-kpi-label">Zauzeće danas</span>
-          <strong className="dashboard-kpi-value">{stats?.occupancyToday ?? 0}%</strong>
-          <small className="dashboard-kpi-meta">Ukupno zauzeto radno vreme</small>
-        </article>
+        <KpiCard label="Zauzeće danas" section={sections.occupancy} onRetry={retry}>
+          {occupancy?.percent === null || occupancy === null ? (
+            <>
+              <strong className="dashboard-kpi-value">—</strong>
+              <small className="dashboard-kpi-meta">Danas nema radnog vremena</small>
+            </>
+          ) : (
+            <>
+              <strong className="dashboard-kpi-value">{occupancy.percent}%</strong>
+              <small className="dashboard-kpi-meta">Zauzeto radno vreme aktivnih zaposlenih</small>
+            </>
+          )}
+        </KpiCard>
 
-        <article className="dashboard-card dashboard-kpi-card">
-          <span className="dashboard-kpi-label">Naredni termin</span>
+        <KpiCard label="Naredni termin" section={sections.stats} onRetry={retry}>
           {stats?.nextAppointment ? (
             <>
-              <strong className="dashboard-kpi-value">{formatTime(stats.nextAppointment.start_time)}</strong>
+              <strong className="dashboard-kpi-value">{formatTime(stats.nextAppointment.start_time, salonTimeZone)}</strong>
               <small className="dashboard-kpi-meta">{stats.nextAppointment.clients?.full_name ?? "Neimenovan klijent"}</small>
             </>
           ) : (
             <strong className="dashboard-kpi-value">Nema termina</strong>
           )}
-        </article>
+        </KpiCard>
 
-        <article className="dashboard-card dashboard-kpi-card">
-          <span className="dashboard-kpi-label">Mesečni prihod</span>
+        <KpiCard label="Mesečni prihod" section={sections.stats} onRetry={retry}>
           <strong className="dashboard-kpi-value">{formatCurrency(stats?.monthlyRevenue ?? 0)}</strong>
-          <small className="dashboard-kpi-meta">Suma završених termina</small>
-        </article>
+          <small className="dashboard-kpi-meta">Suma završenih termina</small>
+        </KpiCard>
 
-        <article className="dashboard-card dashboard-kpi-card">
-          <span className="dashboard-kpi-label">Novi klijenti (mesec)</span>
-          <strong className="dashboard-kpi-value">{stats?.monthlyNewClients ?? 0}</strong>
-          <small className="dashboard-kpi-meta">Prvi termin ovog meseca</small>
-        </article>
+        <KpiCard label="Novi kartoni klijenata ovog meseca" section={sections.stats} onRetry={retry}>
+          <strong className="dashboard-kpi-value">{stats?.monthlyNewClients}</strong>
+          <small className="dashboard-kpi-meta">Kartoni napravljeni ovog meseca</small>
+        </KpiCard>
       </section>
 
       <section className="dashboard-mid-grid">
@@ -276,8 +330,10 @@ function OwnerDashboard() {
               </div>
               <Link href="/calendar">Pogledaj ceo kalendar</Link>
             </div>
+            <SectionNotice section={sections.todaySchedule} onRetry={retry} />
+            {sections.todaySchedule.status !== "error" && <SectionNotice section={sections.employees} onRetry={retry} />}
 
-            {employeeColumns.length === 0 ? (
+            {scheduleUnavailable ? null : employeeColumns.length === 0 ? (
               <div className="dashboard-calendar-empty">
                 Nema aktivnih zaposlenih ni termina za danas.
               </div>
@@ -355,54 +411,29 @@ function OwnerDashboard() {
                 <p>Pet sledećih termina</p>
               </div>
             </div>
+            <SectionNotice section={sections.upcomingAppointments} onRetry={retry} />
 
-            <ul className="dashboard-list">
-              {upcomingAppointments.length === 0 ? (
-                <li className="dashboard-list-item">Nema budućih termina.</li>
-              ) : (
-                upcomingAppointments.map((appointment) => (
-                  <li key={appointment.id} className="dashboard-list-item">
-                    <strong>{formatTime(appointment.start_time)}</strong>
-                    <p>{appointment.clients?.full_name ?? "Neimenovan klijent"}</p>
-                    <p>{appointment.services?.name ?? "Bez usluge"}</p>
-                    <p>{appointment.employees?.display_name || appointment.employees?.full_name || "Nema zaposlenog"}</p>
-                    <small>{appointment.status}</small>
-                  </li>
-                ))
-              )}
-            </ul>
+            {sections.upcomingAppointments.data !== null && (
+              <ul className="dashboard-list">
+                {sections.upcomingAppointments.data.length === 0 ? (
+                  <li className="dashboard-list-item">Nema budućih termina.</li>
+                ) : (
+                  sections.upcomingAppointments.data.map((appointment) => (
+                    <li key={appointment.id} className="dashboard-list-item">
+                      <strong>{formatTime(appointment.start_time, salonTimeZone)}</strong>
+                      <p>{appointment.clients?.full_name ?? "Neimenovan klijent"}</p>
+                      <p>{appointment.services?.name ?? "Bez usluge"}</p>
+                      <p>{appointment.employees?.display_name || appointment.employees?.full_name || "Nema zaposlenog"}</p>
+                      <small>{formatAppointmentStatus(appointment.status)}</small>
+                    </li>
+                  ))
+                )}
+              </ul>
+            )}
           </article>
         </div>
 
         <aside>
-          <article className="dashboard-card dashboard-activity-card">
-            <div className="dashboard-card-header">
-              <div>
-                <h2>AI Receptionist aktivnost</h2>
-                <p>Dummy placeholder za buduće WhatsApp / Instagram / SMS aktivnosti.</p>
-              </div>
-            </div>
-
-            <ul className="dashboard-activity-list">
-              <li className="dashboard-activity-item">
-                <span>WhatsApp</span>
-                <strong>0</strong>
-              </li>
-              <li className="dashboard-activity-item">
-                <span>Instagram</span>
-                <strong>0</strong>
-              </li>
-              <li className="dashboard-activity-item">
-                <span>Voice AI</span>
-                <strong>0</strong>
-              </li>
-              <li className="dashboard-activity-item">
-                <span>SMS</span>
-                <strong>0</strong>
-              </li>
-            </ul>
-          </article>
-
           <article className="dashboard-card dashboard-stat-summary">
             <div className="dashboard-card-header">
               <div>
@@ -410,18 +441,21 @@ function OwnerDashboard() {
                 <p>Brzi pregled bez grafikona.</p>
               </div>
             </div>
-            <div className="dashboard-stat-row">
-              <span>Ukupan prihod</span>
-              <strong>{formatCurrency(stats?.monthlyRevenue ?? 0)}</strong>
-            </div>
-            <div className="dashboard-stat-row">
-              <span>Realizovani termini</span>
-              <strong>{stats?.monthlyAppointments ?? 0}</strong>
-            </div>
-            <div className="dashboard-stat-row">
-              <span>Novi klijenti</span>
-              <strong>{stats?.monthlyNewClients ?? 0}</strong>
-            </div>
+            <SectionNotice section={sections.stats} onRetry={retry} />
+            {stats && <>
+              <div className="dashboard-stat-row">
+                <span>Ukupan prihod</span>
+                <strong>{formatCurrency(stats.monthlyRevenue)}</strong>
+              </div>
+              <div className="dashboard-stat-row">
+                <span>Realizovani termini</span>
+                <strong>{stats.monthlyAppointments}</strong>
+              </div>
+              <div className="dashboard-stat-row">
+                <span>Novi kartoni klijenata</span>
+                <strong>{stats.monthlyNewClients}</strong>
+              </div>
+            </>}
           </article>
         </aside>
       </section>
@@ -431,21 +465,24 @@ function OwnerDashboard() {
           <div className="dashboard-card-header">
             <div>
               <h2>Popularne usluge</h2>
-              <p>Najviše zakazanih completed usluga ovog meseca.</p>
+              <p>Najviše završenih termina po usluzi ovog meseca.</p>
             </div>
           </div>
-          <ul className="dashboard-list">
-            {popularServices.length === 0 ? (
-              <li className="dashboard-list-item">Nema podataka.</li>
-            ) : (
-              popularServices.map((service) => (
-                <li key={service.serviceId} className="dashboard-list-item">
-                  <strong>{service.name}</strong>
-                  <span>{service.appointments} termina</span>
-                </li>
-              ))
-            )}
-          </ul>
+          <SectionNotice section={sections.popularServices} onRetry={retry} />
+          {sections.popularServices.data !== null && (
+            <ul className="dashboard-list">
+              {sections.popularServices.data.length === 0 ? (
+                <li className="dashboard-list-item">Nema završenih termina ovog meseca.</li>
+              ) : (
+                sections.popularServices.data.map((service) => (
+                  <li key={service.serviceId} className="dashboard-list-item">
+                    <strong>{service.name}</strong>
+                    <span>{service.appointments} termina</span>
+                  </li>
+                ))
+              )}
+            </ul>
+          )}
         </article>
 
         <article className="dashboard-card">
@@ -455,19 +492,22 @@ function OwnerDashboard() {
               <p>Po ukupnoj potrošnji u ovom mesecu.</p>
             </div>
           </div>
-          <ul className="dashboard-list">
-            {topClients.length === 0 ? (
-              <li className="dashboard-list-item">Nema podataka.</li>
-            ) : (
-              topClients.map((client) => (
-                <li key={client.clientId} className="dashboard-list-item">
-                  <strong>{client.fullName}</strong>
-                  <p>{client.appointmentCount} realizovanih poseta</p>
-                  <p>{formatCurrency(client.totalPrice)}</p>
-                </li>
-              ))
-            )}
-          </ul>
+          <SectionNotice section={sections.topClients} onRetry={retry} />
+          {sections.topClients.data !== null && (
+            <ul className="dashboard-list">
+              {sections.topClients.data.length === 0 ? (
+                <li className="dashboard-list-item">Nema završenih poseta ovog meseca.</li>
+              ) : (
+                sections.topClients.data.map((client) => (
+                  <li key={client.clientId} className="dashboard-list-item">
+                    <strong>{client.fullName}</strong>
+                    <p>{client.appointmentCount} realizovanih poseta</p>
+                    <p>{formatCurrency(client.totalPrice)}</p>
+                  </li>
+                ))
+              )}
+            </ul>
+          )}
         </article>
       </section>
     </main>

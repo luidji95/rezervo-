@@ -6,6 +6,7 @@ function factories(overrides: Partial<Record<string, () => Promise<unknown>>> = 
   const resolved = (value: unknown) => async () => value;
   return {
     stats: resolved({ total: 1 }),
+    occupancy: resolved({ percent: null }),
     todaySchedule: resolved([]),
     upcomingAppointments: resolved([]),
     employees: resolved([]),
@@ -32,7 +33,7 @@ test("a stalled secondary request is bounded and every request starts once", asy
     tracked as ReturnType<typeof factories>,
     { timeoutMs: 5 },
   );
-  assert.equal(calls, 6);
+  assert.equal(calls, 7);
   assert.deepEqual(result.popularServices, {
     status: "rejected",
     errorCode: "REQUEST_TIMEOUT",

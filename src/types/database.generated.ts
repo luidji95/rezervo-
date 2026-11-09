@@ -2333,6 +2333,7 @@ export type Database = {
           id: string
           salon_id: string
           sms_notifications_enabled: boolean
+          sms_confirmation_style: string | null
           updated_at: string
         }
         Insert: {
@@ -2343,6 +2344,7 @@ export type Database = {
           id?: string
           salon_id: string
           sms_notifications_enabled?: boolean
+          sms_confirmation_style?: string | null
           updated_at?: string
         }
         Update: {
@@ -2353,6 +2355,7 @@ export type Database = {
           id?: string
           salon_id?: string
           sms_notifications_enabled?: boolean
+          sms_confirmation_style?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -2532,6 +2535,7 @@ export type Database = {
           name: string
           price: number
           salon_id: string
+          sms_humor_category: string | null
           sort_order: number
           updated_at: string
         }
@@ -2550,6 +2554,7 @@ export type Database = {
           name: string
           price: number
           salon_id: string
+          sms_humor_category?: string | null
           sort_order?: number
           updated_at?: string
         }
@@ -2568,6 +2573,7 @@ export type Database = {
           name?: string
           price?: number
           salon_id?: string
+          sms_humor_category?: string | null
           sort_order?: number
           updated_at?: string
         }
@@ -3666,6 +3672,7 @@ export type Database = {
           p_name: string
           p_price: number
           p_salon_id: string
+          p_sms_humor_category?: string
           p_sort_order?: number
         }
         Returns: {
@@ -3683,6 +3690,7 @@ export type Database = {
           name: string
           price: number
           salon_id: string
+          sms_humor_category: string | null
           sort_order: number
           updated_at: string
         }
@@ -4056,6 +4064,7 @@ export type Database = {
           name: string
           price: number
           salon_id: string
+          sms_humor_category: string | null
           sort_order: number
           updated_at: string
         }
@@ -4377,6 +4386,7 @@ export type Database = {
           p_name: string
           p_price: number
           p_service_id: string
+          p_sms_humor_category?: string
           p_sort_order?: number
         }
         Returns: {
@@ -4394,6 +4404,7 @@ export type Database = {
           name: string
           price: number
           salon_id: string
+          sms_humor_category: string | null
           sort_order: number
           updated_at: string
         }

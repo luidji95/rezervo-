@@ -1,6 +1,7 @@
 import type { SmsProvider, SmsSendResult } from "../../reminders/types/smsProvider.ts";
 import { buildManageLink, isManageToken } from "../../../lib/publicBookingManage/manageToken.ts";
 import { buildBookingConfirmationSms } from "./bookingConfirmationSmsTemplate.ts";
+import type { SmsConfirmationStyle, SmsTemplateSet } from "./bookingConfirmationSmsStyles.ts";
 
 // One SMS confirmation per new public booking, sent after the response to the visitor. Nothing here may change the
 // booking: every failure ends in an outcome code. The phone number, message text, link and token are never returned,
@@ -45,8 +46,12 @@ export type BookingConfirmationSmsDependencies = {
   hmac(key: string, value: string): string;
   reserve(appointmentId: string, recipientHash: string): Promise<string>;
   finish(input: { appointmentId: string; status: SendStatus; provider: string; providerMessageId: string | null; errorCode: string | null }): Promise<boolean>;
+  // The salon's chosen style and the template set from the booked services, read from the stored booking.
+  loadMessageOptions(appointmentId: string): Promise<ConfirmationMessageOptions>;
   provider: SmsProvider;
 };
+
+export type ConfirmationMessageOptions = { style: SmsConfirmationStyle | null; templateSet: SmsTemplateSet };
 
 const MIN_HASH_KEY_LENGTH = 32;
 const SAFE_ERROR_CODE = /^[A-Za-z0-9_.-]{1,64}$/;
@@ -91,6 +96,14 @@ export async function sendBookingConfirmationSmsCore(
   }
 
   // From here the single attempt is used up: whatever happens, there is no retry.
+  // A style that cannot be read falls back to the standard message; it never stops the confirmation.
+  let options: ConfirmationMessageOptions = { style: null, templateSet: "universal" };
+  try {
+    options = await dependencies.loadMessageOptions(input.appointmentId);
+  } catch {
+    // Standard message.
+  }
+
   let classified: ReturnType<typeof classifySmsResult>;
   try {
     const text = buildBookingConfirmationSms({
@@ -98,6 +111,9 @@ export async function sendBookingConfirmationSmsCore(
       appointmentStart: input.appointmentStart,
       salonTimezone: input.salonTimezone,
       manageLink: buildManageLink(config.appUrl, input.manageToken),
+      appointmentId: input.appointmentId,
+      style: options.style,
+      templateSet: options.templateSet,
     });
     classified = classifySmsResult(await dependencies.provider.send({ recipient: input.recipientE164, text, clientReference: input.appointmentId }));
   } catch {

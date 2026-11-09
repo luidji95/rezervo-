@@ -1,9 +1,12 @@
+import type { SmsConfirmationStyle } from "@/features/public-booking/sms/bookingConfirmationSmsStyles";
+
 export type ReminderSettingsOverview = {
   settings: {
     smsEnabled: boolean;
     reminderEnabled: boolean;
     channel: "sms";
     hoursBefore: number;
+    confirmationStyle: SmsConfirmationStyle | null;
   };
   entitlement: {
     canUseSmsReminders: boolean;

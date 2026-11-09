@@ -13,16 +13,37 @@ import {
   Smartphone,
 } from "lucide-react";
 import { UPGRADE_DESTINATION } from "@/features/billing/upgradeNavigation";
+import { getAppUrl } from "@/lib/appUrl";
+import { buildManageLink } from "@/lib/publicBookingManage/manageToken";
+import { toSmsAscii } from "@/features/public-booking/sms/bookingConfirmationSmsTemplate";
+import {
+  getConfirmationTemplates,
+  renderConfirmationTemplate,
+  SMS_CONFIRMATION_STYLE_LABELS,
+  SMS_CONFIRMATION_STYLES,
+  SMS_HUMOR_CATEGORY_LABELS,
+  type SmsConfirmationStyle,
+  type SmsTemplateSet,
+} from "@/features/public-booking/sms/bookingConfirmationSmsStyles";
 import { useReminderSettings } from "../hooks/useReminderSettings";
 import type { ReminderSettingsErrorCode } from "../types/reminderSettingsOverview";
 import styles from "./ReminderSettingsPanel.module.css";
 
 const HOUR_OPTIONS = [1, 2, 3, 6, 12, 24, 48, 72] as const;
 
+const STYLE_DESCRIPTIONS: Record<SmsConfirmationStyle, string> = {
+  business: "Kratko i zvanično.",
+  casual: "Toplo i prijateljski.",
+  playful: "Uz malo humora, prema kategoriji usluge.",
+};
+const PREVIEW_SETS: SmsTemplateSet[] = ["universal", "haircut", "coloring", "massage"];
+// Invented booking for the preview; nothing is sent. The token has the real length, so the text is as long as a real one.
+const PREVIEW_LINK_TOKEN = "PrimerLinkaSamoZaPregled-NePostoji-0000000x";
+
 const ERROR_MESSAGES: Record<ReminderSettingsErrorCode, string> = {
   UNAUTHORIZED: "Prijava je istekla. Osvežite stranicu i pokušajte ponovo.",
   FORBIDDEN: "Nemate dozvolu za upravljanje SMS podešavanjima.",
-  INVALID_INPUT: "Proverite izabrano vreme slanja.",
+  INVALID_INPUT: "Proverite izabrano vreme slanja i stil poruke.",
   ENTITLEMENT_REQUIRED: "SMS obaveštenja nisu uključena u trenutni paket.",
   SALON_WRITE_ACCESS_REQUIRED: "Podešavanja trenutno ne mogu da se menjaju jer je salon u režimu pregleda.",
   REMINDER_SETTINGS_LOAD_FAILED: "SMS podešavanja trenutno nisu dostupna.",
@@ -51,7 +72,12 @@ export function ReminderSettingsPanel() {
   const [smsEnabled, setSmsEnabled] = useState(false);
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [hoursBefore, setHoursBefore] = useState(24);
-  const [saved, setSaved] = useState(false);
+  const [confirmationStyle, setConfirmationStyle] = useState<SmsConfirmationStyle | null>(null);
+  const [previewVariant, setPreviewVariant] = useState(0);
+  const [previewSet, setPreviewSet] = useState<SmsTemplateSet>("universal");
+  // "Saved" is shown while the overview on screen is the one the save returned; a reload or another salon clears it.
+  const [savedOverview, setSavedOverview] = useState<typeof state.overview>(null);
+  const saved = savedOverview !== null && savedOverview === state.overview;
   const [loadedOverview, setLoadedOverview] = useState(state.overview);
 
   if (state.overview !== loadedOverview) {
@@ -60,7 +86,7 @@ export function ReminderSettingsPanel() {
       setSmsEnabled(state.overview.settings.smsEnabled);
       setReminderEnabled(state.overview.settings.reminderEnabled);
       setHoursBefore(state.overview.settings.hoursBefore);
-      setSaved(false);
+      setConfirmationStyle(state.overview.settings.confirmationStyle);
     }
   }
 
@@ -68,14 +94,19 @@ export function ReminderSettingsPanel() {
     ? smsEnabled !== state.overview.settings.smsEnabled
       || reminderEnabled !== state.overview.settings.reminderEnabled
       || hoursBefore !== state.overview.settings.hoursBefore
+      || confirmationStyle !== state.overview.settings.confirmationStyle
     : false;
   const previews = useMemo(() => {
     const salonName = state.salonName.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim() || "Vaš salon";
+    const templates = getConfirmationTemplates(confirmationStyle, previewSet);
     return {
-      confirmation: `Termin u salonu ${salonName} je potvrdjen za 28. jula u 14:00. Pregled i otkazivanje: [privatni link]`,
+      confirmation: renderConfirmationTemplate(templates[previewVariant % templates.length], {
+        salon: toSmsAscii(salonName), datum: "28. jula", vreme: "14:00", link: buildManageLink(getAppUrl(), PREVIEW_LINK_TOKEN),
+      }),
+      variants: templates.length,
       reminder: `Podsetnik: 28. jula u 14:00 imate termin u salonu ${salonName}. Za promenu termina kontaktirajte salon.`,
     };
-  }, [state.salonName]);
+  }, [state.salonName, confirmationStyle, previewSet, previewVariant]);
 
   if (state.loading) return <ReminderSettingsSkeleton />;
   if (state.error && !state.overview) {
@@ -97,9 +128,9 @@ export function ReminderSettingsPanel() {
     : pausedConfirmations ? "Pauzirane su SMS potvrde." : "Pauzirani su podsetnici.";
 
   async function handleSave() {
-    setSaved(false);
-    const result = await state.save({ smsEnabled, reminderEnabled, hoursBefore });
-    if (result.ok) setSaved(true);
+    setSavedOverview(null);
+    const result = await state.save({ smsEnabled, reminderEnabled, hoursBefore, confirmationStyle });
+    if (result.ok) setSavedOverview(result.overview);
   }
 
   return <div className={styles.page}>
@@ -115,13 +146,35 @@ export function ReminderSettingsPanel() {
         <div className={styles.cardHeader}><div><span className={styles.cardIcon}><Clock3 size={18} /></span><div><h3 id="automation-title">Podešavanja slanja</h3><p>Promene važe za nove rezervacije i podsetnike koji još nisu poslati.</p></div></div></div>
         <div className={styles.toggleRow}>
           <div><label htmlFor="sms-notifications-enabled">SMS obaveštenja</label><p>Odmah nakon online rezervacije klijent dobija SMS potvrdu sa detaljima termina i privatnim linkom za pregled i otkazivanje.</p></div>
-          <label className={styles.switch}><input id="sms-notifications-enabled" type="checkbox" checked={smsEnabled} disabled={state.saving} onChange={(event) => { setSmsEnabled(event.target.checked); setSaved(false); }} /><span aria-hidden="true" /></label>
+          <label className={styles.switch}><input id="sms-notifications-enabled" type="checkbox" checked={smsEnabled} disabled={state.saving} onChange={(event) => { setSmsEnabled(event.target.checked); setSavedOverview(null); }} /><span aria-hidden="true" /></label>
         </div>
         <div className={`${styles.toggleRow} ${styles.subOption}`} aria-disabled={!smsEnabled}>
           <div><label htmlFor="sms-reminder-enabled">Podsetnik pre termina</label><p>{smsEnabled ? "Pored potvrde, klijent dobija i podsetnik u izabrano vreme pre termina." : "Dostupno kada su SMS obaveštenja uključena."}</p></div>
-          <label className={styles.switch}><input id="sms-reminder-enabled" type="checkbox" checked={smsEnabled && reminderEnabled} disabled={!reminderAvailable} onChange={(event) => { setReminderEnabled(event.target.checked); setSaved(false); }} aria-describedby="sms-hours-explanation" /><span aria-hidden="true" /></label>
+          <label className={styles.switch}><input id="sms-reminder-enabled" type="checkbox" checked={smsEnabled && reminderEnabled} disabled={!reminderAvailable} onChange={(event) => { setReminderEnabled(event.target.checked); setSavedOverview(null); }} aria-describedby="sms-hours-explanation" /><span aria-hidden="true" /></label>
         </div>
-        <div className={styles.field}><label htmlFor="sms-hours-before">Pošalji podsetnik</label><select id="sms-hours-before" value={hoursBefore} disabled={!reminderAvailable || !reminderEnabled} onChange={(event) => { setHoursBefore(Number(event.target.value)); setSaved(false); }}>{!HOUR_OPTIONS.includes(hoursBefore as typeof HOUR_OPTIONS[number]) && <option value={hoursBefore}>{formatHours(hoursBefore)}</option>}{HOUR_OPTIONS.map((hours) => <option key={hours} value={hours}>{formatHours(hours)}</option>)}</select><small id="sms-hours-explanation">{smsEnabled && reminderEnabled ? "Vreme se računa prema vremenskoj zoni salona. Otkazani termini ne dobijaju podsetnik." : "Uključite podsetnik da biste izabrali vreme."}</small></div>
+        <div className={styles.field}><label htmlFor="sms-hours-before">Pošalji podsetnik</label><select id="sms-hours-before" value={hoursBefore} disabled={!reminderAvailable || !reminderEnabled} onChange={(event) => { setHoursBefore(Number(event.target.value)); setSavedOverview(null); }}>{!HOUR_OPTIONS.includes(hoursBefore as typeof HOUR_OPTIONS[number]) && <option value={hoursBefore}>{formatHours(hoursBefore)}</option>}{HOUR_OPTIONS.map((hours) => <option key={hours} value={hours}>{formatHours(hours)}</option>)}</select><small id="sms-hours-explanation">{smsEnabled && reminderEnabled ? "Vreme se računa prema vremenskoj zoni salona. Otkazani termini ne dobijaju podsetnik." : "Uključite podsetnik da biste izabrali vreme."}</small></div>
+        <fieldset className={styles.styleField} disabled={state.saving}>
+          <legend>Stil SMS potvrde</legend>
+          <p>Ton poruke koju klijent dobija odmah nakon online rezervacije. Salon, datum, vreme i privatni link su uvek iz stvarne rezervacije.</p>
+          <div className={styles.styleOptions}>
+            {SMS_CONFIRMATION_STYLES.map((style) => <label key={style} className={styles.styleOption}>
+              <input type="radio" name="sms-confirmation-style" value={style} checked={confirmationStyle === style} onChange={() => { setConfirmationStyle(style); setPreviewVariant(0); setPreviewSet("universal"); setSavedOverview(null); }} />
+              <span><strong>{SMS_CONFIRMATION_STYLE_LABELS[style]}</strong><small>{STYLE_DESCRIPTIONS[style]}</small></span>
+            </label>)}
+          </div>
+          {confirmationStyle === null && <small className={styles.styleHint}>Dok ne izaberete stil, klijenti dobijaju standardnu poruku prikazanu ispod.</small>}
+          <div className={styles.stylePreview} aria-live="polite">
+            <div className={styles.stylePreviewHead}>
+              <span>Primer sa izmišljenim terminom — ne šalje se</span>
+              {previews.variants > 1 && <button type="button" onClick={() => setPreviewVariant((value) => (value + 1) % previews.variants)}>Drugi primer ({(previewVariant % previews.variants) + 1}/{previews.variants})</button>}
+            </div>
+            {confirmationStyle === "playful" && <div className={styles.previewSets} role="group" aria-label="Kategorija usluge u primeru">
+              {PREVIEW_SETS.map((set) => <button key={set} type="button" aria-pressed={previewSet === set} onClick={() => { setPreviewSet(set); setPreviewVariant(0); }}>{SMS_HUMOR_CATEGORY_LABELS[set]}</button>)}
+            </div>}
+            <blockquote>{previews.confirmation}</blockquote>
+            {confirmationStyle === "playful" && <small className={styles.styleHint}>Šaljiva poruka prati „Kategoriju za šaljivi SMS“ iz podešavanja usluge. Usluge bez nje i rezervacije sa uslugama iz različitih kategorija dobijaju univerzalne poruke.</small>}
+          </div>
+        </fieldset>
         {state.error && <div className={styles.inlineError} role="alert" aria-live="assertive">{ERROR_MESSAGES[state.error]}</div>}
         <div className={styles.actions}><span className={styles.saveStatus} aria-live="polite">{saved ? <><CheckCircle2 size={16} /> Podešavanja su sačuvana.</> : null}</span><button type="button" disabled={!dirty || state.saving} onClick={() => void handleSave()}>{state.saving ? "Čuvanje..." : "Sačuvaj podešavanja"}</button></div>
       </section>

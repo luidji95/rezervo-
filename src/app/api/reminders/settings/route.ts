@@ -9,14 +9,17 @@ import { getSmsSettingsPolicyError } from "@/features/reminders/services/reminde
 import { getSalonReminderUsage } from "@/features/reminders/services/reminderUsageService";
 import type { ReminderSettingsOverview } from "@/features/reminders/types/reminderSettingsOverview";
 import { getAuthenticatedRequestUser } from "@/lib/server/requestAuth";
+import { SMS_CONFIRMATION_STYLES } from "@/features/public-booking/sms/bookingConfirmationSmsStyles";
 
 export const dynamic = "force-dynamic";
 // smsEnabled: main "SMS obaveštenja" switch (confirmation right after an online booking). reminderEnabled: reminder
 // before the appointment, sent only while smsEnabled is also on.
+// confirmationStyle: null is the standard message; omitted keeps the stored style.
 const updateSchema = z.object({
   smsEnabled: z.boolean(),
   reminderEnabled: z.boolean(),
   hoursBefore: z.number().int().min(1).max(168),
+  confirmationStyle: z.enum(SMS_CONFIRMATION_STYLES).nullable().optional(),
 }).strict();
 function response(code: string, status: number) { return NextResponse.json({ success: false, code }, { status }); }
 
@@ -27,7 +30,10 @@ async function loadOverview(userId: string, salonId: string): Promise<ReminderSe
     getSalonReminderUsage(salonId).catch(() => null),
   ]);
   return {
-    settings: { smsEnabled: settings.smsEnabled, reminderEnabled: settings.reminderEnabled, channel: "sms", hoursBefore: settings.hoursBefore },
+    settings: {
+      smsEnabled: settings.smsEnabled, reminderEnabled: settings.reminderEnabled, channel: "sms", hoursBefore: settings.hoursBefore,
+      confirmationStyle: settings.confirmationStyle,
+    },
     entitlement: {
       canUseSmsReminders: entitlements.effectiveCapabilities.canUseSmsReminders,
       maxMonthlyReminders: entitlements.planCapabilities.maxMonthlyReminders,

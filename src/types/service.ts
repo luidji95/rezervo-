@@ -1,4 +1,5 @@
 // src/types/service.ts
+import type { SmsHumorCategory, SmsTemplateSet } from "@/features/public-booking/sms/bookingConfirmationSmsStyles";
 
 export type Service = {
   id: string;
@@ -15,6 +16,8 @@ export type Service = {
   is_public: boolean;
   color: string | null;
   sort_order: number;
+  // Template set for the playful confirmation SMS; null is universal.
+  sms_humor_category: SmsHumorCategory | null;
   created_at: string;
   updated_at: string;
 };
@@ -28,6 +31,7 @@ export type CreateServiceInput = {
   priceAmount: number;
   isActive?: boolean;
   isPublic?: boolean;
+  smsHumorCategory?: SmsTemplateSet;
 };
 export type UpdateServiceInput = {
   serviceId: string;
@@ -38,4 +42,6 @@ export type UpdateServiceInput = {
   priceAmount: number;
   isActive?: boolean;
   isPublic?: boolean;
+  // Omitted keeps the stored category; "universal" clears it.
+  smsHumorCategory?: SmsTemplateSet;
 };

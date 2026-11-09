@@ -9,12 +9,13 @@ const token = randomBytes(32).toString("base64url");
 const input = { appointmentId: "a1", salonName: "Studio Šarm Đurđa", salonTimezone: "Europe/Belgrade", appointmentStart: "2026-11-09T08:00:00.000Z", recipientE164: "+381641112222", manageToken: token };
 
 function deps(overrides: Partial<BookingConfirmationSmsDependencies> = {}, result: SmsSendResult = { outcome: "accepted", provider: "infobip", providerMessageId: "m1", httpStatus: 200 }) {
-  const calls = { reserve: [] as string[][], finish: [] as unknown[], sent: [] as SmsSendInput[] };
+  const calls = { reserve: [] as string[][], finish: [] as unknown[], sent: [] as SmsSendInput[], options: [] as string[] };
   const base: BookingConfirmationSmsDependencies = {
     config: { enabled: true, recipientMode: "allowlist", allowedRecipients: new Set(["+381641112222"]), hashKey: "k".repeat(40), appUrl: "https://app.example.test" },
     hmac: (key, value) => createHmac("sha256", key).update(value).digest("hex"),
     reserve: async (...args) => { calls.reserve.push(args); return "reserved"; },
     finish: async (value) => { calls.finish.push(value); return true; },
+    loadMessageOptions: async (appointmentId) => { calls.options.push(appointmentId); return { style: null, templateSet: "universal" }; },
     provider: { send: async (message) => { calls.sent.push(message); return result; } },
   };
   return { calls, dependencies: { ...base, ...overrides } };
@@ -131,4 +132,35 @@ test("global switch is live for owners only when enabled, open to every number a
   assert.equal(isBookingConfirmationSmsLive({ ...config, hashKey: "short" }), false);
   assert.equal(isBookingConfirmationSmsLive({ ...config, appUrl: null }), false);
   assert.equal(isBookingConfirmationSmsLive({ ...config, appUrl: "https://rezervo.example/path" }), false);
+});
+
+test("style: read after the reservation; a failed read sends the standard message; refusals never read it", async () => {
+  const standard = `Termin u salonu Studio Sarm Djurdja je potvrdjen za 9. novembra u 09:00. Pregled i otkazivanje: https://app.example.test/manage-booking#${token}`;
+  const plain = deps();
+  await sendBookingConfirmationSmsCore(input, plain.dependencies);
+  assert.equal(plain.calls.sent[0].text, standard);
+  assert.deepEqual(plain.calls.options, ["a1"]);
+
+  const failing = deps({ loadMessageOptions: async () => { throw new Error("db"); } });
+  assert.deepEqual(await sendBookingConfirmationSmsCore(input, failing.dependencies), { outcome: "accepted", errorCode: null });
+  assert.equal(failing.calls.sent[0].text, standard);
+
+  const refused = deps({ reserve: async () => "already_reserved" });
+  assert.equal((await sendBookingConfirmationSmsCore(input, refused.dependencies)).outcome, "already_reserved");
+  assert.equal(refused.calls.options.length + refused.calls.sent.length, 0);
+});
+
+test("style: chosen set and variation by appointment id, link intact, same text when processed again", async () => {
+  const link = `https://app.example.test/manage-booking#${token}`;
+  for (const [style, templateSet] of [["business", "universal"], ["casual", "universal"], ["playful", "haircut"], ["playful", "coloring"], ["playful", "massage"], ["playful", "universal"]] as const) {
+    const texts = [] as string[];
+    for (let run = 0; run < 2; run += 1) {
+      const { calls, dependencies } = deps({ loadMessageOptions: async () => ({ style, templateSet }) });
+      await sendBookingConfirmationSmsCore(input, dependencies);
+      texts.push(calls.sent[0].text);
+    }
+    assert.equal(texts[0], texts[1]);
+    assert.ok(texts[0].endsWith(` ${link}`), texts[0]);
+    assert.ok(texts[0].includes("Studio Sarm Djurdja") && texts[0].includes("9. novembra") && texts[0].includes("09:00"), texts[0]);
+  }
 });

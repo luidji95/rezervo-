@@ -11,6 +11,7 @@ import type { Service } from "@/types/service";
 import { servicesSchema, type ServicesFormData } from "./serviceSchema";
 import { DEFAULT_SERVICE_CATEGORIES, getServiceCategory } from "./serviceUtils";
 import { getBusinessDataMutationMessage } from "@/features/business-data/services/businessDataMutationError";
+import { SMS_HUMOR_CATEGORY_LABELS } from "@/features/public-booking/sms/bookingConfirmationSmsStyles";
 
 type AddServiceModalProps = {
   salonId: string;
@@ -84,6 +85,7 @@ export function AddServiceModal({
       categoryName: formData.get("categoryName"),
       durationMinutes: formData.get("durationMinutes"),
       priceAmount: formData.get("priceAmount"),
+      smsHumorCategory: formData.get("smsHumorCategory"),
       isActive: formData.get("isActive") === "on",
       isPublic: formData.get("isPublic") === "on",
     });
@@ -95,6 +97,7 @@ export function AddServiceModal({
         name: fieldErrors.name?.[0],
         durationMinutes: fieldErrors.durationMinutes?.[0],
         priceAmount: fieldErrors.priceAmount?.[0],
+        smsHumorCategory: fieldErrors.smsHumorCategory?.[0],
       });
 
       return;
@@ -126,6 +129,7 @@ export function AddServiceModal({
         priceAmount: data.priceAmount,
         isActive: data.isActive ?? true,
         isPublic: data.isPublic ?? true,
+        smsHumorCategory: data.smsHumorCategory,
       });
 
       return;
@@ -140,6 +144,7 @@ export function AddServiceModal({
       priceAmount: data.priceAmount,
       isActive: data.isActive ?? true,
       isPublic: data.isPublic ?? true,
+      smsHumorCategory: data.smsHumorCategory,
     });
   }
 
@@ -224,6 +229,24 @@ export function AddServiceModal({
                   </option>
                 ))}
               </select>
+            </FormField>
+
+            <FormField label="Kategorija za šaljivi SMS" htmlFor="service-sms-humor-category" error={errors.smsHumorCategory} full>
+              <select
+                id="service-sms-humor-category"
+                name="smsHumorCategory"
+                defaultValue={editingService?.sms_humor_category ?? "universal"}
+                aria-describedby="service-sms-humor-category-hint"
+              >
+                {(["universal", "haircut", "coloring", "massage"] as const).map((category) => (
+                  <option key={category} value={category}>
+                    {SMS_HUMOR_CATEGORY_LABELS[category]}
+                  </option>
+                ))}
+              </select>
+              <small id="service-sms-humor-category-hint" className="service-form-hint">
+                Opciono. Koristi se samo kada salon izabere šaljivi stil SMS potvrde.
+              </small>
             </FormField>
           </div>
 

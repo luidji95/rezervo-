@@ -21,6 +21,7 @@ const SERVICE_SELECT = `
   is_public,
   color,
   sort_order,
+  sms_humor_category,
   created_at,
   updated_at
 `;
@@ -62,6 +63,7 @@ export async function createService({
   priceAmount,
   isActive = true,
   isPublic = true,
+  smsHumorCategory,
 }: CreateServiceInput): Promise<Service> {
   const payload = {
     salon_id: salonId,
@@ -78,6 +80,7 @@ export async function createService({
     p_salon_id: salonId, p_name: name, p_description: description,
     p_category_name: categoryName, p_duration_minutes: durationMinutes,
     p_price: priceAmount, p_is_active: isActive, p_is_public: isPublic,
+    p_sms_humor_category: smsHumorCategory,
   });
 
   if (error) {
@@ -115,6 +118,7 @@ export async function updateService({
   priceAmount,
   isActive,
   isPublic,
+  smsHumorCategory,
 }: UpdateServiceInput): Promise<Service> {
   const payload = {
     name,
@@ -130,6 +134,7 @@ export async function updateService({
     p_service_id: serviceId, p_name: name, p_description: description,
     p_category_name: categoryName, p_duration_minutes: durationMinutes,
     p_price: priceAmount, p_is_active: isActive, p_is_public: isPublic,
+    p_sms_humor_category: smsHumorCategory,
   });
 
   if (error) {

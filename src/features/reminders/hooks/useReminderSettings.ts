@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuthorization } from "@/context/AuthorizationContext";
 import { supabase } from "@/lib/supabase/client";
+import type { SmsConfirmationStyle } from "@/features/public-booking/sms/bookingConfirmationSmsStyles";
 import type {
   ReminderSettingsErrorCode,
   ReminderSettingsOverview,
@@ -56,7 +57,7 @@ export function useReminderSettings() {
     return () => window.clearTimeout(timeout);
   }, [authorizationLoading, load]);
 
-  const save = useCallback(async (input: { smsEnabled: boolean; reminderEnabled: boolean; hoursBefore: number }) => {
+  const save = useCallback(async (input: { smsEnabled: boolean; reminderEnabled: boolean; hoursBefore: number; confirmationStyle?: SmsConfirmationStyle | null }) => {
     if (!currentSalon) return { ok: false as const, code: "FORBIDDEN" as ReminderSettingsErrorCode };
     setSaving(true);
     setError(null);

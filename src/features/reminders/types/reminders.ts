@@ -1,3 +1,5 @@
+import type { SmsConfirmationStyle } from "@/features/public-booking/sms/bookingConfirmationSmsStyles";
+
 export type ReminderChannel = "sms" | "viber";
 export type ReminderDeliveryStatus = "pending" | "processing" | "sent" | "delivered" | "retry_scheduled" | "failed" | "skipped" | "cancelled";
 
@@ -8,6 +10,8 @@ export type SalonSmsSettings = {
   reminderEnabled: boolean;
   channel: ReminderChannel;
   hoursBefore: number;
+  // Null: the salon has not chosen a style and gets the standard confirmation text.
+  confirmationStyle: SmsConfirmationStyle | null;
 };
 
 export type ReminderClaim = {

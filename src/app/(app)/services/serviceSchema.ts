@@ -19,6 +19,9 @@ export const servicesSchema = z.object({
     .min(0, "Cena ne može biti negativna")
     .max(1000000, "Cena je previsoka"),
 
+  // Only these values; anything else is rejected (the database checks them too).
+  smsHumorCategory: z.enum(["universal", "haircut", "coloring", "massage"], { message: "Izaberite kategoriju sa liste" }),
+
   isActive: z.boolean().optional(),
 
   isPublic: z.boolean().optional(),

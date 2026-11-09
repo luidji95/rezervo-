@@ -1,4 +1,11 @@
 import { sanitizeSmsSalonName } from "../../reminders/services/appointmentReminderTemplate.ts";
+import {
+  renderConfirmationTemplate,
+  selectConfirmationTemplate,
+  STANDARD_CONFIRMATION_TEMPLATE,
+  type SmsConfirmationStyle,
+  type SmsTemplateSet,
+} from "./bookingConfirmationSmsStyles.ts";
 
 const MONTHS = [
   "januara", "februara", "marta", "aprila", "maja", "juna",
@@ -17,6 +24,10 @@ export type BookingConfirmationSmsInput = {
   appointmentStart: string;
   salonTimezone: string;
   manageLink: string;
+  // Without a style (salon never chose one) the standard message is sent.
+  appointmentId?: string;
+  style?: SmsConfirmationStyle | null;
+  templateSet?: SmsTemplateSet;
 };
 
 export function buildBookingConfirmationSms(input: BookingConfirmationSmsInput) {
@@ -27,6 +38,13 @@ export function buildBookingConfirmationSms(input: BookingConfirmationSmsInput) 
   }).formatToParts(start);
   const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
   const salon = toSmsAscii(sanitizeSmsSalonName(input.salonName));
-  const when = `${Number(read("day"))}. ${MONTHS[Number(read("month")) - 1]} u ${read("hour")}:${read("minute")}`;
-  return `Termin u salonu ${salon} je potvrdjen za ${when}. Pregled i otkazivanje: ${input.manageLink}`;
+  const template = input.style && input.appointmentId
+    ? selectConfirmationTemplate({ appointmentId: input.appointmentId, style: input.style, templateSet: input.templateSet })
+    : STANDARD_CONFIRMATION_TEMPLATE;
+  return renderConfirmationTemplate(template, {
+    salon,
+    datum: `${Number(read("day"))}. ${MONTHS[Number(read("month")) - 1]}`,
+    vreme: `${read("hour")}:${read("minute")}`,
+    link: input.manageLink,
+  });
 }

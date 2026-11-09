@@ -607,6 +607,11 @@
   font-size: 12px;
 }
 
+.service-form-field small.service-form-hint {
+  color: #64748b;
+  line-height: 1.45;
+}
+
 .service-checkbox-grid {
   margin-top: 18px;
   display: grid;
